@@ -1,27 +1,27 @@
+// public/script.js
+
 document.addEventListener('DOMContentLoaded', () => {
     const fileList = document.getElementById('file-list');
 
-    // Pede a lista de arquivos para nossa API
     fetch('/api/files')
         .then(response => response.json())
         .then(data => {
-            fileList.innerHTML = ''; // Limpa a mensagem "Carregando..."
+            fileList.innerHTML = '';
             if (data.files && data.files.length > 0) {
                 data.files.forEach(file => {
                     const li = document.createElement('li');
                     
-                    // O nome do arquivo
-                    const fileName = document.createElement('span');
-                    fileName.textContent = file.name;
+                    const fileNameSpan = document.createElement('span');
+                    fileNameSpan.textContent = file.name;
                     
-                    // O link de download
                     const downloadLink = document.createElement('a');
-                    // Este link aponta para nossa outra função de API
-                    downloadLink.href = `/api/download?file_id=${file.id}`;
+                    // MUDANÇA AQUI: Adicionamos &filename=... na URL
+                    downloadLink.href = `/api/download?file_id=${file.id}&filename=${encodeURIComponent(file.name)}`;
                     downloadLink.textContent = 'Baixar';
-                    downloadLink.target = '_blank'; // Abre em nova aba
+                    // Não precisamos mais do target="_blank"
+                    // downloadLink.target = '_blank';
 
-                    li.appendChild(fileName);
+                    li.appendChild(fileNameSpan);
                     li.appendChild(downloadLink);
                     fileList.appendChild(li);
                 });
