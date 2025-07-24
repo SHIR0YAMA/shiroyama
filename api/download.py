@@ -7,7 +7,6 @@ import struct
 
 app = Flask(__name__)
 
-# Pega todas as variáveis de ambiente de uma vez
 API_ID = os.environ.get("API_ID")
 API_HASH = os.environ.get("API_HASH")
 SESSION_STRING = os.environ.get("SESSION_STRING")
@@ -17,37 +16,38 @@ async def process_download_async():
     message_id_str = request.args.get('message_id')
     filename = request.args.get('filename', 'download')
 
-    # Validação inicial
     if not all([API_ID, API_HASH, SESSION_STRING, CHANNEL_ID_STR]):
-        return Response("Erro de configuração: Uma ou mais variáveis (API_ID, API_HASH, SESSION_STRING, CHANNEL_ID) não estão definidas na Vercel.", status=500)
+        return Response("Erro de configuração: Variáveis de ambiente faltando na Vercel.", status=500)
 
     try:
         message_id = int(message_id_str)
-        chat_id = int(CHANNEL_ID_STR)
+        # --- A MÁGICA COMEÇA AQUI ---
+        # Converte o chat_id para o formato de link (remove o -100)
+        if CHANNEL_ID_STR.startswith("-100"):
+            link_chat_id = CHANNEL_ID_STR[4:]
+        else:
+            # Para o caso de já estar no formato correto ou ser um ID diferente
+            link_chat_id = CHANNEL_ID_STR.lstrip('-')
+            
+        # Constrói o link direto para a mensagem
+        message_link = f"https://t.me/c/{link_chat_id}/{message_id}"
+
     except (ValueError, TypeError):
         return Response("Erro: 'message_id' ou 'CHANNEL_ID' inválidos.", status=400)
 
-    user_bot = Client(
-        "my_account",
-        api_id=int(API_ID),
-        api_hash=API_HASH,
-        session_string=SESSION_STRING
-    )
+    user_bot = Client("my_account", api_id=int(API_ID), api_hash=API_HASH, session_string=SESSION_STRING)
 
     try:
         await user_bot.start()
 
-        # --- CORREÇÃO FINAL: A ABORDAGEM CORRETA DE DOIS PASSOS ---
+        # --- USAREMOS O LINK PARA ENCONTRAR A MENSAGEM ---
+        # Este método força o Telegram a resolver o peer e encontrar a mensagem.
+        message = await user_bot.get_messages(message_link)
         
-        # PASSO 1: Pegar o objeto da mensagem. Esta é a função que precisa do chat_id.
-        message = await user_bot.get_messages(chat_id=chat_id, message_ids=message_id)
-        
-        # Verifica se a mensagem foi encontrada e se tem mídia para baixar
         if not message or not (message.document or message.video or message.audio or message.photo):
              await user_bot.stop()
-             return Response(f"Erro: Mensagem com ID {message_id} não encontrada no canal {chat_id}, ou não contém um arquivo para baixar.", status=404)
+             return Response(f"Erro: Não foi possível encontrar a mensagem através do link {message_link}, ou ela não contém um arquivo.", status=404)
 
-        # PASSO 2: Fazer o download passando o OBJETO da mensagem, não o ID.
         in_memory_file = await user_bot.download_media(message, in_memory=True)
         
         in_memory_file.seek(0)
@@ -60,7 +60,7 @@ async def process_download_async():
         )
     except errors.BadRequest as e:
         await user_bot.stop()
-        return Response(f"Erro do Telegram (BadRequest): Não foi possível encontrar a mensagem. Verifique se a message_id e o CHANNEL_ID estão corretos. Detalhes: {e}", status=404)
+        return Response(f"Erro do Telegram (BadRequest): O link da mensagem parece inválido. Detalhes: {e}", status=404)
     except Exception as e:
         if user_bot.is_connected:
             await user_bot.stop()
