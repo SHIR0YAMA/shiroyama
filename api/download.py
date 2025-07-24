@@ -3,27 +3,29 @@ from pyrogram import Client, errors
 import os
 import asyncio
 import io
+import struct # <-- CORREÇÃO 1: Importa a biblioteca 'struct'
 
 app = Flask(__name__)
 
+# Pega todas as variáveis de ambiente de uma vez
 API_ID = os.environ.get("API_ID")
 API_HASH = os.environ.get("API_HASH")
 SESSION_STRING = os.environ.get("SESSION_STRING")
+CHANNEL_ID_STR = os.environ.get("CHANNEL_ID") # <-- NOVO: Pega o ID do canal
 
 async def process_download_async():
     message_id_str = request.args.get('message_id')
     filename = request.args.get('filename', 'download')
 
-    if not all([API_ID, API_HASH, SESSION_STRING]):
-        return Response("Erro de configuração: Variáveis de ambiente (API_ID, API_HASH, SESSION_STRING) não foram definidas no servidor Vercel.", status=500)
+    # Validação inicial
+    if not all([API_ID, API_HASH, SESSION_STRING, CHANNEL_ID_STR]):
+        return Response("Erro de configuração: Uma ou mais variáveis (API_ID, API_HASH, SESSION_STRING, CHANNEL_ID) não estão definidas na Vercel.", status=500)
 
-    if not message_id_str:
-        return Response("Erro: O parâmetro 'message_id' é obrigatório na URL.", status=400)
-    
     try:
         message_id = int(message_id_str)
-    except ValueError:
-        return Response("Erro: O 'message_id' deve ser um número.", status=400)
+        chat_id = int(CHANNEL_ID_STR) # <-- NOVO: Converte o ID do canal para inteiro
+    except (ValueError, TypeError):
+        return Response("Erro: 'message_id' ou 'CHANNEL_ID' inválidos.", status=400)
 
     user_bot = Client(
         "my_account",
@@ -34,7 +36,14 @@ async def process_download_async():
 
     try:
         await user_bot.start()
-        in_memory_file = await user_bot.download_media(message_id, in_memory=True)
+
+        # --- CORREÇÃO 2: Passamos o chat_id e a message_id ---
+        # A função get_messages é a forma mais robusta de pegar uma mensagem específica
+        message = await user_bot.get_messages(chat_id=chat_id, message_ids=message_id)
+        
+        # Agora, fazemos o download a partir do objeto de mensagem
+        in_memory_file = await user_bot.download_media(message, in_memory=True)
+        
         in_memory_file.seek(0)
         await user_bot.stop()
 
@@ -43,17 +52,13 @@ async def process_download_async():
             mimetype="application/octet-stream",
             headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
         )
-    # --- CORREÇÃO AQUI ---
-    # Usamos a exceção correta, que é 'BadRequest' diretamente do módulo 'errors'.
     except errors.BadRequest as e:
         await user_bot.stop()
-        return Response(f"Erro do Telegram (BadRequest): Não foi possível encontrar a mensagem ou o arquivo. Verifique se a message_id está correta. Detalhes: {e}", status=404)
-    # --- CORREÇÃO AQUI ---
-    # Captura o erro de sessão inválida separadamente para um diagnóstico mais claro.
+        return Response(f"Erro do Telegram (BadRequest): Não foi possível encontrar a mensagem ou o arquivo. Verifique se a message_id e o CHANNEL_ID estão corretos. Detalhes: {e}", status=404)
     except (TypeError, struct.error) as e:
          if user_bot.is_connected:
             await user_bot.stop()
-         return Response(f"Erro de Sessão: A SESSION_STRING parece inválida ou corrompida. Por favor, gere uma nova e atualize na Vercel. Detalhes: {e}", status=500)
+         return Response(f"Erro de Sessão: A SESSION_STRING parece inválida ou corrompida. Detalhes: {e}", status=500)
     except Exception as e:
         if user_bot.is_connected:
             await user_bot.stop()
