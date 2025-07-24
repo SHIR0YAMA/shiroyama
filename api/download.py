@@ -3,46 +3,37 @@ from pyrogram import Client, errors
 import os
 import asyncio
 import io
-import struct # <-- CORREÇÃO 1: Importa a biblioteca 'struct'
+import struct
 
 app = Flask(__name__)
 
-# Pega todas as variáveis de ambiente de uma vez
 API_ID = os.environ.get("API_ID")
 API_HASH = os.environ.get("API_HASH")
 SESSION_STRING = os.environ.get("SESSION_STRING")
-CHANNEL_ID_STR = os.environ.get("CHANNEL_ID") # <-- NOVO: Pega o ID do canal
+CHANNEL_ID_STR = os.environ.get("CHANNEL_ID")
 
 async def process_download_async():
     message_id_str = request.args.get('message_id')
     filename = request.args.get('filename', 'download')
 
-    # Validação inicial
     if not all([API_ID, API_HASH, SESSION_STRING, CHANNEL_ID_STR]):
         return Response("Erro de configuração: Uma ou mais variáveis (API_ID, API_HASH, SESSION_STRING, CHANNEL_ID) não estão definidas na Vercel.", status=500)
 
     try:
         message_id = int(message_id_str)
-        chat_id = int(CHANNEL_ID_STR) # <-- NOVO: Converte o ID do canal para inteiro
+        chat_id = int(CHANNEL_ID_STR)
     except (ValueError, TypeError):
         return Response("Erro: 'message_id' ou 'CHANNEL_ID' inválidos.", status=400)
 
-    user_bot = Client(
-        "my_account",
-        api_id=int(API_ID),
-        api_hash=API_HASH,
-        session_string=SESSION_STRING
-    )
+    user_bot = Client("my_account", api_id=int(API_ID), api_hash=API_HASH, session_string=SESSION_STRING)
 
     try:
         await user_bot.start()
 
-        # --- CORREÇÃO 2: Passamos o chat_id e a message_id ---
-        # A função get_messages é a forma mais robusta de pegar uma mensagem específica
-        message = await user_bot.get_messages(chat_id=chat_id, message_ids=message_id)
-        
-        # Agora, fazemos o download a partir do objeto de mensagem
-        in_memory_file = await user_bot.download_media(message, in_memory=True)
+        # --- CORREÇÃO FINAL E MAIS ROBUSTA ---
+        # A forma mais direta de baixar é passando o chat_id e message_id JUNTOS.
+        # Pyrogram vai construir o link internamente e fazer o download.
+        in_memory_file = await user_bot.download_media(chat_id=chat_id, message_id=message_id, in_memory=True)
         
         in_memory_file.seek(0)
         await user_bot.stop()
@@ -52,13 +43,12 @@ async def process_download_async():
             mimetype="application/octet-stream",
             headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
         )
+    except errors.ChannelInvalid as e:
+        await user_bot.stop()
+        return Response(f"Erro do Telegram (ChannelInvalid): O ID do canal/grupo parece inválido. Verifique o CHANNEL_ID. Detalhes: {e}", status=404)
     except errors.BadRequest as e:
         await user_bot.stop()
-        return Response(f"Erro do Telegram (BadRequest): Não foi possível encontrar a mensagem ou o arquivo. Verifique se a message_id e o CHANNEL_ID estão corretos. Detalhes: {e}", status=404)
-    except (TypeError, struct.error) as e:
-         if user_bot.is_connected:
-            await user_bot.stop()
-         return Response(f"Erro de Sessão: A SESSION_STRING parece inválida ou corrompida. Detalhes: {e}", status=500)
+        return Response(f"Erro do Telegram (BadRequest): Não foi possível encontrar a mensagem. Verifique se a message_id está correta para este canal. Detalhes: {e}", status=404)
     except Exception as e:
         if user_bot.is_connected:
             await user_bot.stop()
