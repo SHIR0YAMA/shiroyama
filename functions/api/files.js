@@ -1,30 +1,33 @@
-// Esta função será executada quando o usuário acessar /api/files
+// /functions/api/files.js
+
 export async function onRequest(context) {
     try {
-        // context.env.ARQUIVOS_TELEGRAM é como acessamos nosso banco de dados KV
         const kv = context.env.ARQUIVOS_TELEGRAM;
 
-        // Pega todas as chaves (nomes dos arquivos) do nosso KV
         const list = await kv.list();
 
         const files = [];
         for (const key of list.keys) {
-            // Para cada chave, pega o valor (que agora contém a message_id)
+            // Pega o valor do KV e o converte de string para objeto JSON
             const value = await kv.get(key.name, { type: 'json' });
+            
+            // Verifica se o valor existe e tem a message_id
             if (value && value.message_id) {
                 files.push({
                     name: key.name,
-                    message_id: value.message_id // Alterado de file_id para message_id
+                    message_id: value.message_id,
+                    // --- A LINHA QUE FALTAVA ---
+                    file_size: value.file_size || 0 // Pega o file_size. Se não existir, usa 0.
                 });
             }
         }
         
-        // Retorna a lista de arquivos em formato JSON
         return new Response(JSON.stringify({ files }), {
             headers: { 'Content-Type': 'application/json' },
         });
+
     } catch (error) {
-        // Retorna um erro claro se algo der errado (ex: KV não configurado)
-        return new Response(`Erro ao listar arquivos da Cloudflare: ${error.message}`, { status: 500 });
+        console.error("Erro na API /files:", error);
+        return new Response(`Erro ao listar arquivos: ${error.message}`, { status: 500 });
     }
 }
