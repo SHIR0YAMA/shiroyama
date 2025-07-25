@@ -1,13 +1,14 @@
 {
-  "functions": {
-    "api/download.py": {
-      "runtime": "@vercel/python"
+  "builds": [
+    {
+      "src": "api/download.py",
+      "use": "@vercel/python"
     }
-  },
+  ],
   "routes": [
     {
       "src": "/api/download",
-      "dest": "/api/download.py"
+      "dest": "api/download.py"
     }
   ]
 }
