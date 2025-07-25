@@ -1,132 +1,143 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // Agora pegamos o corpo da tabela, não a lista ul
     const fileListBodyElement = document.getElementById('file-list-body');
     const breadcrumbElement = document.getElementById('breadcrumb');
-    let allFilesData = {}; // Usamos objeto para a árvore
+    
+    let fileTree = {}; // A árvore de arquivos completa
+    let currentPath = []; // O estado atual da nossa navegação
 
-    // As funções parsePath e buildFileTree continuam as mesmas
-    function parsePath(path) {
-        const parts = path.split('/').filter(p => p);
-        const filename = parts.pop() || '';
-        const folderPath = parts;
-        return { filename, folderPath };
-    }
+    // --- FUNÇÕES DE LÓGICA (separadas e claras) ---
 
+    // 1. Constrói a estrutura de árvore a partir da lista de arquivos
     function buildFileTree(files) {
         const tree = {};
         files.forEach(file => {
-            const { filename, folderPath } = parsePath(file.name);
+            const parts = file.name.split('/').filter(p => p);
             let currentLevel = tree;
-            folderPath.forEach(folderName => {
-                if (!currentLevel[folderName]) {
-                    currentLevel[folderName] = {};
+            parts.forEach((part, index) => {
+                if (index === parts.length - 1) { // É o nome do arquivo
+                    currentLevel[part] = { ...file, _isFile: true };
+                } else { // É uma pasta
+                    if (!currentLevel[part]) {
+                        currentLevel[part] = {};
+                    }
+                    currentLevel = currentLevel[part];
                 }
-                currentLevel = currentLevel[folderName];
             });
-            if (filename) {
-                currentLevel[filename] = { ...file, _isFile: true };
-            }
         });
         return tree;
     }
 
-    function renderView(path) {
-    // --- LÓGICA DO BREADCRUMB CORRIGIDA ---
-    breadcrumbElement.innerHTML = '';
-    const pathParts = ['Home', ...path];
-
-    pathParts.forEach((part, index) => {
-        const span = document.createElement('span');
-        
-        // Todos os itens, exceto o último, são links clicáveis
-        if (index < pathParts.length - 1) {
-            const a = document.createElement('a');
-            a.href = '#';
-            a.textContent = part;
-            
-            // Aqui está a correção: calculamos o "caminho de destino" para cada link
-            const targetPath = pathParts.slice(1, index + 1);
-            
-            a.onclick = (e) => {
-                e.preventDefault();
-                renderView(targetPath); // Navega para o caminho de destino calculado
-            };
-            span.appendChild(a);
-            span.innerHTML += ' > '; // Adiciona o separador
-        } else {
-            // O último item é apenas texto
-            span.textContent = part;
+    // 2. Navega na árvore e retorna o conteúdo da pasta atual
+    function getContentForPath(path) {
+        let currentLevel = fileTree;
+        for (const folderName of path) {
+            currentLevel = currentLevel[folderName];
+            if (!currentLevel) return {}; // Caminho inválido
         }
-        breadcrumbElement.appendChild(span);
-    });
-
-    // O resto da lógica para encontrar e renderizar os itens continua igual
-    let currentLevel = allFilesData;
-    path.forEach(folderName => {
-        currentLevel = currentLevel[folderName] || {};
-    });
-
-    fileListBodyElement.innerHTML = '';
-    const items = Object.entries(currentLevel);
-    
-    items.sort(([nameA, itemA], [nameB, itemB]) => {
-        const isFileA = itemA._isFile;
-        const isFileB = itemB._isFile;
-        if (isFileA && !isFileB) return 1;
-        if (!isFileA && isFileB) return -1;
-        return nameA.localeCompare(nameB, undefined, { numeric: true });
-    });
-
-    if (items.length === 0) {
-        fileListBodyElement.innerHTML = '<tr><td colspan="2">Pasta vazia.</td></tr>';
-        return;
+        return currentLevel;
     }
 
-    items.forEach(([name, item]) => {
-        const tr = document.createElement('tr');
+    // 3. Renderiza o breadcrumb (caminho de navegação)
+    function renderBreadcrumb() {
+        breadcrumbElement.innerHTML = '';
+        const pathParts = ['Home', ...currentPath];
+
+        pathParts.forEach((part, index) => {
+            const span = document.createElement('span');
+            if (index < pathParts.length - 1) {
+                const a = document.createElement('a');
+                a.href = '#';
+                a.textContent = part;
+                // Ao clicar, atualiza o caminho e renderiza a nova visão
+                a.onclick = (e) => {
+                    e.preventDefault();
+                    // O novo caminho é a fatia do caminho atual
+                    currentPath = currentPath.slice(0, index);
+                    renderCurrentView();
+                };
+                span.appendChild(a);
+                span.innerHTML += ' > ';
+            } else {
+                span.textContent = part;
+            }
+            breadcrumbElement.appendChild(span);
+        });
+    }
+
+    // 4. Renderiza a lista de arquivos e pastas para o caminho atual
+    function renderFileList() {
+        const content = getContentForPath(currentPath);
+        fileListBodyElement.innerHTML = '';
+
+        const items = Object.entries(content);
+        items.sort(([nameA, itemA], [nameB, itemB]) => {
+            const isFileA = itemA._isFile;
+            const isFileB = itemB._isFile;
+            if (isFileA && !isFileB) return 1;
+            if (!isFileA && isFileB) return -1;
+            return nameA.localeCompare(nameB, undefined, { numeric: true });
+        });
         
-        if (item._isFile) {
-            const nameTd = document.createElement('td');
-            nameTd.className = 'file-item-name';
-            nameTd.innerHTML = `<span>📄</span> <span>${name}</span>`;
-
-            const downloadTd = document.createElement('td');
-            downloadTd.className = 'download-col';
-            const downloadLink = document.createElement('a');
-            const vercelApiUrl = "https://telegram-drive-eight.vercel.app/api/download";
-            downloadLink.href = `${vercelApiUrl}?message_id=${item.message_id}&filename=${encodeURIComponent(name)}`;
-            downloadLink.textContent = 'Baixar';
-            downloadTd.appendChild(downloadLink);
-
-            tr.appendChild(nameTd);
-            tr.appendChild(downloadTd);
-        } else {
-            const nameTd = document.createElement('td');
-            nameTd.setAttribute('colspan', '2');
-            const folderLink = document.createElement('a');
-            folderLink.href = '#';
-            folderLink.className = 'file-item-name';
-            folderLink.innerHTML = `<span>📁</span> <span>${name}</span>`;
-            folderLink.onclick = (e) => {
-                e.preventDefault();
-                renderView([...path, name]);
-            };
-            nameTd.appendChild(folderLink);
-            tr.appendChild(nameTd);
+        if (items.length === 0) {
+            fileListBodyElement.innerHTML = '<tr><td colspan="2">Pasta vazia.</td></tr>';
+            return;
         }
-        fileListBodyElement.appendChild(tr);
-    });
-}
 
-    // O fetch inicial continua igual
+        items.forEach(([name, item]) => {
+            const tr = document.createElement('tr');
+            if (item._isFile) {
+                const nameTd = document.createElement('td');
+                nameTd.className = 'file-item-name';
+                nameTd.innerHTML = `<span>📄</span> <span>${name}</span>`;
+
+                const downloadTd = document.createElement('td');
+                downloadTd.className = 'download-col';
+                const downloadLink = document.createElement('a');
+                const vercelApiUrl = "https://telegram-drive-eight.vercel.app/api/download";
+                downloadLink.href = `${vercelApiUrl}?message_id=${item.message_id}&filename=${encodeURIComponent(name)}`;
+                downloadLink.textContent = 'Baixar';
+                downloadTd.appendChild(downloadLink);
+
+                tr.appendChild(nameTd);
+                tr.appendChild(downloadTd);
+            } else {
+                const nameTd = document.createElement('td');
+                nameTd.setAttribute('colspan', '2');
+                const folderLink = document.createElement('a');
+                folderLink.href = '#';
+                folderLink.className = 'file-item-name';
+                folderLink.innerHTML = `<span>📁</span> <span>${name}</span>`;
+                // Ao clicar, adiciona a pasta ao caminho atual e renderiza
+                folderLink.onclick = (e) => {
+                    e.preventDefault();
+                    currentPath.push(name);
+                    renderCurrentView();
+                };
+                nameTd.appendChild(folderLink);
+                tr.appendChild(nameTd);
+            }
+            fileListBodyElement.appendChild(tr);
+        });
+    }
+
+    // 5. Função principal que atualiza a tela inteira
+    function renderCurrentView() {
+        renderBreadcrumb();
+        renderFileList();
+    }
+
+
+    // --- INICIALIZAÇÃO ---
+    // Pega todos os arquivos da API e inicia a aplicação
     fetch('/api/files')
         .then(response => {
             if (!response.ok) throw new Error(`Erro de rede: ${response.statusText}`);
             return response.json();
         })
         .then(data => {
-            allFilesData = buildFileTree(data.files || []);
-            renderView([]);
+            fileTree = buildFileTree(data.files || []);
+            // Inicia na raiz (caminho vazio)
+            renderCurrentView();
         })
         .catch(error => {
             console.error('Erro ao buscar a lista de arquivos:', error);
