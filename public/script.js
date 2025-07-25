@@ -3,20 +3,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const breadcrumbElement = document.getElementById('breadcrumb');
     
     let fileTree = {}; // A árvore de arquivos completa
-    let currentPath = []; // O estado atual da nossa navegação
 
-    // --- FUNÇÕES DE LÓGICA (separadas e claras) ---
+    // --- FUNÇÕES DE LÓGICA ---
 
-    // 1. Constrói a estrutura de árvore a partir da lista de arquivos
     function buildFileTree(files) {
         const tree = {};
         files.forEach(file => {
             const parts = file.name.split('/').filter(p => p);
             let currentLevel = tree;
             parts.forEach((part, index) => {
-                if (index === parts.length - 1) { // É o nome do arquivo
+                if (index === parts.length - 1) {
                     currentLevel[part] = { ...file, _isFile: true };
-                } else { // É uma pasta
+                } else {
                     if (!currentLevel[part]) {
                         currentLevel[part] = {};
                     }
@@ -27,53 +25,39 @@ document.addEventListener('DOMContentLoaded', () => {
         return tree;
     }
 
-    // 2. Navega na árvore e retorna o conteúdo da pasta atual
     function getContentForPath(path) {
         let currentLevel = fileTree;
         for (const folderName of path) {
             currentLevel = currentLevel[folderName];
-            if (!currentLevel) return {}; // Caminho inválido
+            if (!currentLevel) return {};
         }
         return currentLevel;
     }
 
-	function renderBreadcrumb() {
-		breadcrumbElement.innerHTML = '';
-		const pathParts = ['Home', ...currentPath];
+    // --- FUNÇÕES DE RENDERIZAÇÃO E ROTEAMENTO ---
 
-		pathParts.forEach((part, index) => {
-			const span = document.createElement('span');
-			
-			// Se não for o último item, é um link clicável
-			if (index < pathParts.length - 1) {
-				const a = document.createElement('a');
-				a.href = '#';
-				a.textContent = part;
-				
-				// --- ESTA É A CORREÇÃO CRÍTICA ---
-				a.onclick = (e) => {
-					e.preventDefault();
-					// O novo caminho é uma fatia do caminho ATUAL, com o comprimento do índice do item clicado.
-					// Se o índice for 0 (Home), o slice(0, 0) retorna um array vazio [].
-					// Se o índice for 1 (Meus Testes), o slice(0, 1) retorna ['Meus Testes'].
-					// Se o índice for 2 (Teste 1), o slice(0, 2) retorna ['Meus Testes', 'Teste 1'].
-					// E assim por diante. É a lógica correta.
-					currentPath = currentPath.slice(0, index);
-					renderCurrentView();
-				};
-				span.appendChild(a);
-				span.innerHTML += ' > ';
-			} else {
-				// O último item (a pasta atual) é apenas texto
-				span.textContent = part;
-			}
-			breadcrumbElement.appendChild(span);
-		});
-	}
+    function renderView(path) {
+        // 1. Renderiza o breadcrumb
+        breadcrumbElement.innerHTML = '';
+        const pathParts = ['Home', ...path];
+        pathParts.forEach((part, index) => {
+            const span = document.createElement('span');
+            if (index < pathParts.length - 1) {
+                const a = document.createElement('a');
+                // O link agora aponta para uma URL com hash
+                const targetPath = pathParts.slice(1, index + 1).map(encodeURIComponent).join('/');
+                a.href = `#/${targetPath}`;
+                a.textContent = part;
+                span.appendChild(a);
+                span.innerHTML += ' > ';
+            } else {
+                span.textContent = part;
+            }
+            breadcrumbElement.appendChild(span);
+        });
 
-    // 4. Renderiza a lista de arquivos e pastas para o caminho atual
-    function renderFileList() {
-        const content = getContentForPath(currentPath);
+        // 2. Renderiza a lista de arquivos
+        const content = getContentForPath(path);
         fileListBodyElement.innerHTML = '';
 
         const items = Object.entries(content);
@@ -93,10 +77,10 @@ document.addEventListener('DOMContentLoaded', () => {
         items.forEach(([name, item]) => {
             const tr = document.createElement('tr');
             if (item._isFile) {
+                // ... (código para renderizar arquivos continua o mesmo)
                 const nameTd = document.createElement('td');
                 nameTd.className = 'file-item-name';
                 nameTd.innerHTML = `<span>📄</span> <span>${name}</span>`;
-
                 const downloadTd = document.createElement('td');
                 downloadTd.className = 'download-col';
                 const downloadLink = document.createElement('a');
@@ -104,22 +88,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 downloadLink.href = `${vercelApiUrl}?message_id=${item.message_id}&filename=${encodeURIComponent(name)}`;
                 downloadLink.textContent = 'Baixar';
                 downloadTd.appendChild(downloadLink);
-
                 tr.appendChild(nameTd);
                 tr.appendChild(downloadTd);
             } else {
+                // O link da pasta agora também aponta para uma URL com hash
                 const nameTd = document.createElement('td');
                 nameTd.setAttribute('colspan', '2');
                 const folderLink = document.createElement('a');
-                folderLink.href = '#';
+                const targetPath = [...path, name].map(encodeURIComponent).join('/');
+                folderLink.href = `#/${targetPath}`;
                 folderLink.className = 'file-item-name';
                 folderLink.innerHTML = `<span>📁</span> <span>${name}</span>`;
-                // Ao clicar, adiciona a pasta ao caminho atual e renderiza
-                folderLink.onclick = (e) => {
-                    e.preventDefault();
-                    currentPath.push(name);
-                    renderCurrentView();
-                };
                 nameTd.appendChild(folderLink);
                 tr.appendChild(nameTd);
             }
@@ -127,15 +106,22 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 5. Função principal que atualiza a tela inteira
-    function renderCurrentView() {
-        renderBreadcrumb();
-        renderFileList();
+    // --- O ROTEADOR PRINCIPAL ---
+    function router() {
+        // Pega o caminho do hash da URL (ex: #/Animes/Ação -> /Animes/Ação)
+        const pathString = window.location.hash.slice(1) || '/';
+        // Limpa barras extras e divide em partes, decodificando cada parte
+        const path = pathString.split('/').filter(p => p).map(decodeURIComponent);
+        // Renderiza a visão para o caminho atual da URL
+        renderView(path);
     }
 
-
     // --- INICIALIZAÇÃO ---
-    // Pega todos os arquivos da API e inicia a aplicação
+
+    // Ouve por mudanças no hash da URL (quando o usuário clica nos links ou usa os botões do navegador)
+    window.addEventListener('hashchange', router);
+
+    // Carrega os dados dos arquivos e inicia o roteador pela primeira vez
     fetch('/api/files')
         .then(response => {
             if (!response.ok) throw new Error(`Erro de rede: ${response.statusText}`);
@@ -143,8 +129,8 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .then(data => {
             fileTree = buildFileTree(data.files || []);
-            // Inicia na raiz (caminho vazio)
-            renderCurrentView();
+            // Chama o roteador para renderizar a página inicial baseada na URL atual
+            router(); 
         })
         .catch(error => {
             console.error('Erro ao buscar a lista de arquivos:', error);
