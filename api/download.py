@@ -1,5 +1,5 @@
 from flask import Flask, request, Response
-from pyrogram import Client, errors
+from kurigram import Client, errors # <-- MUDANÇA AQUI
 import os
 import asyncio
 import io
@@ -19,27 +19,23 @@ async def process_download_async():
     if not all([API_ID, API_HASH, SESSION_STRING, CHANNEL_ID_STR]):
         return Response("Erro de configuração: Variáveis de ambiente faltando na Vercel.", status=500)
 
-    # Valida o message_id separadamente
     try:
         message_id = int(message_id_str)
     except (ValueError, TypeError):
         return Response("Erro: 'message_id' deve ser um número.", status=400)
 
-    # --- LÓGICA INTELIGENTE PARA O CHAT_ID ---
     chat_id_input = CHANNEL_ID_STR
     try:
-        # Tenta converter para um número. Se funcionar, é um ID numérico.
         chat_id = int(chat_id_input)
     except ValueError:
-        # Se falhar, é um username ou link público. Usa como texto.
         chat_id = chat_id_input
 
+    # Usamos o Client do Kurigram, a sintaxe é a mesma
     user_bot = Client("my_account", api_id=int(API_ID), api_hash=API_HASH, session_string=SESSION_STRING)
 
     try:
         await user_bot.start()
 
-        # A lógica de get_chat e get_messages funciona tanto com IDs numéricos quanto com usernames
         chat = await user_bot.get_chat(chat_id)
         message = await user_bot.get_messages(chat_id=chat.id, message_ids=message_id)
         
