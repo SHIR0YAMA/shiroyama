@@ -37,32 +37,39 @@ document.addEventListener('DOMContentLoaded', () => {
         return currentLevel;
     }
 
-    // 3. Renderiza o breadcrumb (caminho de navegação)
-    function renderBreadcrumb() {
-        breadcrumbElement.innerHTML = '';
-        const pathParts = ['Home', ...currentPath];
+	function renderBreadcrumb() {
+		breadcrumbElement.innerHTML = '';
+		const pathParts = ['Home', ...currentPath];
 
-        pathParts.forEach((part, index) => {
-            const span = document.createElement('span');
-            if (index < pathParts.length - 1) {
-                const a = document.createElement('a');
-                a.href = '#';
-                a.textContent = part;
-                // Ao clicar, atualiza o caminho e renderiza a nova visão
-                a.onclick = (e) => {
-                    e.preventDefault();
-                    // O novo caminho é a fatia do caminho atual
-                    currentPath = currentPath.slice(0, index);
-                    renderCurrentView();
-                };
-                span.appendChild(a);
-                span.innerHTML += ' > ';
-            } else {
-                span.textContent = part;
-            }
-            breadcrumbElement.appendChild(span);
-        });
-    }
+		pathParts.forEach((part, index) => {
+			const span = document.createElement('span');
+			
+			// Se não for o último item, é um link clicável
+			if (index < pathParts.length - 1) {
+				const a = document.createElement('a');
+				a.href = '#';
+				a.textContent = part;
+				
+				// --- ESTA É A CORREÇÃO CRÍTICA ---
+				a.onclick = (e) => {
+					e.preventDefault();
+					// O novo caminho é uma fatia do caminho ATUAL, com o comprimento do índice do item clicado.
+					// Se o índice for 0 (Home), o slice(0, 0) retorna um array vazio [].
+					// Se o índice for 1 (Meus Testes), o slice(0, 1) retorna ['Meus Testes'].
+					// Se o índice for 2 (Teste 1), o slice(0, 2) retorna ['Meus Testes', 'Teste 1'].
+					// E assim por diante. É a lógica correta.
+					currentPath = currentPath.slice(0, index);
+					renderCurrentView();
+				};
+				span.appendChild(a);
+				span.innerHTML += ' > ';
+			} else {
+				// O último item (a pasta atual) é apenas texto
+				span.textContent = part;
+			}
+			breadcrumbElement.appendChild(span);
+		});
+	}
 
     // 4. Renderiza a lista de arquivos e pastas para o caminho atual
     function renderFileList() {
