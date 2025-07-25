@@ -5,6 +5,8 @@ export async function onRequestPost(context) {
         const { request, env } = context;
         // Pega o corpo da requisição enviada pelo Telegram
         const data = await request.json();
+		
+		console.log("Webhook Received:", JSON.stringify(data, null, 2));
 
         // O Telegram envia dados diferentes dependendo do tipo de chat
         // Nós nos interessamos principalmente por 'channel_post' (para canais) e 'message' (para grupos)
