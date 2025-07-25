@@ -1,11 +1,21 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Referências para os elementos do DOM
     const fileListBodyElement = document.getElementById('file-list-body');
     const breadcrumbElement = document.getElementById('breadcrumb');
+    const backButton = document.getElementById('back-button');
+    const forwardButton = document.getElementById('forward-button');
     
-    let fileTree = {}; // A árvore de arquivos completa
+    let fileTree = {}; // A árvore completa de arquivos e pastas
 
+    // --- LÓGICA DOS BOTÕES DE NAVEGAÇÃO ---
+    backButton.onclick = () => {
+        window.history.back(); // Usa a API nativa do navegador para voltar
+    };
+    forwardButton.onclick = () => {
+        window.history.forward(); // Usa a API nativa do navegador para avançar
+    };
+    
     // --- FUNÇÕES DE LÓGICA ---
-
     function buildFileTree(files) {
         const tree = {};
         files.forEach(file => {
@@ -35,8 +45,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- FUNÇÕES DE RENDERIZAÇÃO E ROTEAMENTO ---
-
     function renderView(path) {
+        // Habilita ou desabilita o botão de voltar
+        backButton.disabled = path.length === 0;
+
         // 1. Renderiza o breadcrumb
         breadcrumbElement.innerHTML = '';
         const pathParts = ['Home', ...path];
@@ -44,7 +56,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const span = document.createElement('span');
             if (index < pathParts.length - 1) {
                 const a = document.createElement('a');
-                // O link agora aponta para uma URL com hash
                 const targetPath = pathParts.slice(1, index + 1).map(encodeURIComponent).join('/');
                 a.href = `#/${targetPath}`;
                 a.textContent = part;
@@ -59,7 +70,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // 2. Renderiza a lista de arquivos
         const content = getContentForPath(path);
         fileListBodyElement.innerHTML = '';
-
         const items = Object.entries(content);
         items.sort(([nameA, itemA], [nameB, itemB]) => {
             const isFileA = itemA._isFile;
@@ -77,10 +87,10 @@ document.addEventListener('DOMContentLoaded', () => {
         items.forEach(([name, item]) => {
             const tr = document.createElement('tr');
             if (item._isFile) {
-                // ... (código para renderizar arquivos continua o mesmo)
                 const nameTd = document.createElement('td');
                 nameTd.className = 'file-item-name';
                 nameTd.innerHTML = `<span>📄</span> <span>${name}</span>`;
+
                 const downloadTd = document.createElement('td');
                 downloadTd.className = 'download-col';
                 const downloadLink = document.createElement('a');
@@ -88,10 +98,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 downloadLink.href = `${vercelApiUrl}?message_id=${item.message_id}&filename=${encodeURIComponent(name)}`;
                 downloadLink.textContent = 'Baixar';
                 downloadTd.appendChild(downloadLink);
+
                 tr.appendChild(nameTd);
                 tr.appendChild(downloadTd);
             } else {
-                // O link da pasta agora também aponta para uma URL com hash
                 const nameTd = document.createElement('td');
                 nameTd.setAttribute('colspan', '2');
                 const folderLink = document.createElement('a');
@@ -108,20 +118,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- O ROTEADOR PRINCIPAL ---
     function router() {
-        // Pega o caminho do hash da URL (ex: #/Animes/Ação -> /Animes/Ação)
         const pathString = window.location.hash.slice(1) || '/';
-        // Limpa barras extras e divide em partes, decodificando cada parte
         const path = pathString.split('/').filter(p => p).map(decodeURIComponent);
-        // Renderiza a visão para o caminho atual da URL
         renderView(path);
     }
 
     // --- INICIALIZAÇÃO ---
-
-    // Ouve por mudanças no hash da URL (quando o usuário clica nos links ou usa os botões do navegador)
+    // Ouve por mudanças no hash (cliques nos links, botões do navegador)
     window.addEventListener('hashchange', router);
 
-    // Carrega os dados dos arquivos e inicia o roteador pela primeira vez
+    // Carrega os dados e inicia o roteador
     fetch('/api/files')
         .then(response => {
             if (!response.ok) throw new Error(`Erro de rede: ${response.statusText}`);
@@ -129,8 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .then(data => {
             fileTree = buildFileTree(data.files || []);
-            // Chama o roteador para renderizar a página inicial baseada na URL atual
-            router(); 
+            router(); // Renderiza a visão inicial baseada na URL
         })
         .catch(error => {
             console.error('Erro ao buscar a lista de arquivos:', error);
