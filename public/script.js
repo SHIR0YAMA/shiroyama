@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const backButton = document.getElementById('back-button');
     const forwardButton = document.getElementById('forward-button');
     
-    let fileTree = {};
+    let fileTree = {}; // A árvore completa de arquivos e pastas
 
     // Lógica dos botões de navegação
     backButton.onclick = () => window.history.back();
@@ -93,10 +93,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 nameTd.className = 'file-item-name';
                 nameTd.innerHTML = `<span>📄</span> <span>${name}</span>`;
 
-                // CÉLULA NOVA PARA O TAMANHO
+                // --- CÉLULA DE TAMANHO CORRIGIDA E MAIS ROBUSTA ---
                 const sizeTd = document.createElement('td');
                 sizeTd.className = 'size-col';
-                sizeTd.textContent = formatFileSize(item.file_size);
+                // Verificamos explicitamente se item.file_size é um número.
+                if (typeof item.file_size === 'number') {
+                    sizeTd.textContent = formatFileSize(item.file_size);
+                } else {
+                    sizeTd.textContent = 'N/A'; // Fallback para caso o dado não venha
+                }
+                // --- FIM DA CORREÇÃO ---
 
                 const downloadTd = document.createElement('td');
                 downloadTd.className = 'download-col';
@@ -110,8 +116,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 tr.appendChild(sizeTd); // Adiciona a célula de tamanho
                 tr.appendChild(downloadTd);
             } else {
-                // Para pastas, a célula de nome ocupa 3 colunas
                 const nameTd = document.createElement('td');
+                // Para pastas, a célula de nome ocupa 3 colunas
                 nameTd.setAttribute('colspan', '3');
                 const folderLink = document.createElement('a');
                 const targetPath = [...path, name].map(encodeURIComponent).join('/');
@@ -131,8 +137,11 @@ document.addEventListener('DOMContentLoaded', () => {
         renderView(path);
     }
 
+    // --- INICIALIZAÇÃO ---
+    // Ouve por mudanças no hash (cliques nos links, botões do navegador)
     window.addEventListener('hashchange', router);
 
+    // Carrega os dados e inicia o roteador
     fetch('/api/files')
         .then(response => {
             if (!response.ok) throw new Error(`Erro de rede: ${response.statusText}`);
@@ -140,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .then(data => {
             fileTree = buildFileTree(data.files || []);
-            router();
+            router(); // Renderiza a visão inicial baseada na URL
         })
         .catch(error => {
             console.error('Erro ao buscar a lista de arquivos:', error);
