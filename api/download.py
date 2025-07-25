@@ -1,9 +1,5 @@
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-
 from flask import Flask, request, Response
-from kurigram import Client, errors # <-- MUDANÇA AQUI
+from pyrogram import Client, errors # <-- MUDANÇA AQUI
 import os
 import asyncio
 import io
@@ -25,21 +21,25 @@ async def process_download_async():
 
     try:
         message_id = int(message_id_str)
+        chat_id_input = CHANNEL_ID_STR
+        if chat_id_input.startswith("-100") or chat_id_input.startswith("-"):
+            chat_id = int(chat_id_input)
+        else:
+            chat_id = chat_id_input
     except (ValueError, TypeError):
-        return Response("Erro: 'message_id' deve ser um número.", status=400)
+        return Response("Erro: 'message_id' ou 'CHANNEL_ID' inválidos.", status=400)
 
-    chat_id_input = CHANNEL_ID_STR
-    try:
-        chat_id = int(chat_id_input)
-    except ValueError:
-        chat_id = chat_id_input
-
-    # Usamos o Client do Kurigram, a sintaxe é a mesma
-    user_bot = Client("my_account", api_id=int(API_ID), api_hash=API_HASH, session_string=SESSION_STRING)
+    user_bot = Client(
+        "my_account",
+        api_id=int(API_ID),
+        api_hash=API_HASH,
+        session_string=SESSION_STRING
+    )
 
     try:
         await user_bot.start()
-
+        
+        # A abordagem robusta que estávamos usando
         chat = await user_bot.get_chat(chat_id)
         message = await user_bot.get_messages(chat_id=chat.id, message_ids=message_id)
         
