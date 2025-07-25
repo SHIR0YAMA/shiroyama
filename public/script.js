@@ -1,3 +1,12 @@
+// Função auxiliar para formatar o tamanho dos arquivos
+function formatFileSize(bytes) {
+    if (!bytes || bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Referências para os elementos do DOM
     const fileListBodyElement = document.getElementById('file-list-body');
@@ -5,15 +14,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const backButton = document.getElementById('back-button');
     const forwardButton = document.getElementById('forward-button');
     
-    let fileTree = {}; // A árvore completa de arquivos e pastas
+    let fileTree = {};
 
-    // --- LÓGICA DOS BOTÕES DE NAVEGAÇÃO ---
-    backButton.onclick = () => {
-        window.history.back(); // Usa a API nativa do navegador para voltar
-    };
-    forwardButton.onclick = () => {
-        window.history.forward(); // Usa a API nativa do navegador para avançar
-    };
+    // Lógica dos botões de navegação
+    backButton.onclick = () => window.history.back();
+    forwardButton.onclick = () => window.history.forward();
     
     // --- FUNÇÕES DE LÓGICA ---
     function buildFileTree(files) {
@@ -46,10 +51,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- FUNÇÕES DE RENDERIZAÇÃO E ROTEAMENTO ---
     function renderView(path) {
-        // Habilita ou desabilita o botão de voltar
         backButton.disabled = path.length === 0;
 
-        // 1. Renderiza o breadcrumb
         breadcrumbElement.innerHTML = '';
         const pathParts = ['Home', ...path];
         pathParts.forEach((part, index) => {
@@ -67,7 +70,6 @@ document.addEventListener('DOMContentLoaded', () => {
             breadcrumbElement.appendChild(span);
         });
 
-        // 2. Renderiza a lista de arquivos
         const content = getContentForPath(path);
         fileListBodyElement.innerHTML = '';
         const items = Object.entries(content);
@@ -80,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         if (items.length === 0) {
-            fileListBodyElement.innerHTML = '<tr><td colspan="2">Pasta vazia.</td></tr>';
+            fileListBodyElement.innerHTML = '<tr><td colspan="3">Pasta vazia.</td></tr>';
             return;
         }
 
@@ -91,6 +93,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 nameTd.className = 'file-item-name';
                 nameTd.innerHTML = `<span>📄</span> <span>${name}</span>`;
 
+                // CÉLULA NOVA PARA O TAMANHO
+                const sizeTd = document.createElement('td');
+                sizeTd.className = 'size-col';
+                sizeTd.textContent = formatFileSize(item.file_size);
+
                 const downloadTd = document.createElement('td');
                 downloadTd.className = 'download-col';
                 const downloadLink = document.createElement('a');
@@ -100,10 +107,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 downloadTd.appendChild(downloadLink);
 
                 tr.appendChild(nameTd);
+                tr.appendChild(sizeTd); // Adiciona a célula de tamanho
                 tr.appendChild(downloadTd);
             } else {
+                // Para pastas, a célula de nome ocupa 3 colunas
                 const nameTd = document.createElement('td');
-                nameTd.setAttribute('colspan', '2');
+                nameTd.setAttribute('colspan', '3');
                 const folderLink = document.createElement('a');
                 const targetPath = [...path, name].map(encodeURIComponent).join('/');
                 folderLink.href = `#/${targetPath}`;
@@ -116,18 +125,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- O ROTEADOR PRINCIPAL ---
     function router() {
         const pathString = window.location.hash.slice(1) || '/';
         const path = pathString.split('/').filter(p => p).map(decodeURIComponent);
         renderView(path);
     }
 
-    // --- INICIALIZAÇÃO ---
-    // Ouve por mudanças no hash (cliques nos links, botões do navegador)
     window.addEventListener('hashchange', router);
 
-    // Carrega os dados e inicia o roteador
     fetch('/api/files')
         .then(response => {
             if (!response.ok) throw new Error(`Erro de rede: ${response.statusText}`);
@@ -135,10 +140,10 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .then(data => {
             fileTree = buildFileTree(data.files || []);
-            router(); // Renderiza a visão inicial baseada na URL
+            router();
         })
         .catch(error => {
             console.error('Erro ao buscar a lista de arquivos:', error);
-            fileListBodyElement.innerHTML = `<tr><td colspan="2">Erro ao carregar os arquivos. Verifique o console (F12).</td></tr>`;
+            fileListBodyElement.innerHTML = `<tr><td colspan="3">Erro ao carregar os arquivos. Verifique o console (F12).</td></tr>`;
         });
 });
