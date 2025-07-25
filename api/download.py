@@ -19,36 +19,34 @@ async def process_download_async():
     if not all([API_ID, API_HASH, SESSION_STRING, CHANNEL_ID_STR]):
         return Response("Erro de configuração: Variáveis de ambiente faltando na Vercel.", status=500)
 
+    # Valida o message_id separadamente
     try:
         message_id = int(message_id_str)
-        chat_id = int(CHANNEL_ID_STR)
     except (ValueError, TypeError):
-        return Response("Erro: 'message_id' ou 'CHANNEL_ID' inválidos.", status=400)
+        return Response("Erro: 'message_id' deve ser um número.", status=400)
 
-    user_bot = Client(
-        "my_account",
-        api_id=int(API_ID),
-        api_hash=API_HASH,
-        session_string=SESSION_STRING
-    )
+    # --- LÓGICA INTELIGENTE PARA O CHAT_ID ---
+    chat_id_input = CHANNEL_ID_STR
+    try:
+        # Tenta converter para um número. Se funcionar, é um ID numérico.
+        chat_id = int(chat_id_input)
+    except ValueError:
+        # Se falhar, é um username ou link público. Usa como texto.
+        chat_id = chat_id_input
+
+    user_bot = Client("my_account", api_id=int(API_ID), api_hash=API_HASH, session_string=SESSION_STRING)
 
     try:
         await user_bot.start()
 
-        # --- A ABORDAGEM MAIS ROBUSTA ---
-        
-        # PASSO 1: Forçar o Pyrogram a "conhecer" o chat.
-        # Isso atualiza o cache interno de peers e deve resolver o "Peer id invalid".
+        # A lógica de get_chat e get_messages funciona tanto com IDs numéricos quanto com usernames
         chat = await user_bot.get_chat(chat_id)
-        
-        # PASSO 2: Agora que o chat é conhecido, pegamos a mensagem.
         message = await user_bot.get_messages(chat_id=chat.id, message_ids=message_id)
         
         if not message or not (message.document or message.video or message.audio or message.photo):
              await user_bot.stop()
              return Response(f"Erro: Mensagem com ID {message_id} não encontrada ou não contém um arquivo.", status=404)
 
-        # PASSO 3: Fazer o download a partir do objeto da mensagem.
         in_memory_file = await user_bot.download_media(message, in_memory=True)
         
         in_memory_file.seek(0)
@@ -59,9 +57,9 @@ async def process_download_async():
             mimetype="application/octet-stream",
             headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
         )
-    except errors.PeerIdInvalid as e:
+    except errors.BadRequest as e:
         await user_bot.stop()
-        return Response(f"Erro do Telegram (PeerIdInvalid): O ID do canal {chat_id} ainda é considerado inválido pela API. Verifique se a conta de usuário está no canal e se o ID está 100% correto. Detalhes: {e}", status=400)
+        return Response(f"Erro do Telegram (BadRequest): O username/ID do canal ou a message_id parecem inválidos. Detalhes: {e}", status=400)
     except Exception as e:
         if user_bot.is_connected:
             await user_bot.stop()
