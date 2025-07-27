@@ -8,78 +8,51 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #282a36; color: #f8f8f2; margin: 0; padding: 20px; }
         .container { max-width: 960px; margin: auto; background-color: #44475a; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
         h1 { color: #bd93f9; }
-        
-        .navigation-controls {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-        .nav-button {
-            background: none;
-            border: 2px solid #6272a4;
-            color: #f8f8f2;
-            font-size: 24px;
-            line-height: 1;
-            padding: 5px 10px;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: all 0.2s ease-in-out;
-        }
-        .nav-button:disabled {
-            color: #6272a4;
-            border-color: #3b3e50;
-            cursor: not-allowed;
-            opacity: 0.5;
-        }
-        .nav-button:not(:disabled):hover {
-            background-color: #6272a4;
-            color: #f8f8f2;
-        }
-
+        .navigation-controls { display: flex; gap: 15px; margin-bottom: 15px; }
+        .nav-button { background: none; border: 2px solid #6272a4; color: #f8f8f2; font-size: 24px; line-height: 1; padding: 5px 10px; border-radius: 5px; cursor: pointer; transition: all 0.2s ease-in-out; }
+        .nav-button:disabled { color: #6272a4; border-color: #3b3e50; cursor: not-allowed; opacity: 0.5; }
+        .nav-button:not(:disabled):hover { background-color: #6272a4; color: #f8f8f2; }
         #breadcrumb { padding: 10px 15px; background-color: #6272a4; border-radius: 5px; font-size: 16px; }
         #breadcrumb a { color: #f8f8f2; text-decoration: none; font-weight: bold; }
         #breadcrumb a:hover { text-decoration: underline; color: #ff79c6; }
-        
         .file-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         .file-table th { text-align: left; padding: 12px 15px; border-bottom: 2px solid #6272a4; color: #50fa7b; }
-        /* Adicionando alinhamento para a coluna de tamanho e download */
-        .size-col, .download-col { text-align: right; }
-        .file-table td { padding: 12px 15px; border-bottom: 1px solid #3b3e50; }
+        .size-col, .download-col, .actions-col { text-align: right; }
+        .file-table td { padding: 12px 15px; border-bottom: 1px solid #3b3e50; word-break: break-all; }
         .file-table tr:last-child td { border-bottom: none; }
         .file-table tr:hover { background-color: #3b3e50; }
         .file-table a { color: #8be9fd; text-decoration: none; }
         .file-table a:hover { text-decoration: underline; }
         .file-item-name { display: flex; align-items: center; gap: 10px; }
+        footer { text-align: center; font-size: 12px; margin-top: 30px; }
+        footer a { color: #6272a4; }
+        .admin-actions button { background-color: #6272a4; border: none; color: white; padding: 5px 10px; border-radius: 3px; cursor: pointer; }
+        .admin-actions button:hover { background-color: #ff79c6; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Shiroyama Files</h1>
-        
         <div class="navigation-controls">
             <button id="back-button" class="nav-button" title="Voltar">←</button>
             <button id="forward-button" class="nav-button" title="Avançar">→</button>
         </div>
-
         <div id="breadcrumb">Carregando...</div>
-        
         <table class="file-table">
             <thead>
                 <tr>
-                    <th>Nome</th>
-                    <!-- COLUNA NOVA PARA O TAMANHO -->
-                    <th class="size-col">Tamanho</th>
-                    <th class="download-col"></th>
+                    <!-- O cabeçalho da tabela será preenchido pelo JavaScript -->
                 </tr>
             </thead>
             <tbody id="file-list-body">
                 <tr>
-                    <!-- Colspan agora é 3 -->
                     <td colspan="3">Carregando...</td>
                 </tr>
             </tbody>
         </table>
-
+        <footer>
+            <a href="/#/admin">Painel de Administrador</a>
+        </footer>
     </div>
     <script src="/script.js"></script>
 </body>

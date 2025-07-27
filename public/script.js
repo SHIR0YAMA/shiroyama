@@ -1,4 +1,3 @@
-// Função auxiliar para formatar o tamanho dos arquivos
 function formatFileSize(bytes) {
     if (!bytes || bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -8,20 +7,132 @@ function formatFileSize(bytes) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Referências para os elementos do DOM
     const fileListBodyElement = document.getElementById('file-list-body');
+    const tableHeaderElement = document.querySelector('.file-table thead tr');
     const breadcrumbElement = document.getElementById('breadcrumb');
     const backButton = document.getElementById('back-button');
     const forwardButton = document.getElementById('forward-button');
     
-    let fileTree = {}; // A árvore completa de arquivos e pastas
+    let fileTree = {};
+    let adminSecret = sessionStorage.getItem('adminSecret'); // Guarda a senha na sessão
 
-    // Lógica dos botões de navegação
-    backButton.onclick = () => window.history.back();
-    forwardButton.onclick = () => window.history.forward();
-    
+    // --- FUNÇÕES DA API DO ADMIN ---
+    async function apiAdminAction(endpoint, body) {
+        if (!adminSecret) {
+            alert('Senha de administrador não definida ou expirou.');
+            return;
+        }
+        try {
+            const response = await fetch(`/api/admin/${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...body, secret: adminSecret })
+            });
+            const result = await response.json();
+            alert(result.message);
+            if (response.ok) {
+                window.location.reload(); // Recarrega para ver a mudança
+            }
+        } catch (error) {
+            alert(`Erro na comunicação com a API: ${error.message}`);
+        }
+    }
+
+    function deleteFile(key) {
+        if (confirm(`Tem certeza que deseja deletar o arquivo:\n${key}`)) {
+            apiAdminAction('delete', { key });
+        }
+    }
+
+    function renameFile(oldKey) {
+        const newKey = prompt("Digite o novo caminho completo (ex: Animes/Nome/Ep01.mkv):", oldKey);
+        if (newKey && newKey !== oldKey) {
+            apiAdminAction('rename', { oldKey, newKey });
+        }
+    }
+
     // --- FUNÇÕES DE LÓGICA ---
-    function buildFileTree(files) {
+    function buildFileTree(files) { /* ... (código igual ao anterior) ... */ }
+    function getContentForPath(path) { /* ... (código igual ao anterior) ... */ }
+
+    // --- FUNÇÕES DE RENDERIZAÇÃO ---
+    function renderAdminView(allFiles) {
+        document.querySelector('.navigation-controls').style.display = 'none';
+        breadcrumbElement.innerHTML = `<span>Painel de Administrador (<a href="/#/" id="admin-logout">Sair</a>)</span>`;
+        document.getElementById('admin-logout').onclick = (e) => {
+            e.preventDefault();
+            sessionStorage.removeItem('adminSecret');
+            window.location.hash = '/';
+        };
+
+        tableHeaderElement.innerHTML = `
+            <th>Caminho Completo</th>
+            <th class="size-col">Tamanho</th>
+            <th class="actions-col">Ações</th>
+        `;
+        fileListBodyElement.innerHTML = '';
+        
+        allFiles.sort((a, b) => a.name.localeCompare(b.name)).forEach(file => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${file.name}</td>
+                <td class="size-col">${formatFileSize(file.file_size)}</td>
+                <td class="actions-col admin-actions">
+                    <button class="rename-btn" data-key="${file.name}">Mover/Renomear</button>
+                    <button class="delete-btn" data-key="${file.name}">Excluir</button>
+                </td>
+            `;
+            fileListBodyElement.appendChild(tr);
+        });
+
+        document.querySelectorAll('.rename-btn').forEach(btn => btn.onclick = () => renameFile(btn.dataset.key));
+        document.querySelectorAll('.delete-btn').forEach(btn => btn.onclick = () => deleteFile(btn.dataset.key));
+    }
+
+    function renderPublicView(path) { /* ... (código igual ao anterior, mas com o nome renderPublicView) ... */ }
+
+    // --- ROTEADOR PRINCIPAL ---
+    function router(allFiles) {
+        const pathString = window.location.hash.slice(1) || '/';
+        const path = pathString.split('/').filter(p => p).map(decodeURIComponent);
+
+        if (path[0] === 'admin') {
+            if (!adminSecret) {
+                adminSecret = prompt('Por favor, digite a senha de administrador:');
+                if (adminSecret) {
+                    sessionStorage.setItem('adminSecret', adminSecret);
+                }
+            }
+            if (adminSecret) {
+                renderAdminView(allFiles);
+            } else {
+                window.location.hash = '/';
+            }
+        } else {
+            document.querySelector('.navigation-controls').style.display = 'flex';
+            tableHeaderElement.innerHTML = `
+                <th>Nome</th>
+                <th class="size-col">Tamanho</th>
+                <th class="download-col"></th>
+            `;
+            fileTree = buildFileTree(allFiles);
+            renderPublicView(path);
+        }
+    }
+
+    // --- INICIALIZAÇÃO ---
+    fetch('/api/files')
+        .then(response => response.json())
+        .then(data => {
+            const allFiles = data.files || [];
+            const initialRouterCall = () => router(allFiles);
+            window.addEventListener('hashchange', initialRouterCall);
+            initialRouterCall();
+        })
+        .catch(error => console.error('Erro ao carregar arquivos:', error));
+    
+    // As funções buildFileTree e getContentForPath são as mesmas da versão anterior
+    buildFileTree = function(files) {
         const tree = {};
         files.forEach(file => {
             const parts = file.name.split('/').filter(p => p);
@@ -30,29 +141,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (index === parts.length - 1) {
                     currentLevel[part] = { ...file, _isFile: true };
                 } else {
-                    if (!currentLevel[part]) {
-                        currentLevel[part] = {};
-                    }
+                    if (!currentLevel[part]) { currentLevel[part] = {}; }
                     currentLevel = currentLevel[part];
                 }
             });
         });
         return tree;
-    }
-
-    function getContentForPath(path) {
+    };
+    getContentForPath = function(path) {
         let currentLevel = fileTree;
         for (const folderName of path) {
             currentLevel = currentLevel[folderName];
             if (!currentLevel) return {};
         }
         return currentLevel;
-    }
-
-    // --- FUNÇÕES DE RENDERIZAÇÃO E ROTEAMENTO ---
-    function renderView(path) {
+    };
+    renderPublicView = function(path) {
         backButton.disabled = path.length === 0;
-
         breadcrumbElement.innerHTML = '';
         const pathParts = ['Home', ...path];
         pathParts.forEach((part, index) => {
@@ -69,7 +174,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             breadcrumbElement.appendChild(span);
         });
-
         const content = getContentForPath(path);
         fileListBodyElement.innerHTML = '';
         const items = Object.entries(content);
@@ -80,79 +184,28 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!isFileA && isFileB) return -1;
             return nameA.localeCompare(nameB, undefined, { numeric: true });
         });
-        
         if (items.length === 0) {
             fileListBodyElement.innerHTML = '<tr><td colspan="3">Pasta vazia.</td></tr>';
             return;
         }
-
         items.forEach(([name, item]) => {
             const tr = document.createElement('tr');
             if (item._isFile) {
-                const nameTd = document.createElement('td');
-                nameTd.className = 'file-item-name';
-                nameTd.innerHTML = `<span>📄</span> <span>${name}</span>`;
-
-                // --- CÉLULA DE TAMANHO CORRIGIDA E MAIS ROBUSTA ---
-                const sizeTd = document.createElement('td');
-                sizeTd.className = 'size-col';
-                // Verificamos explicitamente se item.file_size é um número.
-                if (typeof item.file_size === 'number') {
-                    sizeTd.textContent = formatFileSize(item.file_size);
-                } else {
-                    sizeTd.textContent = 'N/A'; // Fallback para caso o dado não venha
-                }
-                // --- FIM DA CORREÇÃO ---
-
-                const downloadTd = document.createElement('td');
-                downloadTd.className = 'download-col';
-                const downloadLink = document.createElement('a');
-                const vercelApiUrl = "https://telegram-drive-eight.vercel.app/api/download";
-                downloadLink.href = `${vercelApiUrl}?message_id=${item.message_id}&filename=${encodeURIComponent(name)}`;
-                downloadLink.textContent = 'Baixar';
-                downloadTd.appendChild(downloadLink);
-
-                tr.appendChild(nameTd);
-                tr.appendChild(sizeTd); // Adiciona a célula de tamanho
-                tr.appendChild(downloadTd);
+                tr.innerHTML = `
+                    <td class="file-item-name"><span>📄</span> <span>${name}</span></td>
+                    <td class="size-col">${formatFileSize(item.file_size)}</td>
+                    <td class="download-col"><a href="https://telegram-drive-eight.vercel.app/api/download?message_id=${item.message_id}&filename=${encodeURIComponent(name)}">Baixar</a></td>
+                `;
             } else {
-                const nameTd = document.createElement('td');
-                // Para pastas, a célula de nome ocupa 3 colunas
-                nameTd.setAttribute('colspan', '3');
-                const folderLink = document.createElement('a');
-                const targetPath = [...path, name].map(encodeURIComponent).join('/');
-                folderLink.href = `#/${targetPath}`;
-                folderLink.className = 'file-item-name';
-                folderLink.innerHTML = `<span>📁</span> <span>${name}</span>`;
-                nameTd.appendChild(folderLink);
-                tr.appendChild(nameTd);
+                tr.innerHTML = `
+                    <td colspan="3">
+                        <a href="#/${[...path, name].map(encodeURIComponent).join('/')}" class="file-item-name">
+                            <span>📁</span> <span>${name}</span>
+                        </a>
+                    </td>
+                `;
             }
             fileListBodyElement.appendChild(tr);
         });
-    }
-
-    function router() {
-        const pathString = window.location.hash.slice(1) || '/';
-        const path = pathString.split('/').filter(p => p).map(decodeURIComponent);
-        renderView(path);
-    }
-
-    // --- INICIALIZAÇÃO ---
-    // Ouve por mudanças no hash (cliques nos links, botões do navegador)
-    window.addEventListener('hashchange', router);
-
-    // Carrega os dados e inicia o roteador
-    fetch('/api/files')
-        .then(response => {
-            if (!response.ok) throw new Error(`Erro de rede: ${response.statusText}`);
-            return response.json();
-        })
-        .then(data => {
-            fileTree = buildFileTree(data.files || []);
-            router(); // Renderiza a visão inicial baseada na URL
-        })
-        .catch(error => {
-            console.error('Erro ao buscar a lista de arquivos:', error);
-            fileListBodyElement.innerHTML = `<tr><td colspan="3">Erro ao carregar os arquivos. Verifique o console (F12).</td></tr>`;
-        });
+    };
 });
