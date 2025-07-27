@@ -1,6 +1,3 @@
-// /public/script.js
-
-// --- FUNÇÃO AUXILIAR ---
 function formatFileSize(bytes) {
     if (!bytes || bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -9,7 +6,6 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-// --- ESTADO GLOBAL DA APLICAÇÃO ---
 const state = {
     token: localStorage.getItem('jwtToken'),
     username: localStorage.getItem('username'),
@@ -18,12 +14,10 @@ const state = {
     allFiles: []
 };
 
-// --- ELEMENTOS DO DOM ---
 const mainContent = document.getElementById('main-content');
 const mainNav = document.getElementById('main-nav');
 
-// --- FUNÇÕES DE API ---
-async function apiCall(endpoint, method = 'POST', body = null) {
+async function apiCall(endpoint, method = 'GET', body = null) {
     const headers = { 'Content-Type': 'application/json' };
     if (state.token) {
         headers['Authorization'] = `Bearer ${state.token}`;
@@ -45,7 +39,6 @@ async function apiCall(endpoint, method = 'POST', body = null) {
     }
 }
 
-// --- FUNÇÕES DE AUTENTICAÇÃO ---
 function login(token) {
     try {
         const payload = JSON.parse(atob(token.split('.')[1]));
@@ -66,126 +59,10 @@ function logout() {
     state.username = null;
     state.role = null;
     localStorage.clear();
-    router();
+    window.location.hash = '/';
 }
 
-// --- FUNÇÕES DE LÓGICA DE ARQUIVOS ---
-function buildFileTree(files) { /* (Código igual ao anterior) */ }
-function getContentForPath(path) { /* (Código igual ao anterior) */ }
-
-// --- FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ---
-function renderNav() {
-    if (state.token) {
-        mainNav.innerHTML = `
-            <span>Olá, <a href="/#/profile"><strong>${state.username}</strong></a> (${state.role})</span>
-            ${state.role === 'owner' || state.role === 'admin' ? '<a href="/#/admin">Admin</a>' : ''}
-            <a href="#" id="logout-btn">Sair</a>
-        `;
-        document.getElementById('logout-btn').onclick = (e) => { e.preventDefault(); logout(); };
-    } else {
-        mainNav.innerHTML = `<a href="/#/login">Login</a> <a href="/#/register">Registrar</a>`;
-    }
-}
-
-function renderRegisterPage() { /* (Código igual ao anterior) */ }
-function renderLoginPage() { /* (Código igual ao anterior) */ }
-function renderFilesPage(path) { /* (Código igual ao anterior) */ }
-function renderAdminPage() { /* (Código igual ao anterior) */ }
-
-// --- NOVA PÁGINA DE PERFIL ---
-function renderProfilePage() {
-    mainContent.innerHTML = `
-        <form id="profile-form" class="auth-form">
-            <h2>Meu Perfil</h2>
-            <p>Usuário: <strong>${state.username}</strong> | Cargo: <strong>${state.role}</strong></p>
-            <hr style="border-color: #6272a4; margin: 20px 0;">
-            <h3>Alterar Senha</h3>
-            <div class="form-group">
-                <label for="current-password">Senha Atual</label>
-                <input type="password" id="current-password" required>
-            </div>
-            <div class="form-group">
-                <label for="new-password">Nova Senha</label>
-                <input type="password" id="new-password" required minlength="6">
-            </div>
-            <div class="form-group">
-                <label for="confirm-password">Confirmar Nova Senha</label>
-                <input type="password" id="confirm-password" required minlength="6">
-            </div>
-            <button type="submit">Salvar Alterações</button>
-        </form>
-    `;
-
-    document.getElementById('profile-form').onsubmit = async (e) => {
-        e.preventDefault();
-        const currentPassword = e.target['current-password'].value;
-        const newPassword = e.target['new-password'].value;
-        const confirmPassword = e.target['confirm-password'].value;
-
-        if (newPassword !== confirmPassword) {
-            alert("A nova senha e a confirmação não coincidem.");
-            return;
-        }
-
-        try {
-            const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword });
-            alert(data.message);
-            logout(); // Força o logout por segurança após mudar a senha
-        } catch (error) {
-            alert(`Erro ao alterar a senha: ${error.message}`);
-        }
-    };
-}
-
-// --- ROTEADOR PRINCIPAL ---
-async function router() {
-    renderNav();
-    const pathString = window.location.hash.slice(1) || '/';
-    const path = pathString.split('/').filter(p => p).map(decodeURIComponent);
-    const route = path[0] || 'home';
-
-    if (['admin', 'profile'].includes(route) && !state.token) {
-        window.location.hash = '/login';
-        return;
-    }
-    
-    // Carrega os arquivos apenas se for necessário
-    if (!state.allFiles.length && ['home', 'admin'].includes(route)) {
-        try {
-            const data = await apiCall(`files?t=${new Date().getTime()}`, 'GET', null);
-            state.allFiles = data.files || [];
-            state.fileTree = buildFileTree(state.allFiles);
-        } catch (error) {
-            console.error("Não foi possível carregar a lista de arquivos.", error);
-        }
-    }
-
-    switch (route) {
-        case 'login': renderLoginPage(); break;
-        case 'register': renderRegisterPage(); break;
-        case 'admin':
-            if (state.role === 'owner' || state.role === 'admin') {
-                renderAdminPage();
-            } else {
-                alert("Acesso negado.");
-                window.location.hash = '/';
-            }
-            break;
-        case 'profile':
-            renderProfilePage();
-            break;
-        default:
-            renderFilesPage(path);
-            break;
-    }
-}
-
-// --- INICIALIZAÇÃO ---
-window.addEventListener('hashchange', router);
-router();
-
-// --- COLE AS FUNÇÕES COMPLETAS QUE FORAM RESUMIDAS ACIMA ---
-buildFileTree = function(files) {
+function buildFileTree(files) {
     const tree = {};
     files.forEach(file => {
         const parts = file.name.split('/').filter(p => p);
@@ -200,16 +77,31 @@ buildFileTree = function(files) {
         });
     });
     return tree;
-};
-getContentForPath = function(path) {
+}
+
+function getContentForPath(path) {
     let currentLevel = state.fileTree;
     for (const folderName of path) {
         currentLevel = currentLevel[folderName];
         if (!currentLevel) return {};
     }
     return currentLevel;
-};
-renderRegisterPage = function() {
+}
+
+function renderNav() {
+    if (state.token) {
+        mainNav.innerHTML = `
+            <span>Olá, <a href="/#/profile"><strong>${state.username}</strong></a> (${state.role})</span>
+            ${state.role === 'owner' || state.role === 'admin' ? '<a href="/#/admin">Admin</a>' : ''}
+            <a href="#" id="logout-btn">Sair</a>
+        `;
+        document.getElementById('logout-btn').onclick = (e) => { e.preventDefault(); logout(); };
+    } else {
+        mainNav.innerHTML = `<a href="/#/login">Login</a> <a href="/#/register">Registrar</a>`;
+    }
+}
+
+function renderRegisterPage() {
     mainContent.innerHTML = `
         <form id="register-form" class="auth-form">
             <h2>Registrar Nova Conta</h2>
@@ -228,8 +120,9 @@ renderRegisterPage = function() {
             alert(`Erro no registro: ${error.message}`);
         }
     };
-};
-renderLoginPage = function() {
+}
+
+function renderLoginPage() {
     mainContent.innerHTML = `
         <form id="login-form" class="auth-form">
             <h2>Login</h2>
@@ -248,8 +141,9 @@ renderLoginPage = function() {
             alert(`Erro no login: ${error.message}`);
         }
     };
-};
-renderFilesPage = function(path) {
+}
+
+function renderFilesPage(path) {
     mainContent.innerHTML = `
         <div class="navigation-controls">
             <button id="back-button" class="nav-button" title="Voltar">←</button>
@@ -303,9 +197,130 @@ renderFilesPage = function(path) {
         }
         fileListBodyElement.appendChild(tr);
     });
-};
-renderAdminPage = function() {
-    // A lógica do painel de administrador foi movida para a Fase 4.
-    // Primeiro, vamos implementar a gestão de usuários.
-    mainContent.innerHTML = `<h2>Painel de Administrador - Gestão de Usuários</h2>`;
-};
+}
+
+function renderProfilePage() {
+    mainContent.innerHTML = `
+        <form id="profile-form" class="auth-form">
+            <h2>Meu Perfil</h2>
+            <p>Usuário: <strong>${state.username}</strong> | Cargo: <strong>${state.role}</strong></p>
+            <hr style="border-color: #6272a4; margin: 20px 0;">
+            <h3>Alterar Senha</h3>
+            <div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div>
+            <div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div>
+            <div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div>
+            <button type="submit">Salvar Alterações</button>
+        </form>
+    `;
+    document.getElementById('profile-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const currentPassword = e.target['current-password'].value;
+        const newPassword = e.target['new-password'].value;
+        const confirmPassword = e.target['confirm-password'].value;
+        if (newPassword !== confirmPassword) {
+            alert("A nova senha e a confirmação não coincidem.");
+            return;
+        }
+        try {
+            const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword });
+            alert(data.message);
+            logout();
+        } catch (error) {
+            alert(`Erro ao alterar a senha: ${error.message}`);
+        }
+    };
+}
+
+async function renderAdminPage() {
+    mainContent.innerHTML = `
+        <div id="breadcrumb">Painel de Administrador - Gestão de Usuários</div>
+        <table class="file-table">
+            <thead><tr><th>Usuário</th><th>Cargo</th><th>Criado em</th><th class="actions-col">Ações</th></tr></thead>
+            <tbody id="user-list-body"><tr><td colspan="4">Carregando usuários...</td></tr></tbody>
+        </table>
+    `;
+    try {
+        const data = await apiCall('admin/users', 'GET');
+        const userListBody = document.getElementById('user-list-body');
+        userListBody.innerHTML = '';
+        data.users.forEach(user => {
+            const tr = document.createElement('tr');
+            const roles = ['owner', 'admin', 'editor', 'viewer'];
+            const roleOptions = roles.map(r => `<option value="${r}" ${user.role === r ? 'selected' : ''}>${r}</option>`).join('');
+            tr.innerHTML = `
+                <td>${user.username}</td>
+                <td><select class="role-select" data-id="${user.id}" ${state.username === user.username ? 'disabled' : ''}>${roleOptions}</select></td>
+                <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                <td class="actions-col admin-actions">
+                    <button class="save-role-btn" data-id="${user.id}">Salvar</button>
+                    <button class="delete-user-btn" data-id="${user.id}" ${state.username === user.username ? 'disabled' : ''}>Deletar</button>
+                </td>
+            `;
+            userListBody.appendChild(tr);
+        });
+        document.querySelectorAll('.save-role-btn').forEach(btn => {
+            btn.onclick = async () => {
+                const userId = btn.dataset.id;
+                const newRole = document.querySelector(`.role-select[data-id="${userId}"]`).value;
+                try {
+                    const result = await apiCall('admin/update-role', 'POST', { userId: parseInt(userId), newRole });
+                    alert(result.message);
+                } catch (error) { alert(`Erro: ${error.message}`); }
+            };
+        });
+        document.querySelectorAll('.delete-user-btn').forEach(btn => {
+            btn.onclick = async () => {
+                if (confirm('Tem certeza que deseja deletar este usuário?')) {
+                    const userId = btn.dataset.id;
+                    try {
+                        const result = await apiCall('admin/delete-user', 'POST', { userId: parseInt(userId) });
+                        alert(result.message);
+                        router();
+                    } catch (error) { alert(`Erro: ${error.message}`); }
+                }
+            };
+        });
+    } catch (error) {
+        mainContent.innerHTML += `<p style="color: #ff5555;">Erro ao carregar usuários: ${error.message}</p>`;
+    }
+}
+
+async function router() {
+    renderNav();
+    const pathString = window.location.hash.slice(1) || '/';
+    const path = pathString.split('/').filter(p => p).map(decodeURIComponent);
+    const route = path[0] || 'home';
+
+    if (['admin', 'profile'].includes(route) && !state.token) {
+        window.location.hash = '/login';
+        return;
+    }
+    
+    if (!state.allFiles.length && (route === 'home' || route === '' || route === 'admin')) {
+        try {
+            const data = await apiCall(`files?t=${new Date().getTime()}`, 'GET', null);
+            state.allFiles = data.files || [];
+            state.fileTree = buildFileTree(state.allFiles);
+        } catch (error) {
+            console.error("Não foi possível carregar a lista de arquivos.", error);
+        }
+    }
+
+    switch (route) {
+        case 'login': renderLoginPage(); break;
+        case 'register': renderRegisterPage(); break;
+        case 'admin':
+            if (state.role === 'owner' || state.role === 'admin') {
+                renderAdminPage();
+            } else {
+                alert("Acesso negado.");
+                window.location.hash = '/';
+            }
+            break;
+        case 'profile': renderProfilePage(); break;
+        default: renderFilesPage(path); break;
+    }
+}
+
+window.addEventListener('hashchange', router);
+router();
