@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const forwardButton = document.getElementById('forward-button');
     
     let fileTree = {};
-    let adminSecret = sessionStorage.getItem('adminSecret'); // Guarda a senha na sessão
+    let adminSecret = sessionStorage.getItem('adminSecret');
 
     // --- FUNÇÕES DA API DO ADMIN ---
     async function apiAdminAction(endpoint, body) {
@@ -31,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await response.json();
             alert(result.message);
             if (response.ok) {
-                window.location.reload(); // Recarrega para ver a mudança
+                window.location.reload();
             }
         } catch (error) {
             alert(`Erro na comunicação com a API: ${error.message}`);
@@ -51,9 +51,48 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    async function verifyAdminSecret(secret) {
+        if (!secret) return false;
+        try {
+            const response = await fetch('/api/admin/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ secret })
+            });
+            const result = await response.json();
+            return response.ok && result.success;
+        } catch (error) {
+            console.error("Erro ao verificar a senha:", error);
+            return false;
+        }
+    }
+
     // --- FUNÇÕES DE LÓGICA ---
-    function buildFileTree(files) { /* ... (código igual ao anterior) ... */ }
-    function getContentForPath(path) { /* ... (código igual ao anterior) ... */ }
+    function buildFileTree(files) {
+        const tree = {};
+        files.forEach(file => {
+            const parts = file.name.split('/').filter(p => p);
+            let currentLevel = tree;
+            parts.forEach((part, index) => {
+                if (index === parts.length - 1) {
+                    currentLevel[part] = { ...file, _isFile: true };
+                } else {
+                    if (!currentLevel[part]) { currentLevel[part] = {}; }
+                    currentLevel = currentLevel[part];
+                }
+            });
+        });
+        return tree;
+    }
+
+    function getContentForPath(path) {
+        let currentLevel = fileTree;
+        for (const folderName of path) {
+            currentLevel = currentLevel[folderName];
+            if (!currentLevel) return {};
+        }
+        return currentLevel;
+    }
 
     // --- FUNÇÕES DE RENDERIZAÇÃO ---
     function renderAdminView(allFiles) {
@@ -61,6 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
         breadcrumbElement.innerHTML = `<span>Painel de Administrador (<a href="/#/" id="admin-logout">Sair</a>)</span>`;
         document.getElementById('admin-logout').onclick = (e) => {
             e.preventDefault();
+            adminSecret = null;
             sessionStorage.removeItem('adminSecret');
             window.location.hash = '/';
         };
@@ -89,74 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.delete-btn').forEach(btn => btn.onclick = () => deleteFile(btn.dataset.key));
     }
 
-    function renderPublicView(path) { /* ... (código igual ao anterior, mas com o nome renderPublicView) ... */ }
-
-    // --- ROTEADOR PRINCIPAL ---
-    function router(allFiles) {
-        const pathString = window.location.hash.slice(1) || '/';
-        const path = pathString.split('/').filter(p => p).map(decodeURIComponent);
-
-        if (path[0] === 'admin') {
-            if (!adminSecret) {
-                adminSecret = prompt('Por favor, digite a senha de administrador:');
-                if (adminSecret) {
-                    sessionStorage.setItem('adminSecret', adminSecret);
-                }
-            }
-            if (adminSecret) {
-                renderAdminView(allFiles);
-            } else {
-                window.location.hash = '/';
-            }
-        } else {
-            document.querySelector('.navigation-controls').style.display = 'flex';
-            tableHeaderElement.innerHTML = `
-                <th>Nome</th>
-                <th class="size-col">Tamanho</th>
-                <th class="download-col"></th>
-            `;
-            fileTree = buildFileTree(allFiles);
-            renderPublicView(path);
-        }
-    }
-
-    // --- INICIALIZAÇÃO ---
-    fetch('/api/files')
-        .then(response => response.json())
-        .then(data => {
-            const allFiles = data.files || [];
-            const initialRouterCall = () => router(allFiles);
-            window.addEventListener('hashchange', initialRouterCall);
-            initialRouterCall();
-        })
-        .catch(error => console.error('Erro ao carregar arquivos:', error));
-    
-    // As funções buildFileTree e getContentForPath são as mesmas da versão anterior
-    buildFileTree = function(files) {
-        const tree = {};
-        files.forEach(file => {
-            const parts = file.name.split('/').filter(p => p);
-            let currentLevel = tree;
-            parts.forEach((part, index) => {
-                if (index === parts.length - 1) {
-                    currentLevel[part] = { ...file, _isFile: true };
-                } else {
-                    if (!currentLevel[part]) { currentLevel[part] = {}; }
-                    currentLevel = currentLevel[part];
-                }
-            });
-        });
-        return tree;
-    };
-    getContentForPath = function(path) {
-        let currentLevel = fileTree;
-        for (const folderName of path) {
-            currentLevel = currentLevel[folderName];
-            if (!currentLevel) return {};
-        }
-        return currentLevel;
-    };
-    renderPublicView = function(path) {
+    function renderPublicView(path) {
         backButton.disabled = path.length === 0;
         breadcrumbElement.innerHTML = '';
         const pathParts = ['Home', ...path];
@@ -207,5 +180,57 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             fileListBodyElement.appendChild(tr);
         });
-    };
+    }
+
+    // --- ROTEADOR PRINCIPAL ---
+    async function router(allFiles) {
+        const pathString = window.location.hash.slice(1) || '/';
+        const path = pathString.split('/').filter(p => p).map(decodeURIComponent);
+
+        document.querySelector('.navigation-controls').style.display = 'flex';
+        tableHeaderElement.innerHTML = `
+            <th>Nome</th>
+            <th class="size-col">Tamanho</th>
+            <th class="download-col"></th>
+        `;
+
+        if (path[0] === 'admin') {
+            let isAuthenticated = await verifyAdminSecret(adminSecret);
+
+            if (!isAuthenticated) {
+                const newSecret = prompt('Por favor, digite a senha de administrador:');
+                if (newSecret) {
+                    isAuthenticated = await verifyAdminSecret(newSecret);
+                    if (isAuthenticated) {
+                        adminSecret = newSecret;
+                        sessionStorage.setItem('adminSecret', adminSecret);
+                    } else {
+                        alert('Senha incorreta.');
+                        adminSecret = null;
+                        sessionStorage.removeItem('adminSecret');
+                    }
+                }
+            }
+            
+            if (isAuthenticated) {
+                renderAdminView(allFiles);
+            } else {
+                window.location.hash = '/';
+            }
+        } else {
+            fileTree = buildFileTree(allFiles);
+            renderPublicView(path);
+        }
+    }
+
+    // --- INICIALIZAÇÃO ---
+    fetch('/api/files')
+        .then(response => response.json())
+        .then(data => {
+            const allFiles = data.files || [];
+            const initialRouterCall = () => router(allFiles);
+            window.addEventListener('hashchange', initialRouterCall);
+            initialRouterCall();
+        })
+        .catch(error => console.error('Erro ao carregar arquivos:', error));
 });
