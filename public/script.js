@@ -23,7 +23,6 @@ const mainContent = document.getElementById('main-content');
 const mainNav = document.getElementById('main-nav');
 
 // --- FUNÇÕES DE API ---
-// Centraliza todas as chamadas de API, adicionando o token de autenticação quando necessário.
 async function apiCall(endpoint, method = 'POST', body = null) {
     const headers = { 'Content-Type': 'application/json' };
     if (state.token) {
@@ -67,11 +66,126 @@ function logout() {
     state.username = null;
     state.role = null;
     localStorage.clear();
-    router(); // Re-renderiza a página para o estado de "deslogado"
+    router();
 }
 
 // --- FUNÇÕES DE LÓGICA DE ARQUIVOS ---
-function buildFileTree(files) {
+function buildFileTree(files) { /* (Código igual ao anterior) */ }
+function getContentForPath(path) { /* (Código igual ao anterior) */ }
+
+// --- FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ---
+function renderNav() {
+    if (state.token) {
+        mainNav.innerHTML = `
+            <span>Olá, <a href="/#/profile"><strong>${state.username}</strong></a> (${state.role})</span>
+            ${state.role === 'owner' || state.role === 'admin' ? '<a href="/#/admin">Admin</a>' : ''}
+            <a href="#" id="logout-btn">Sair</a>
+        `;
+        document.getElementById('logout-btn').onclick = (e) => { e.preventDefault(); logout(); };
+    } else {
+        mainNav.innerHTML = `<a href="/#/login">Login</a> <a href="/#/register">Registrar</a>`;
+    }
+}
+
+function renderRegisterPage() { /* (Código igual ao anterior) */ }
+function renderLoginPage() { /* (Código igual ao anterior) */ }
+function renderFilesPage(path) { /* (Código igual ao anterior) */ }
+function renderAdminPage() { /* (Código igual ao anterior) */ }
+
+// --- NOVA PÁGINA DE PERFIL ---
+function renderProfilePage() {
+    mainContent.innerHTML = `
+        <form id="profile-form" class="auth-form">
+            <h2>Meu Perfil</h2>
+            <p>Usuário: <strong>${state.username}</strong> | Cargo: <strong>${state.role}</strong></p>
+            <hr style="border-color: #6272a4; margin: 20px 0;">
+            <h3>Alterar Senha</h3>
+            <div class="form-group">
+                <label for="current-password">Senha Atual</label>
+                <input type="password" id="current-password" required>
+            </div>
+            <div class="form-group">
+                <label for="new-password">Nova Senha</label>
+                <input type="password" id="new-password" required minlength="6">
+            </div>
+            <div class="form-group">
+                <label for="confirm-password">Confirmar Nova Senha</label>
+                <input type="password" id="confirm-password" required minlength="6">
+            </div>
+            <button type="submit">Salvar Alterações</button>
+        </form>
+    `;
+
+    document.getElementById('profile-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const currentPassword = e.target['current-password'].value;
+        const newPassword = e.target['new-password'].value;
+        const confirmPassword = e.target['confirm-password'].value;
+
+        if (newPassword !== confirmPassword) {
+            alert("A nova senha e a confirmação não coincidem.");
+            return;
+        }
+
+        try {
+            const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword });
+            alert(data.message);
+            logout(); // Força o logout por segurança após mudar a senha
+        } catch (error) {
+            alert(`Erro ao alterar a senha: ${error.message}`);
+        }
+    };
+}
+
+// --- ROTEADOR PRINCIPAL ---
+async function router() {
+    renderNav();
+    const pathString = window.location.hash.slice(1) || '/';
+    const path = pathString.split('/').filter(p => p).map(decodeURIComponent);
+    const route = path[0] || 'home';
+
+    if (['admin', 'profile'].includes(route) && !state.token) {
+        window.location.hash = '/login';
+        return;
+    }
+    
+    // Carrega os arquivos apenas se for necessário
+    if (!state.allFiles.length && ['home', 'admin'].includes(route)) {
+        try {
+            const data = await apiCall(`files?t=${new Date().getTime()}`, 'GET', null);
+            state.allFiles = data.files || [];
+            state.fileTree = buildFileTree(state.allFiles);
+        } catch (error) {
+            console.error("Não foi possível carregar a lista de arquivos.", error);
+        }
+    }
+
+    switch (route) {
+        case 'login': renderLoginPage(); break;
+        case 'register': renderRegisterPage(); break;
+        case 'admin':
+            if (state.role === 'owner' || state.role === 'admin') {
+                renderAdminPage();
+            } else {
+                alert("Acesso negado.");
+                window.location.hash = '/';
+            }
+            break;
+        case 'profile':
+            renderProfilePage();
+            break;
+        default:
+            renderFilesPage(path);
+            break;
+    }
+}
+
+// --- INICIALIZAÇÃO ---
+window.addEventListener('hashchange', router);
+router();
+
+// --- COLE AS FUNÇÕES COMPLETAS QUE FORAM RESUMIDAS ACIMA ---
+buildFileTree = function(files) {
     const tree = {};
     files.forEach(file => {
         const parts = file.name.split('/').filter(p => p);
@@ -86,35 +200,16 @@ function buildFileTree(files) {
         });
     });
     return tree;
-}
-
-function getContentForPath(path) {
+};
+getContentForPath = function(path) {
     let currentLevel = state.fileTree;
     for (const folderName of path) {
         currentLevel = currentLevel[folderName];
         if (!currentLevel) return {};
     }
     return currentLevel;
-}
-
-// --- FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ---
-function renderNav() {
-    if (state.token) {
-        mainNav.innerHTML = `
-            <span>Olá, <strong>${state.username}</strong> (${state.role})</span>
-            ${state.role === 'owner' || state.role === 'admin' ? '<a href="/#/admin">Admin</a>' : ''}
-            <a href="#" id="logout-btn">Sair</a>
-        `;
-        document.getElementById('logout-btn').onclick = (e) => { e.preventDefault(); logout(); };
-    } else {
-        mainNav.innerHTML = `
-            <a href="/#/login">Login</a>
-            <a href="/#/register">Registrar</a>
-        `;
-    }
-}
-
-function renderRegisterPage() {
+};
+renderRegisterPage = function() {
     mainContent.innerHTML = `
         <form id="register-form" class="auth-form">
             <h2>Registrar Nova Conta</h2>
@@ -133,9 +228,8 @@ function renderRegisterPage() {
             alert(`Erro no registro: ${error.message}`);
         }
     };
-}
-
-function renderLoginPage() {
+};
+renderLoginPage = function() {
     mainContent.innerHTML = `
         <form id="login-form" class="auth-form">
             <h2>Login</h2>
@@ -154,9 +248,8 @@ function renderLoginPage() {
             alert(`Erro no login: ${error.message}`);
         }
     };
-}
-
-function renderFilesPage(path) {
+};
+renderFilesPage = function(path) {
     mainContent.innerHTML = `
         <div class="navigation-controls">
             <button id="back-button" class="nav-button" title="Voltar">←</button>
@@ -168,11 +261,9 @@ function renderFilesPage(path) {
             <tbody id="file-list-body"></tbody>
         </table>
     `;
-    
     document.getElementById('back-button').onclick = () => window.history.back();
     document.getElementById('forward-button').onclick = () => window.history.forward();
     document.getElementById('back-button').disabled = path.length === 0;
-
     const breadcrumbElement = document.getElementById('breadcrumb');
     breadcrumbElement.innerHTML = '';
     ['Home', ...path].forEach((part, index, arr) => {
@@ -189,7 +280,6 @@ function renderFilesPage(path) {
         }
         breadcrumbElement.appendChild(span);
     });
-
     const fileListBodyElement = document.getElementById('file-list-body');
     const content = getContentForPath(path);
     fileListBodyElement.innerHTML = '';
@@ -200,79 +290,22 @@ function renderFilesPage(path) {
         if (!isFileA && isFileB) return -1;
         return nameA.localeCompare(nameB, undefined, { numeric: true });
     });
-
     if (items.length === 0) {
         fileListBodyElement.innerHTML = '<tr><td colspan="3">Pasta vazia.</td></tr>';
         return;
     }
-
     items.forEach(([name, item]) => {
         const tr = document.createElement('tr');
         if (item._isFile) {
-            tr.innerHTML = `
-                <td class="file-item-name"><span>📄</span> <span>${name}</span></td>
-                <td class="size-col">${formatFileSize(item.file_size)}</td>
-                <td class="download-col"><a href="https://telegram-drive-eight.vercel.app/api/download?message_id=${item.message_id}&filename=${encodeURIComponent(name)}">Baixar</a></td>
-            `;
+            tr.innerHTML = `<td class="file-item-name"><span>📄</span> <span>${name}</span></td><td class="size-col">${formatFileSize(item.file_size)}</td><td class="download-col"><a href="https://telegram-drive-eight.vercel.app/api/download?message_id=${item.message_id}&filename=${encodeURIComponent(name)}">Baixar</a></td>`;
         } else {
-            tr.innerHTML = `
-                <td colspan="3"><a href="#/${[...path, name].map(encodeURIComponent).join('/')}" class="file-item-name"><span>📁</span> <span>${name}</span></a></td>
-            `;
+            tr.innerHTML = `<td colspan="3"><a href="#/${[...path, name].map(encodeURIComponent).join('/')}" class="file-item-name"><span>📁</span> <span>${name}</span></a></td>`;
         }
         fileListBodyElement.appendChild(tr);
     });
-}
-
-function renderAdminPage() {
-    // A lógica do painel admin pode ser implementada aqui no futuro
-    mainContent.innerHTML = `<h2>Painel de Administrador (Em construção)</h2>`;
-}
-
-// --- ROTEADOR PRINCIPAL ---
-async function router() {
-    renderNav();
-    const pathString = window.location.hash.slice(1) || '/';
-    const path = pathString.split('/').filter(p => p).map(decodeURIComponent);
-    const route = path[0] || 'home';
-
-    switch (route) {
-        case 'login':
-            renderLoginPage();
-            break;
-        case 'register':
-            renderRegisterPage();
-            break;
-        case 'admin':
-            if (state.role === 'owner' || state.role === 'admin') {
-                renderAdminPage();
-            } else {
-                alert("Acesso negado.");
-                window.location.hash = '/';
-            }
-            break;
-        case 'home':
-        default:
-            renderFilesPage(path);
-            break;
-    }
-}
-
-// --- INICIALIZAÇÃO ---
-async function main() {
-    // Ouve por mudanças na URL
-    window.addEventListener('hashchange', router);
-
-    // Carrega a lista de arquivos (filtrada pela API se o usuário estiver logado)
-    try {
-        const data = await apiCall(`files?t=${new Date().getTime()}`, 'GET', null); // Cache-busting
-        state.allFiles = data.files || [];
-        state.fileTree = buildFileTree(state.allFiles);
-    } catch (error) {
-        console.error("Não foi possível carregar a lista de arquivos.", error);
-    }
-    
-    // Inicia o roteador
-    router();
-}
-
-main();
+};
+renderAdminPage = function() {
+    // A lógica do painel de administrador foi movida para a Fase 4.
+    // Primeiro, vamos implementar a gestão de usuários.
+    mainContent.innerHTML = `<h2>Painel de Administrador - Gestão de Usuários</h2>`;
+};
