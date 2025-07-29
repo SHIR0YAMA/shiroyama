@@ -5,29 +5,36 @@ export async function onRequestPost(context) {
         const { request, env } = context;
         const data = await request.json();
 
-        // --- LÓGICA PARA RESPONDER AO PEDIDO DE DOWNLOAD DO USUÁRIO ---
-        // Isso acontece quando o usuário clica no link do site e aperta "Começar" no Telegram.
-        if (data.message && data.message.text && data.message.text.startsWith('/start')) {
-            const user_chat_id = data.message.chat.id;
-            const parts = data.message.text.split(' ');
+        // --- LÓGICA DE DETECÇÃO ROBUSTA ---
+        // O Telegram pode enviar a mensagem em diferentes campos.
+        // data.message: Típico de mensagens de usuários ou posts em grupos.
+        // data.channel_post: Típico de posts automáticos em canais.
+        const message = data.message || data.channel_post;
+
+        // Se não houver nenhum objeto de mensagem, não há nada a fazer.
+        if (!message) {
+            return new Response('OK: No message object found.', { status: 200 });
+        }
+        
+        // --- LÓGICA PARA RESPONDER AO PEDIDO DE DOWNLOAD (/start) ---
+        if (message.text && message.text.startsWith('/start')) {
+            const user_chat_id = message.chat.id;
+            const parts = message.text.split(' ');
             
-            // Verifica se o comando /start tem um ID de mensagem junto (ex: "/start 123")
             if (parts.length > 1 && !isNaN(parts[1])) {
                 const message_id_to_forward = parseInt(parts[1], 10);
                 
-                // Usa a API do Telegram para copiar a mensagem do nosso canal para o usuário
                 const apiUrl = `https://api.telegram.org/bot${env.BOT_TOKEN}/copyMessage`;
                 await fetch(apiUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        chat_id: user_chat_id,          // Para quem enviar
-                        from_chat_id: env.CHANNEL_ID,   // De onde copiar
-                        message_id: message_id_to_forward // O que copiar
+                        chat_id: user_chat_id,
+                        from_chat_id: env.CHANNEL_ID,
+                        message_id: message_id_to_forward
                     })
                 });
             } else {
-                // Se o usuário apenas digitar /start, envia uma mensagem de boas-vindas
                 const welcomeApiUrl = `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`;
                 await fetch(welcomeApiUrl, {
                     method: 'POST',
@@ -38,29 +45,38 @@ export async function onRequestPost(context) {
                     })
                 });
             }
-            return new Response('OK', { status: 200 });
+            // Após lidar com o /start, encerramos a execução para este evento.
+            return new Response('OK: Start command processed.', { status: 200 });
         }
         
-        // --- LÓGICA PARA ADICIONAR NOVOS ARQUIVOS AO SITE (a lógica antiga) ---
-        // Isso acontece quando um novo arquivo é postado no nosso canal privado.
-        const message = data.channel_post;
-        if (message && (message.document || message.video || message.audio || message.photo)) {
-            let file = message.document || message.video || message.audio || message.photo;
-            if (Array.isArray(file)) {
-                file = file.sort((a, b) => b.file_size - a.file_size)[0];
-            }
-            const file_name = file.file_name || `photo_${message.message_id}.jpg`;
+        // --- LÓGICA PARA ADICIONAR NOVOS ARQUIVOS AO SITE ---
+        // Verifica se a mensagem contém algum tipo de arquivo.
+        const fileData = message.document || message.video || message.audio || message.photo;
+        
+        if (fileData) {
+            let file = Array.isArray(fileData) ? fileData.sort((a, b) => b.file_size - a.file_size)[0] : fileData;
+            
+            // Importante: Precisamos garantir que estamos pegando a message_id da mensagem correta
+            // e não de alguma mensagem encaminhada dentro dela.
+            const message_id = message.message_id;
+            const file_name = file.file_name || `photo_${message_id}.jpg`;
+            const file_size = file.file_size || 0;
+
             const value = JSON.stringify({
-                message_id: message.message_id,
-                file_size: file.file_size || 0
+                message_id: message_id,
+                file_size: file_size
             });
+
+            // Adiciona o arquivo ao KV na pasta "Novos"
             await env.ARQUIVOS_TELEGRAM.put(`Novos/${file_name}`, value);
         }
 
-        return new Response('OK', { status: 200 });
+        // Se chegamos até aqui, tudo correu bem.
+        return new Response('OK: Event processed.', { status: 200 });
 
     } catch (error) {
-        console.error('Webhook Error:', error);
+        // Loga o erro para depuração futura no painel da Cloudflare.
+        console.error('Webhook Error:', error.stack);
         return new Response(`Webhook Error: ${error.message}`, { status: 500 });
     }
 }
