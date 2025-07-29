@@ -1,3 +1,5 @@
+// /public/script.js
+
 function formatFileSize(bytes) {
     if (!bytes || bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -48,10 +50,7 @@ function login(token) {
         localStorage.setItem('jwtToken', token);
         localStorage.setItem('username', state.username);
         localStorage.setItem('role', state.role);
-    } catch (e) {
-        console.error("Erro ao decodificar o token:", e);
-        logout();
-    }
+    } catch (e) { console.error("Erro ao decodificar o token:", e); logout(); }
 }
 
 function logout() {
@@ -187,7 +186,8 @@ function renderFilesPage(path) {
     items.forEach(([name, item]) => {
         const tr = document.createElement('tr');
         if (item._isFile) {
-            const botUsername = "ShiroyamaBot"; // <<<<<<< IMPORTANTE: COLOQUE O USERNAME DO SEU BOT AQUI
+            // --- ESTA É A LINHA IMPORTANTE ---
+            const botUsername = "ShiroyamaBot"; // O username do bot sem o @
             const botLink = `https://t.me/${botUsername}?start=${item.message_id}`;
             tr.innerHTML = `
                 <td class="file-item-name"><span>📄</span> <span>${name}</span></td>
@@ -277,7 +277,7 @@ async function renderAdminPage() {
                     try {
                         const result = await apiCall('admin/delete-user', 'POST', { userId: parseInt(userId) });
                         alert(result.message);
-router();
+                        router();
                     } catch (error) { alert(`Erro: ${error.message}`); }
                 }
             };
@@ -298,9 +298,10 @@ async function router() {
         return;
     }
     
-    if (!state.allFiles.length && (route === 'home' || route === '' || route.toLowerCase().includes('admin'))) {
+    // Carrega/recarrega a lista de arquivos apenas nas rotas necessárias
+    if (route === 'home' || route === '' || route === 'admin') {
         try {
-            const data = await apiCall(`files?t=${new Date().getTime()}`, 'GET');
+            const data = await apiCall(`files?t=${new Date().getTime()}`, 'GET'); // Cache-busting
             state.allFiles = data.files || [];
             state.fileTree = buildFileTree(state.allFiles);
         } catch (error) {
