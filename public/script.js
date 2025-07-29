@@ -55,9 +55,7 @@ function login(token) {
 }
 
 function logout() {
-    state.token = null;
-    state.username = null;
-    state.role = null;
+    state.token = null; state.username = null; state.role = null;
     localStorage.clear();
     window.location.hash = '/';
 }
@@ -90,11 +88,9 @@ function getContentForPath(path) {
 
 function renderNav() {
     if (state.token) {
-        mainNav.innerHTML = `
-            <span>Olá, <a href="/#/profile"><strong>${state.username}</strong></a> (${state.role})</span>
+        mainNav.innerHTML = `<span>Olá, <a href="/#/profile"><strong>${state.username}</strong></a> (${state.role})</span>
             ${state.role === 'owner' || state.role === 'admin' ? '<a href="/#/admin">Admin</a>' : ''}
-            <a href="#" id="logout-btn">Sair</a>
-        `;
+            <a href="#" id="logout-btn">Sair</a>`;
         document.getElementById('logout-btn').onclick = (e) => { e.preventDefault(); logout(); };
     } else {
         mainNav.innerHTML = `<a href="/#/login">Login</a> <a href="/#/register">Registrar</a>`;
@@ -191,7 +187,13 @@ function renderFilesPage(path) {
     items.forEach(([name, item]) => {
         const tr = document.createElement('tr');
         if (item._isFile) {
-            tr.innerHTML = `<td class="file-item-name"><span>📄</span> <span>${name}</span></td><td class="size-col">${formatFileSize(item.file_size)}</td><td class="download-col"><a href="https://telegram-drive-eight.vercel.app/api/download?message_id=${item.message_id}&filename=${encodeURIComponent(name)}">Baixar</a></td>`;
+            const botUsername = "ShiroyamaBot"; // <<<<<<< IMPORTANTE: COLOQUE O USERNAME DO SEU BOT AQUI
+            const botLink = `https://t.me/${botUsername}?start=${item.message_id}`;
+            tr.innerHTML = `
+                <td class="file-item-name"><span>📄</span> <span>${name}</span></td>
+                <td class="size-col">${formatFileSize(item.file_size)}</td>
+                <td class="download-col"><a href="${botLink}" target="_blank" rel="noopener noreferrer">Receber no Telegram</a></td>
+            `;
         } else {
             tr.innerHTML = `<td colspan="3"><a href="#/${[...path, name].map(encodeURIComponent).join('/')}" class="file-item-name"><span>📁</span> <span>${name}</span></a></td>`;
         }
@@ -275,7 +277,7 @@ async function renderAdminPage() {
                     try {
                         const result = await apiCall('admin/delete-user', 'POST', { userId: parseInt(userId) });
                         alert(result.message);
-                        router();
+router();
                     } catch (error) { alert(`Erro: ${error.message}`); }
                 }
             };
@@ -296,9 +298,9 @@ async function router() {
         return;
     }
     
-    if (!state.allFiles.length && (route === 'home' || route === '' || route === 'admin')) {
+    if (!state.allFiles.length && (route === 'home' || route === '' || route.toLowerCase().includes('admin'))) {
         try {
-            const data = await apiCall(`files?t=${new Date().getTime()}`, 'GET', null);
+            const data = await apiCall(`files?t=${new Date().getTime()}`, 'GET');
             state.allFiles = data.files || [];
             state.fileTree = buildFileTree(state.allFiles);
         } catch (error) {
@@ -322,5 +324,7 @@ async function router() {
     }
 }
 
-window.addEventListener('hashchange', router);
-router();
+document.addEventListener('DOMContentLoaded', () => {
+    window.addEventListener('hashchange', router);
+    router();
+});
