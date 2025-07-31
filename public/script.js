@@ -139,7 +139,7 @@ async function handleSingleForward(messageId) {
         });
         showNotification('✅ Arquivo enviado com sucesso!', 'success');
     } catch (error) {
-        if (error.message.includes('não está vinculada')) {
+        if (error.message.includes('vinculada')) {
             showNotification('❌ Primeiro, vincule sua conta do Telegram no Perfil.', 'error');
             setTimeout(() => window.location.hash = '/profile', 2000);
         } else {
@@ -240,50 +240,54 @@ async function renderProfilePage() {
             document.getElementById('unlink-btn').onclick = async () => {
                 if (confirm('Tem certeza que deseja desvincular sua conta do Telegram?')) {
                     try {
-                        const result = await apiCall('user/unlink-telegram', 'POST');
-                        showNotification(result.message, 'success');
-                        router(); // Recarrega a view do perfil
+                        await apiCall('user/unlink-telegram', 'POST');
+                        showNotification('Conta desvinculada com sucesso.', 'success');
+                        router();
                     } catch (error) {
                         showNotification(`Erro ao desvincular: ${error.message}`, 'error');
                     }
                 }
             };
         } else {
-            document.getElementById('link-telegram-btn').onclick = (e) => {
-                // PASSO 1: Gera o código no frontend
-                const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-                const linkCodeWithPrefix = `link_${randomCode}`;
-
-                // PASSO 2: Abre o link do Telegram IMEDIATAMENTE.
-                window.open(`https://t.me/ShiroyamaBot?start=${linkCodeWithPrefix}`, '_blank');
+            document.getElementById('link-telegram-btn').onclick = () => {
+                if (!state.token) {
+                    showNotification('Erro: Token não encontrado. Faça login novamente.', 'error');
+                    return;
+                }
+                // --- AQUI ESTÁ A CORREÇÃO CRÍTICA ---
+                // Usamos encodeURIComponent para garantir que o token seja lido corretamente.
+                const safeToken = encodeURIComponent(state.token);
+                window.open(`https://t.me/ShiroyamaBot?start=${safeToken}`, '_blank');
                 
-                // PASSO 3: Envia o código para o backend em segundo plano.
-                apiCall('user/prepare-link-code', 'POST', { linkCode: linkCodeWithPrefix })
-                    .catch(err => {
-                        // Se falhar, avisa o usuário que ele talvez precise tentar de novo.
-                        console.error("Falha ao preparar o código no backend:", err);
-                        showNotification('Ocorreu um erro. Se o vínculo falhar, tente novamente.', 'error');
-                    });
-                
-                // Atualiza a UI para dar feedback ao usuário.
-                e.target.disabled = true;
-                e.target.textContent = 'Verifique seu Telegram!';
                 showNotification('Conclua o vínculo no seu Telegram.', 'info');
-                
-                // Agenda uma verificação para ver se o vínculo foi feito.
-                setTimeout(() => router(), 15000); // 15 segundos
+                setTimeout(() => router(), 10000); // Verifica se o vínculo foi feito após 10s
             };
             document.getElementById('why-link-q').onclick = (e) => {
                 e.preventDefault();
                 whyLinkModal.classList.add('show');
             };
         }
-        
+
         document.getElementById('password-form').onsubmit = async (e) => {
             e.preventDefault();
-            // ... (código de alteração de senha permanece o mesmo) ...
+            const currentPassword = e.target['current-password'].value;
+            const newPassword = e.target['new-password'].value;
+            const confirmPassword = e.target['confirm-password'].value;
+            if (newPassword !== confirmPassword) {
+                showNotification("A nova senha e a confirmação não coincidem.", 'error');
+                return;
+            }
+            try {
+                const data = await apiCall('auth/change-password', 'POST', {
+                    currentPassword,
+                    newPassword
+                });
+                showNotification(data.message, 'success');
+                logout();
+            } catch (error) {
+                showNotification(`Erro ao alterar a senha: ${error.message}`, 'error');
+            }
         };
-
     } catch (error) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Erro ao carregar perfil</h2><p style="color: #ff5555;">${error.message}</p></div>`;
     }
@@ -307,7 +311,10 @@ async function renderAdminPage() {
                 const userId = btn.dataset.id;
                 const newRole = document.querySelector(`.role-select[data-id="${userId}"]`).value;
                 try {
-                    const result = await apiCall('admin/update-role', 'POST', { userId: parseInt(userId), newRole });
+                    const result = await apiCall('admin/update-role', 'POST', {
+                        userId: parseInt(userId),
+                        newRole
+                    });
                     showNotification(result.message, 'success');
                 } catch (error) {
                     showNotification(`Erro: ${error.message}`, 'error');
@@ -319,7 +326,9 @@ async function renderAdminPage() {
                 if (confirm('Tem certeza?')) {
                     const userId = btn.dataset.id;
                     try {
-                        const result = await apiCall('admin/delete-user', 'POST', { userId: parseInt(userId) });
+                        const result = await apiCall('admin/delete-user', 'POST', {
+                            userId: parseInt(userId)
+                        });
                         showNotification(result.message, 'success');
                         router();
                     } catch (error) {
@@ -334,10 +343,17 @@ async function renderAdminPage() {
 }
 
 function renderFilesPage(path) {
-    mainContent.innerHTML = `<div class="navigation-controls"> <button id="back-button" class="nav-button" title="Voltar">←</button> <button id="forward-button" class="nav-button" title="Avançar">→</button> </div> <div id="breadcrumb" style="margin-top: 15px;"></div> <div id="bulk-actions-container"></div> <table class="file-table"> <thead><tr><th style="width: 1%;"><input type="checkbox" id="select-all-checkbox"></th><th>Nome</th><th class="size-col">Tamanho</th><th class="download-col">Ações</th></tr></thead> <tbody id="file-list-body"></tbody> </table>`;
+    mainContent.innerHTML = `
+        <div class="navigation-controls"> <button id="back-button" class="nav-button" title="Voltar">←</button> <button id="forward-button" class="nav-button" title="Avançar">→</button> </div>
+        <div id="breadcrumb" style="margin-top: 15px;"></div>
+        <div id="bulk-actions-container"></div>
+        <table class="file-table"> <thead><tr><th style="width: 1%;"><input type="checkbox" id="select-all-checkbox"></th><th>Nome</th><th class="size-col">Tamanho</th><th class="download-col">Ações</th></tr></thead> <tbody id="file-list-body"></tbody> </table>
+    `;
+
     document.getElementById('back-button').onclick = () => window.history.back();
     document.getElementById('forward-button').onclick = () => window.history.forward();
     document.getElementById('back-button').disabled = path.length === 0;
+
     const breadcrumbElement = document.getElementById('breadcrumb');
     breadcrumbElement.innerHTML = '';
     ['Home', ...path].forEach((part, index, arr) => {
@@ -354,6 +370,7 @@ function renderFilesPage(path) {
         }
         breadcrumbElement.appendChild(span);
     });
+
     const fileListBodyElement = document.getElementById('file-list-body');
     const content = getContentForPath(path);
     const items = Object.entries(content).sort(([nameA, itemA], [nameB, itemB]) => {
@@ -365,11 +382,13 @@ function renderFilesPage(path) {
             numeric: true
         });
     });
+
     if (items.length === 0) {
         fileListBodyElement.innerHTML = '<tr><td colspan="4">Pasta vazia.</td></tr>';
         document.getElementById('select-all-checkbox').disabled = true;
         return;
     }
+
     items.forEach(([name, item]) => {
         const tr = document.createElement('tr');
         if (item._isFile) {
@@ -379,6 +398,7 @@ function renderFilesPage(path) {
         }
         fileListBodyElement.appendChild(tr);
     });
+
     const selectAllCheckbox = document.getElementById('select-all-checkbox');
     const fileCheckboxes = document.querySelectorAll('.file-checkbox');
     const bulkActionsContainer = document.getElementById('bulk-actions-container');
@@ -392,6 +412,7 @@ function renderFilesPage(path) {
         bulkActionsContainer.style.display = 'flex';
         bulkActionsContainer.style.gap = '10px';
         bulkActionsContainer.innerHTML = '';
+
         const forwardBtn = document.createElement('button');
         forwardBtn.textContent = `Receber ${selected.length} Arquivo(s)`;
         forwardBtn.onclick = async () => {
@@ -429,10 +450,12 @@ async function router() {
     const pathString = window.location.hash.slice(1) || '/';
     const path = pathString.split('/').filter(p => p).map(decodeURIComponent);
     const route = path[0] || 'home';
+
     if (['admin', 'profile'].includes(route) && !state.token) {
         window.location.hash = '/login';
         return;
     }
+
     if (!state.allFiles.length && state.token) {
         try {
             const data = await apiCall(`files?t=${new Date().getTime()}`, 'GET');
@@ -445,6 +468,7 @@ async function router() {
             return;
         }
     }
+
     switch (route) {
         case 'login':
             renderLoginPage();
@@ -481,16 +505,19 @@ document.addEventListener('DOMContentLoaded', () => {
     authModal.onclick = (e) => {
         if (e.target === authModal) authModal.classList.remove('show');
     };
+
     document.getElementById('why-modal-close-btn').onclick = () => whyLinkModal.classList.remove('show');
     whyLinkModal.onclick = (e) => {
         if (e.target === whyLinkModal) whyLinkModal.classList.remove('show');
     };
+
     mainContent.addEventListener('click', (e) => {
         const singleForwardButton = e.target.closest('.btn-single-forward');
         if (singleForwardButton) {
             handleSingleForward(singleForwardButton.dataset.messageId);
         }
     });
+
     window.addEventListener('hashchange', router);
     router();
 });
