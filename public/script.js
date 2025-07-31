@@ -249,25 +249,34 @@ async function renderProfilePage() {
                 }
             };
         } else {
-            document.getElementById('link-telegram-btn').onclick = () => {
-                if (!state.token) {
-                    showNotification('Erro: Token não encontrado. Faça login novamente.', 'error');
-                    return;
-                }
-                // --- AQUI ESTÁ A CORREÇÃO CRÍTICA ---
-                // Usamos encodeURIComponent para garantir que o token seja lido corretamente.
-                const safeToken = encodeURIComponent(state.token);
-                window.open(`https://t.me/ShiroyamaBot?start=${safeToken}`, '_blank');
+            document.getElementById('link-telegram-btn').onclick = (e) => {
+                const linkButton = e.target;
+                linkButton.disabled = true;
+
+                const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+                const linkCodeWithPrefix = `link_${randomCode}`;
                 
-                showNotification('Conclua o vínculo no seu Telegram.', 'info');
-                setTimeout(() => router(), 10000); // Verifica se o vínculo foi feito após 10s
+                apiCall('user/prepare-link-code', 'POST', { linkCode: linkCodeWithPrefix })
+                    .then(() => {
+                        window.open(`https://t.me/ShiroyamaBot?start=${linkCodeWithPrefix}`, '_blank');
+                        linkButton.textContent = 'Verifique seu Telegram!';
+                        showNotification('Conclua o vínculo no seu Telegram.', 'info');
+                        setTimeout(() => router(), 10000);
+                    })
+                    .catch(err => {
+                        console.error("Falha ao preparar o código no backend:", err);
+                        // AQUI ESTÁ A MUDANÇA PARA MOSTRAR O ERRO REAL
+                        showNotification(`Erro: ${err.message}`, 'error');
+                        linkButton.disabled = false;
+                        linkButton.textContent = 'Vincular com o Telegram'; // Restaura o texto do botão
+                    });
             };
             document.getElementById('why-link-q').onclick = (e) => {
                 e.preventDefault();
                 whyLinkModal.classList.add('show');
             };
         }
-
+        
         document.getElementById('password-form').onsubmit = async (e) => {
             e.preventDefault();
             const currentPassword = e.target['current-password'].value;
@@ -278,16 +287,14 @@ async function renderProfilePage() {
                 return;
             }
             try {
-                const data = await apiCall('auth/change-password', 'POST', {
-                    currentPassword,
-                    newPassword
-                });
+                const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword });
                 showNotification(data.message, 'success');
                 logout();
             } catch (error) {
                 showNotification(`Erro ao alterar a senha: ${error.message}`, 'error');
             }
         };
+
     } catch (error) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Erro ao carregar perfil</h2><p style="color: #ff5555;">${error.message}</p></div>`;
     }
@@ -311,10 +318,7 @@ async function renderAdminPage() {
                 const userId = btn.dataset.id;
                 const newRole = document.querySelector(`.role-select[data-id="${userId}"]`).value;
                 try {
-                    const result = await apiCall('admin/update-role', 'POST', {
-                        userId: parseInt(userId),
-                        newRole
-                    });
+                    const result = await apiCall('admin/update-role', 'POST', { userId: parseInt(userId), newRole });
                     showNotification(result.message, 'success');
                 } catch (error) {
                     showNotification(`Erro: ${error.message}`, 'error');
@@ -326,9 +330,7 @@ async function renderAdminPage() {
                 if (confirm('Tem certeza?')) {
                     const userId = btn.dataset.id;
                     try {
-                        const result = await apiCall('admin/delete-user', 'POST', {
-                            userId: parseInt(userId)
-                        });
+                        const result = await apiCall('admin/delete-user', 'POST', { userId: parseInt(userId) });
                         showNotification(result.message, 'success');
                         router();
                     } catch (error) {
