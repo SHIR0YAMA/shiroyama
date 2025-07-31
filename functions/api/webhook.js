@@ -2,29 +2,28 @@
 
 // --- FUNÇÕES AUXILIARES ---
 
-/**
- * Envia uma mensagem de texto simples para um chat do Telegram.
- * @param {object} env - As variáveis de ambiente (contém BOT_TOKEN).
- * @param {string|number} chatId - O ID do chat para onde enviar a mensagem.
- * @param {string} text - O texto a ser enviado.
- */
 async function sendMessage(env, chatId, text) {
     const url = `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`;
     await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text: text }),
+        body: JSON.stringify({ chat_id: chatId, text: text, parse_mode: 'Markdown' }),
     });
 }
 
 /**
  * Copia uma mensagem (arquivo) de um canal para um chat do Telegram.
- * @param {object} env - As variáveis de ambiente (contém BOT_TOKEN e CHANNEL_ID).
- * @param {string|number} chatId - O ID do chat de destino.
- * @param {string|number} fromChatId - O ID do chat de origem (seu canal).
- * @param {string|number} messageId - O ID da mensagem a ser copiada.
+ * A função agora reporta erros de volta para o usuário.
  */
 async function copyMessage(env, chatId, fromChatId, messageId) {
+    // --- MUDANÇA PRINCIPAL AQUI ---
+    // Verificação para garantir que fromChatId (CHANNEL_ID) foi fornecido.
+    if (!fromChatId) {
+        console.error("Erro Crítico: CHANNEL_ID não está configurado nas variáveis de ambiente.");
+        await sendMessage(env, chatId, "❌ *Erro de Configuração do Administrador:*\nO `CHANNEL_ID` de origem não foi definido no servidor.");
+        return; // Interrompe a execução
+    }
+
     const url = `https://api.telegram.org/bot${env.BOT_TOKEN}/copyMessage`;
     const response = await fetch(url, {
         method: 'POST',
@@ -35,10 +34,17 @@ async function copyMessage(env, chatId, fromChatId, messageId) {
             message_id: messageId,
         }),
     });
-    // Opcional: Log de erros caso a API do Telegram falhe.
+    
+    // Se a resposta da API do Telegram NÃO for 'ok' (sucesso)...
     if (!response.ok) {
         const errorResult = await response.json();
-        console.error(`Falha ao encaminhar a mensagem ${messageId} para o chat ${chatId}:`, errorResult.description);
+        const errorMessage = errorResult.description || 'Erro desconhecido da API do Telegram.';
+        
+        // Logamos o erro para o administrador ver nos logs da Cloudflare.
+        console.error(`Falha ao encaminhar a mensagem ${messageId} para o chat ${chatId}:`, errorMessage);
+        
+        // Enviamos uma mensagem clara de erro para o usuário final.
+        await sendMessage(env, chatId, `❌ *Ocorreu um erro ao tentar enviar o arquivo.*\n\n*Motivo:* ${errorMessage}`);
     }
 }
 
@@ -51,19 +57,15 @@ export async function onRequestPost(context) {
     try {
         const data = await request.json();
 
-        // Checamos se a atualização tem uma mensagem e se essa mensagem tem texto.
         if (data.message && data.message.text) {
             const message = data.message;
             const from = message.from;
             const chat_id = from.id;
 
-            // Lógica para o comando /start
             if (message.text.startsWith('/start')) {
                 const payload = message.text.split(' ')[1];
 
-                // Cenário 1: Payload existe. Pode ser um código de vínculo ou de arquivo.
                 if (payload) {
-                    // Cenário 1.1: O payload é para VINCULAR A CONTA de um usuário.
                     if (payload.startsWith('link_')) {
                         const findUserStmt = env.DB.prepare('SELECT id FROM users WHERE link_code = ?');
                         const user = await findUserStmt.bind(payload).first();
@@ -76,7 +78,6 @@ export async function onRequestPost(context) {
                             await sendMessage(env, chat_id, '❌ Código de vínculo inválido ou já utilizado. Por favor, gere um novo código no seu perfil do site.');
                         }
                     
-                    // Cenário 1.2: O payload é o ID de um ARQUIVO para ser enviado.
                     } else {
                         await sendMessage(env, chat_id, '⏳ Um momento, estou buscando seu arquivo...');
                         
@@ -84,32 +85,25 @@ export async function onRequestPost(context) {
                         const file = await fileStmt.bind(payload).first();
 
                         if (file) {
-                            // Encontramos o arquivo, agora vamos copiá-lo para o usuário.
+                            // A chamada agora usa a nossa função de depuração aprimorada.
+                            // Passamos o env.CHANNEL_ID explicitamente.
                             await copyMessage(env, chat_id, env.CHANNEL_ID, file.message_id);
-                            // Opcional: enviar mensagem de confirmação após o envio do arquivo.
-                            // await sendMessage(env, chat_id, '✅ Arquivo enviado!'); 
                         } else {
-                            // Não encontramos o arquivo no banco de dados.
                             await sendMessage(env, chat_id, '❌ Arquivo não encontrado. Ele pode ter sido removido ou o link é inválido.');
                         }
                     }
 
-                // Cenário 2: Comando /start simples, sem payload.
                 } else {
                     const welcomeText = `👋 Olá, ${from.first_name}!\n\nEste é o bot do seu Drive pessoal. Use o site para ver e gerenciar seus arquivos.`;
                     await sendMessage(env, chat_id, welcomeText);
                 }
-            } 
-            // Você pode adicionar mais `else if` aqui para outros comandos no futuro (ex: /help)
+            }
         }
         
-        // Responde OK para a API do Telegram para confirmar o recebimento do webhook.
         return new Response('OK', { status: 200 });
 
     } catch (error) {
-        // Em caso de um erro inesperado no nosso código, registramos no log.
         console.error("Erro no processamento do webhook:", error);
-        // Retornamos um erro 500 para indicar que algo falhou do nosso lado.
         return new Response('Erro interno do servidor.', { status: 500 });
     }
 }
