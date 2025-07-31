@@ -168,50 +168,66 @@ function renderFilesPage(path) {
     const fileCheckboxes = document.querySelectorAll('.file-checkbox');
     const bulkActionsContainer = document.getElementById('bulk-actions-container');
 
-    function updateBulkActions() {
-        const selected = Array.from(fileCheckboxes).filter(cb => cb.checked);
-        if (selected.length === 0) {
-            bulkActionsContainer.style.display = 'none';
-            return;
-        }
+    
+	function updateBulkActions() {
+		const selected = Array.from(document.querySelectorAll('.file-checkbox:checked'));
+		const bulkActionsContainer = document.getElementById('bulk-actions-container');
+		
+		if (selected.length === 0) {
+			bulkActionsContainer.style.display = 'none';
+			return;
+		}
 
-        bulkActionsContainer.style.display = 'flex';
-        bulkActionsContainer.style.gap = '10px';
-        bulkActionsContainer.innerHTML = '';
+		bulkActionsContainer.style.display = 'flex';
+		bulkActionsContainer.style.gap = '10px';
+		bulkActionsContainer.innerHTML = '';
 
-        const downloadBtn = document.createElement('button');
-        downloadBtn.textContent = `Receber ${selected.length} Arquivo(s)`;
-        downloadBtn.onclick = () => {
-            if (confirm(`Isso enviará ${selected.length} arquivos para o seu Telegram. Continuar?`)) {
-                selected.forEach(cb => {
-                    const botUsername = "ShiroyamaBot";
-                    const botLink = `https://t.me/${botUsername}?start=${cb.dataset.messageId}`;
-                    window.open(botLink, '_blank');
-                });
-            }
-        };
-        bulkActionsContainer.appendChild(downloadBtn);
+		const downloadBtn = document.createElement('button');
+		downloadBtn.textContent = `Receber ${selected.length} Arquivo(s)`;
+		downloadBtn.onclick = async () => {
+			// --- NOVA LÓGICA DE ENVIO ---
+			
+			// 1. Verifica se o usuário está logado
+			if (!state.token) {
+				alert("Você precisa estar logado para receber múltiplos arquivos.");
+				window.location.hash = '/login';
+				return;
+			}
 
-        if (state.role === 'admin' || state.role === 'owner') {
-            const moveBtn = document.createElement('button');
-            moveBtn.textContent = 'Mover Selecionados';
-            moveBtn.onclick = () => { alert('Funcionalidade de Mover em Massa (em construção)'); };
-            bulkActionsContainer.appendChild(moveBtn);
+			// 2. Pede o Chat ID do usuário
+			let userChatId = sessionStorage.getItem('userChatId');
+			if (!userChatId) {
+				userChatId = prompt("Para receber os arquivos, por favor, inicie uma conversa com o nosso bot (@ShiroyamaBot) e envie seu ID de usuário do Telegram aqui.\n\nVocê pode obter seu ID facilmente enviando /start para o bot @userinfobot.");
+				if (userChatId) {
+					sessionStorage.setItem('userChatId', userChatId);
+				} else {
+					alert("Operação cancelada.");
+					return;
+				}
+			}
+			
+			// 3. Coleta os IDs das mensagens e chama a nova API
+			const message_ids = selected.map(cb => parseInt(cb.dataset.messageId));
+			
+			try {
+				// Mostra um feedback imediato
+				downloadBtn.textContent = 'Enviando...';
+				downloadBtn.disabled = true;
 
-            const deleteBtn = document.createElement('button');
-            deleteBtn.textContent = 'Excluir Selecionados';
-            deleteBtn.onclick = () => { alert('Funcionalidade de Excluir em Massa (em construção)'); };
-            bulkActionsContainer.appendChild(deleteBtn);
-        }
-    }
+				const result = await apiCall('bulk-forward', 'POST', { message_ids, user_chat_id: parseInt(userChatId) });
+				alert("O bot começou a enviar os arquivos para você no Telegram!");
+			} catch (error) {
+				alert(`Ocorreu um erro: ${error.message}`);
+			} finally {
+				// Restaura o botão
+				downloadBtn.textContent = `Receber ${selected.length} Arquivo(s)`;
+				downloadBtn.disabled = false;
+			}
+		};
+		bulkActionsContainer.appendChild(downloadBtn);
 
-    selectAllCheckbox.onchange = (e) => {
-        fileCheckboxes.forEach(cb => cb.checked = e.target.checked);
-        updateBulkActions();
-    };
-
-    fileCheckboxes.forEach(cb => cb.onchange = updateBulkActions);
-}
+		// ... (lógica dos botões de admin continua a mesma)
+	}
 
 async function router() {
     renderNav();
