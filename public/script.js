@@ -193,52 +193,96 @@ function renderRegisterPage() {
     };
 }
 
-function renderProfilePage() {
-    mainContent.innerHTML = `
-        <div class="auth-form">
-            <h2>Meu Perfil</h2>
-            <p>Usuário: <strong>${state.username}</strong> | Cargo: <strong>${state.role}</strong></p>
-            <hr style="border-color: #6272a4; margin: 20px 0;">
-            <h3>Vincular Conta do Telegram</h3>
-            <div id="link-telegram-section">
-                <p>Vincule sua conta para receber múltiplos arquivos de uma vez.</p>
-                <button id="generate-link-code-btn">Gerar Código de Vinculação</button>
-                <div id="link-code-display" style="display:none; margin-top: 10px;">
-                    <p>Copie e envie o seguinte comando para o bot @ShiroyamaBot:</p>
-                    <code style="background: #282a36; padding: 5px 10px; border-radius: 3px; font-weight: bold; user-select: all;"></code>
+async function renderProfilePage() {
+    mainContent.innerHTML = `<div class="auth-form"><h2>Carregando perfil...</h2></div>`; // Estado de carregamento
+
+    try {
+        // 1. Busca os dados atualizados do usuário, incluindo o status de vínculo
+        const userData = await apiCall('user/status', 'GET');
+
+        // 2. Constrói o HTML do bloco de vínculo dinamicamente
+        let telegramSectionHTML = '';
+        if (userData.telegram_chat_id) {
+            // Se ESTÁ vinculado
+            telegramSectionHTML = `
+                <h3>Conta do Telegram Vinculada</h3>
+                <p>Sua conta está conectada ao chat ID: <strong>${userData.telegram_chat_id}</strong></p>
+                <button id="unlink-btn">Desvincular Conta</button>
+            `;
+        } else {
+            // Se NÃO ESTÁ vinculado
+            telegramSectionHTML = `
+                <h3>Vincular Conta do Telegram</h3>
+                <div id="link-telegram-section">
+                    <p>Vincule sua conta para receber múltiplos arquivos de uma vez.</p>
+                    <button id="generate-link-code-btn">Gerar Código de Vinculação</button>
+                    <div id="link-code-display" style="display:none; margin-top: 10px;">
+                        <p>Copie e envie o seguinte comando para o bot @ShiroyamaBot:</p>
+                        <code style="background: #282a36; padding: 5px 10px; border-radius: 3px; font-weight: bold; user-select: all;"></code>
+                    </div>
                 </div>
+            `;
+        }
+
+        // 3. Renderiza a página completa com a seção correta
+        mainContent.innerHTML = `
+            <div class="auth-form">
+                <h2>Meu Perfil</h2>
+                <p>Usuário: <strong>${userData.username}</strong> | Cargo: <strong>${userData.role}</strong></p>
+                <hr style="border-color: #6272a4; margin: 20px 0;">
+                ${telegramSectionHTML}
+                <hr style="border-color: #6272a4; margin: 20px 0;">
+                <h3>Alterar Senha</h3>
+                <form id="password-form">
+                    <div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div>
+                    <div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div>
+                    <div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div>
+                    <button type="submit">Salvar Nova Senha</button>
+                </form>
             </div>
-            <hr style="border-color: #6272a4; margin: 20px 0;">
-            <h3>Alterar Senha</h3>
-            <form id="password-form">
-                <div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div>
-                <div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div>
-                <div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div>
-                <button type="submit">Salvar Nova Senha</button>
-            </form>
-        </div>
-    `;
-    document.getElementById('generate-link-code-btn').onclick = async () => {
-        try {
-            const data = await apiCall('user/generate-link-code', 'POST');
-            const display = document.getElementById('link-code-display');
-            display.querySelector('code').textContent = `/start ${data.code}`; // --- ALTERAÇÃO AQUI: Mudado para /start ---
-            display.style.display = 'block';
-        } catch (error) { showNotification(`Erro ao gerar código: ${error.message}`, 'error'); }
-    };
-    document.getElementById('password-form').onsubmit = async (e) => {
-        e.preventDefault();
-        const currentPassword = e.target['current-password'].value;
-        const newPassword = e.target['new-password'].value;
-        const confirmPassword = e.target['confirm-password'].value;
-        if (newPassword !== confirmPassword) { showNotification("A nova senha e a confirmação não coincidem.", 'error'); return; }
-        try { 
-            const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword }); 
-            showNotification(data.message, 'success'); 
-            logout(); 
-        } 
-        catch (error) { showNotification(`Erro ao alterar a senha: ${error.message}`, 'error'); }
-    };
+        `;
+
+        // 4. Adiciona os event listeners corretos
+        if (userData.telegram_chat_id) {
+            document.getElementById('unlink-btn').onclick = async () => {
+                if (confirm('Tem certeza que deseja desvincular sua conta do Telegram?')) {
+                    try {
+                        const result = await apiCall('user/unlink-telegram', 'POST');
+                        showNotification(result.message, 'success');
+                        router(); // Re-renderiza a página para mostrar o botão de gerar código
+                    } catch (error) {
+                        showNotification(`Erro ao desvincular: ${error.message}`, 'error');
+                    }
+                }
+            };
+        } else {
+            document.getElementById('generate-link-code-btn').onclick = async () => {
+                try {
+                    const data = await apiCall('user/generate-link-code', 'POST');
+                    const display = document.getElementById('link-code-display');
+                    display.querySelector('code').textContent = `/start ${data.code}`;
+                    display.style.display = 'block';
+                } catch (error) { showNotification(`Erro ao gerar código: ${error.message}`, 'error'); }
+            };
+        }
+        
+        document.getElementById('password-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const currentPassword = e.target['current-password'].value;
+            const newPassword = e.target['new-password'].value;
+            const confirmPassword = e.target['confirm-password'].value;
+            if (newPassword !== confirmPassword) { showNotification("A nova senha e a confirmação não coincidem.", 'error'); return; }
+            try { 
+                const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword }); 
+                showNotification(data.message, 'success'); 
+                logout(); 
+            } 
+            catch (error) { showNotification(`Erro ao alterar a senha: ${error.message}`, 'error'); }
+        };
+
+    } catch (error) {
+        mainContent.innerHTML = `<div class="auth-form"><h2>Erro ao carregar perfil</h2><p style="color: #ff5555;">${error.message}</p></div>`;
+    }
 }
 
 async function renderAdminPage() {
