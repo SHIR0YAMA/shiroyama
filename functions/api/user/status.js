@@ -1,9 +1,6 @@
 // /functions/api/user/status.js
 
-// --- FUNÇÃO AUXILIAR PARA VERIFICAR TOKEN JWT ---
-// (Esta função será repetida, idealmente seria um middleware no futuro)
 async function verifyJwt(token, secret) {
-    // ... (Cole aqui a mesma função verifyJwt do arquivo anterior)
     try {
         const encoder = new TextEncoder();
         const [encodedHeader, encodedPayload, encodedSignature] = token.split('.');
@@ -21,7 +18,6 @@ async function verifyJwt(token, secret) {
     }
 }
 
-
 export async function onRequestGet(context) {
     const { request, env } = context;
     try {
@@ -30,7 +26,8 @@ export async function onRequestGet(context) {
         const token = authHeader.split(' ')[1];
         const payload = await verifyJwt(token, env.JWT_SECRET);
         
-        const stmt = env.DB.prepare('SELECT id, username, role, telegram_chat_id FROM users WHERE id = ?');
+        // ALTERAÇÃO AQUI: Buscamos também o telegram_username
+        const stmt = env.DB.prepare('SELECT id, username, role, telegram_chat_id, telegram_username FROM users WHERE id = ?');
         const user = await stmt.bind(payload.userId).first();
 
         if (!user) {
