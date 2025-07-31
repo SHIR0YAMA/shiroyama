@@ -29,7 +29,6 @@ export async function onRequestPost(context) {
         
         if (text.startsWith('/start')) {
             const payload = text.split(' ')[1];
-            
             if (payload && payload.startsWith('link_')) {
                 const findUserStmt = env.DB.prepare('SELECT id, username FROM users WHERE link_code = ?');
                 const userToLink = await findUserStmt.bind(payload).first();
@@ -49,11 +48,23 @@ export async function onRequestPost(context) {
                     ]]
                 };
                 await sendMessage(env, chat_id, successMessage, { reply_markup: replyMarkup });
-
             } else {
                 await sendMessage(env, chat_id, `👋 Olá, ${from_user.first_name}! Use o site para interagir.`);
             }
+        
+        } else if (text.startsWith('/unlink')) {
+            const findUserStmt = env.DB.prepare('SELECT id, username FROM users WHERE telegram_chat_id = ?');
+            const userToUnlink = await findUserStmt.bind(chat_id).first();
+
+            if (userToUnlink) {
+                const updateUserStmt = env.DB.prepare('UPDATE users SET telegram_chat_id = NULL, telegram_username = NULL WHERE id = ?');
+                await updateUserStmt.bind(userToUnlink.id).run();
+                await sendMessage(env, chat_id, `✅ Sua conta do Telegram foi desvinculada com sucesso do usuário \`${userToUnlink.username}\`.`);
+            } else {
+                await sendMessage(env, chat_id, 'ℹ️ Esta conta do Telegram não está vinculada a nenhum usuário no site.');
+            }
         }
+
         return new Response('OK');
     } catch (error) {
         console.error("Erro Crítico no Webhook:", error);
