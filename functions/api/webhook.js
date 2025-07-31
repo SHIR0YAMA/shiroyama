@@ -1,12 +1,26 @@
 // /functions/api/webhook.js
 
-async function sendMessage(env, chatId, text) { /* ... Cole a função sendMessage completa aqui ... */ }
+async function sendMessage(env, chatId, text, extra_params = {}) {
+    const url = `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`;
+    await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            chat_id: chatId,
+            text: text,
+            parse_mode: 'Markdown',
+            ...extra_params
+        }),
+    });
+}
 
 export async function onRequestPost(context) {
     const { request, env } = context;
     try {
         const data = await request.json();
-        if (!data.message || !data.message.text) return new Response('OK');
+        if (!data.message || !data.message.text) {
+            return new Response('OK', { status: 200 });
+        }
 
         const message = data.message;
         const chat_id = message.chat.id;
@@ -28,7 +42,14 @@ export async function onRequestPost(context) {
                 const updateUserStmt = env.DB.prepare('UPDATE users SET telegram_chat_id = ?, telegram_username = ?, link_code = NULL WHERE id = ?');
                 await updateUserStmt.bind(chat_id, from_user.username, userToLink.id).run();
                 
-                await sendMessage(env, chat_id, `✅ **Sucesso!** Sua conta do Telegram foi vinculada ao usuário \`${userToLink.username}\`.`);
+                const successMessage = `✅ **Sucesso!** Sua conta do Telegram foi vinculada ao usuário \`${userToLink.username}\`.`;
+                const replyMarkup = {
+                    inline_keyboard: [[
+                        { text: "⬅️ Voltar ao Site", url: `https://shiroyama.pages.dev/#/profile` }
+                    ]]
+                };
+                await sendMessage(env, chat_id, successMessage, { reply_markup: replyMarkup });
+
             } else {
                 await sendMessage(env, chat_id, `👋 Olá, ${from_user.first_name}! Use o site para interagir.`);
             }

@@ -24,6 +24,29 @@ function showNotification(message, type = 'info') {
     }, 4000);
 }
 
+let faviconInterval = null;
+const originalTitle = document.title;
+const faviconNormal = document.getElementById('favicon-normal');
+const faviconNotif = document.getElementById('favicon-notif');
+
+function startFaviconBlink() {
+    if (faviconInterval || !faviconNormal || !faviconNotif) return;
+    let isNotif = true;
+    faviconInterval = setInterval(() => {
+        faviconNormal.setAttribute('href', isNotif ? faviconNotif.href : faviconNormal.href);
+        document.title = isNotif ? "(!) " + originalTitle : originalTitle;
+        isNotif = !isNotif;
+    }, 800);
+}
+
+function stopFaviconBlink() {
+    if (!faviconInterval) return;
+    clearInterval(faviconInterval);
+    faviconInterval = null;
+    faviconNormal.setAttribute('href', faviconNormal.href);
+    document.title = originalTitle;
+}
+
 // --- 2. ESTADO GLOBAL DA APLICAÇÃO ---
 const state = {
     token: localStorage.getItem('jwtToken'),
@@ -252,7 +275,8 @@ async function renderProfilePage() {
             document.getElementById('link-telegram-btn').onclick = (e) => {
                 const linkButton = e.target;
                 linkButton.disabled = true;
-
+                linkButton.textContent = 'Gerando código...';
+                
                 const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
                 const linkCodeWithPrefix = `link_${randomCode}`;
                 
@@ -261,14 +285,14 @@ async function renderProfilePage() {
                         window.open(`https://t.me/ShiroyamaBot?start=${linkCodeWithPrefix}`, '_blank');
                         linkButton.textContent = 'Verifique seu Telegram!';
                         showNotification('Conclua o vínculo no seu Telegram.', 'info');
-                        setTimeout(() => router(), 10000);
+                        startFaviconBlink(); // Inicia o pisca-pisca
+                        setTimeout(() => router(), 15000); // Agenda a atualização
                     })
                     .catch(err => {
                         console.error("Falha ao preparar o código no backend:", err);
-                        // AQUI ESTÁ A MUDANÇA PARA MOSTRAR O ERRO REAL
                         showNotification(`Erro: ${err.message}`, 'error');
                         linkButton.disabled = false;
-                        linkButton.textContent = 'Vincular com o Telegram'; // Restaura o texto do botão
+                        linkButton.textContent = 'Vincular com o Telegram';
                     });
             };
             document.getElementById('why-link-q').onclick = (e) => {
@@ -501,6 +525,9 @@ async function router() {
 
 // --- 9. INICIALIZAÇÃO ---
 document.addEventListener('DOMContentLoaded', () => {
+    // Listener para parar de piscar o favicon quando o usuário volta para a aba
+    window.addEventListener('focus', stopFaviconBlink);
+
     document.getElementById('modal-close-btn').onclick = () => authModal.classList.remove('show');
     document.getElementById('modal-login-btn').onclick = () => window.location.hash = '/login';
     document.getElementById('modal-register-btn').onclick = () => window.location.hash = '/register';
