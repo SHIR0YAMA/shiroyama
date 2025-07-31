@@ -9,6 +9,28 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+// --- INÍCIO: FUNÇÃO ADICIONADA NA FASE 2 ---
+/**
+ * Exibe uma notificação flutuante (toast).
+ * @param {string} message - A mensagem para exibir.
+ * @param {'success'|'error'|'info'} type - O tipo de notificação.
+ */
+function showNotification(message, type = 'info') {
+    const container = document.getElementById('notification-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+
+    setTimeout(() => toast.classList.add('show'), 100);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        toast.addEventListener('transitionend', () => toast.remove());
+    }, 4000);
+}
+// --- FIM: FUNÇÃO ADICIONADA NA FASE 2 ---
+
+
 // --- 2. ESTADO GLOBAL DA APLICAÇÃO ---
 const state = {
     token: localStorage.getItem('jwtToken'),
@@ -21,6 +43,9 @@ const state = {
 // --- 3. ELEMENTOS DO DOM ---
 const mainContent = document.getElementById('main-content');
 const mainNav = document.getElementById('main-nav');
+// --- INÍCIO: ELEMENTOS ADICIONADOS NA FASE 2 ---
+const authModal = document.getElementById('authModal');
+// --- FIM: ELEMENTOS ADICIONADOS NA FASE 2 ---
 
 // --- 4. FUNÇÃO CENTRAL DE API ---
 async function apiCall(endpoint, method = 'GET', body = null) {
@@ -34,13 +59,22 @@ async function apiCall(endpoint, method = 'GET', body = null) {
             headers,
             body: body ? JSON.stringify(body) : null
         });
+        
+        // --- ALTERAÇÃO AQUI: Trata respostas que podem não ter corpo JSON (como 204 No Content) ---
+        if (response.status === 204) return null; 
+        
         const result = await response.json();
         if (!response.ok) {
+            // Se o token for inválido, desloga o usuário
+            if (response.status === 401 && endpoint !== 'auth/login') {
+                logout();
+            }
             throw new Error(result.message || response.statusText);
         }
         return result;
     } catch (error) {
         console.error(`API Error on ${endpoint}:`, error);
+        // Não mostra o alerta aqui para dar controle a quem chama a função
         throw error;
     }
 }
@@ -64,7 +98,10 @@ function login(token) {
 function logout() {
     state.token = null; state.username = null; state.role = null;
     localStorage.clear();
+    // Força a atualização da página para a home, limpando o estado
     window.location.hash = '/';
+    // Recarrega a página para garantir que tudo seja reinicializado
+    window.location.reload(); 
 }
 
 // --- 6. FUNÇÕES DE LÓGICA DE ARQUIVOS ---
@@ -94,6 +131,30 @@ function getContentForPath(path) {
     return currentLevel;
 }
 
+// --- INÍCIO: LÓGICA DE AÇÕES DE ARQUIVO ADICIONADA NA FASE 2 ---
+async function handleSingleForward(messageId) {
+    if (!state.token) {
+        authModal.classList.add('show');
+        return;
+    }
+    
+    showNotification('Enviando para o seu Telegram...', 'info');
+    try {
+        await apiCall('single-forward', 'POST', { message_id: parseInt(messageId) });
+        showNotification('✅ Arquivo enviado com sucesso!', 'success');
+    } catch (error) {
+        if (error.message.includes('não está vinculada')) {
+            showNotification('❌ Primeiro, vincule sua conta do Telegram no Perfil.', 'error');
+            // Atraso para dar tempo de ler a notificação
+            setTimeout(() => window.location.hash = '/profile', 2000);
+        } else {
+            showNotification(`❌ Erro: ${error.message}`, 'error');
+        }
+    }
+}
+// --- FIM: LÓGICA DE AÇÕES DE ARQUIVO ADICIONADA NA FASE 2 ---
+
+
 // --- 7. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
 function renderNav() {
     if (state.token) {
@@ -110,8 +171,12 @@ function renderLoginPage() {
     mainContent.innerHTML = `<form id="login-form" class="auth-form"><h2>Login</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required></div><button type="submit">Entrar</button></form>`;
     document.getElementById('login-form').onsubmit = async (e) => {
         e.preventDefault();
-        try { const data = await apiCall('auth/login', 'POST', { username: e.target.username.value, password: e.target.password.value }); login(data.token); window.location.hash = '/'; } 
-        catch (error) { alert(`Erro no login: ${error.message}`); }
+        try { 
+            const data = await apiCall('auth/login', 'POST', { username: e.target.username.value, password: e.target.password.value }); 
+            login(data.token); 
+            window.location.hash = '/'; 
+        } 
+        catch (error) { showNotification(`Erro no login: ${error.message}`, 'error'); }
     };
 }
 
@@ -119,8 +184,12 @@ function renderRegisterPage() {
     mainContent.innerHTML = `<form id="register-form" class="auth-form"><h2>Registrar Nova Conta</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required minlength="3"></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required minlength="6"></div><button type="submit">Registrar</button></form>`;
     document.getElementById('register-form').onsubmit = async (e) => {
         e.preventDefault();
-        try { const data = await apiCall('auth/register', 'POST', { username: e.target.username.value, password: e.target.password.value }); alert(data.message); window.location.hash = '/login'; } 
-        catch (error) { alert(`Erro no registro: ${error.message}`); }
+        try { 
+            const data = await apiCall('auth/register', 'POST', { username: e.target.username.value, password: e.target.password.value }); 
+            showNotification(data.message, 'success'); 
+            window.location.hash = '/login'; 
+        } 
+        catch (error) { showNotification(`Erro no registro: ${error.message}`, 'error'); }
     };
 }
 
@@ -153,18 +222,22 @@ function renderProfilePage() {
         try {
             const data = await apiCall('user/generate-link-code', 'POST');
             const display = document.getElementById('link-code-display');
-            display.querySelector('code').textContent = `/link ${data.code}`;
+            display.querySelector('code').textContent = `/start ${data.code}`; // --- ALTERAÇÃO AQUI: Mudado para /start ---
             display.style.display = 'block';
-        } catch (error) { alert(`Erro ao gerar código: ${error.message}`); }
+        } catch (error) { showNotification(`Erro ao gerar código: ${error.message}`, 'error'); }
     };
     document.getElementById('password-form').onsubmit = async (e) => {
         e.preventDefault();
         const currentPassword = e.target['current-password'].value;
         const newPassword = e.target['new-password'].value;
         const confirmPassword = e.target['confirm-password'].value;
-        if (newPassword !== confirmPassword) { alert("A nova senha e a confirmação não coincidem."); return; }
-        try { const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword }); alert(data.message); logout(); } 
-        catch (error) { alert(`Erro ao alterar a senha: ${error.message}`); }
+        if (newPassword !== confirmPassword) { showNotification("A nova senha e a confirmação não coincidem.", 'error'); return; }
+        try { 
+            const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword }); 
+            showNotification(data.message, 'success'); 
+            logout(); 
+        } 
+        catch (error) { showNotification(`Erro ao alterar a senha: ${error.message}`, 'error'); }
     };
 }
 
@@ -185,16 +258,23 @@ async function renderAdminPage() {
             btn.onclick = async () => {
                 const userId = btn.dataset.id;
                 const newRole = document.querySelector(`.role-select[data-id="${userId}"]`).value;
-                try { const result = await apiCall('admin/update-role', 'POST', { userId: parseInt(userId), newRole }); alert(result.message); } 
-                catch (error) { alert(`Erro: ${error.message}`); }
+                try { 
+                    const result = await apiCall('admin/update-role', 'POST', { userId: parseInt(userId), newRole }); 
+                    showNotification(result.message, 'success'); 
+                } 
+                catch (error) { showNotification(`Erro: ${error.message}`, 'error'); }
             };
         });
         document.querySelectorAll('.delete-user-btn').forEach(btn => {
             btn.onclick = async () => {
                 if (confirm('Tem certeza?')) {
                     const userId = btn.dataset.id;
-                    try { const result = await apiCall('admin/delete-user', 'POST', { userId: parseInt(userId) }); alert(result.message); router(); } 
-                    catch (error) { alert(`Erro: ${error.message}`); }
+                    try { 
+                        const result = await apiCall('admin/delete-user', 'POST', { userId: parseInt(userId) }); 
+                        showNotification(result.message, 'success'); 
+                        router(); 
+                    } 
+                    catch (error) { showNotification(`Erro: ${error.message}`, 'error'); }
                 }
             };
         });
@@ -207,8 +287,8 @@ function renderFilesPage(path) {
     mainContent.innerHTML = `
         <div class="navigation-controls"> <button id="back-button" class="nav-button" title="Voltar">←</button> <button id="forward-button" class="nav-button" title="Avançar">→</button> </div>
         <div id="breadcrumb" style="margin-top: 15px;"></div>
-        <div id="bulk-actions-container" style="display: none; margin-bottom: 15px; padding: 10px; background-color: #3b3e50; border-radius: 5px; border: 1px solid #6272a4;"></div>
-        <table class="file-table"> <thead><tr><th style="width: 1%;"><input type="checkbox" id="select-all-checkbox"></th><th>Nome</th><th class="size-col">Tamanho</th><th class="download-col"></th></tr></thead> <tbody id="file-list-body"></tbody> </table>
+        <div id="bulk-actions-container"></div>
+        <table class="file-table"> <thead><tr><th style="width: 1%;"><input type="checkbox" id="select-all-checkbox"></th><th>Nome</th><th class="size-col">Tamanho</th><th class="download-col">Ações</th></tr></thead> <tbody id="file-list-body"></tbody> </table>
     `;
     
     document.getElementById('back-button').onclick = () => window.history.back();
@@ -237,7 +317,17 @@ function renderFilesPage(path) {
     items.forEach(([name, item]) => {
         const tr = document.createElement('tr');
         if (item._isFile) {
-            tr.innerHTML = `<td><input type="checkbox" class="file-checkbox" data-message-id="${item.message_id}" data-key="${item.name}"></td> <td class="file-item-name"><span>📄</span> <span>${name}</span></td> <td class="size-col">${formatFileSize(item.file_size)}</td> <td class="download-col"><a href="https://t.me/ShiroyamaBot?start=${item.message_id}" target="_blank" rel="noopener noreferrer">Receber no Telegram</a></td>`;
+            // --- INÍCIO: ALTERAÇÃO CRÍTICA NA FASE 2 ---
+            // Substituímos o link direto por um botão que chama nossa função JS
+            tr.innerHTML = `
+                <td><input type="checkbox" class="file-checkbox" data-message-id="${item.message_id}" data-key="${item.name}"></td>
+                <td class="file-item-name"><span>📄</span> <span>${name}</span></td>
+                <td class="size-col">${formatFileSize(item.file_size)}</td>
+                <td class="download-col">
+                    <button class="btn-single-forward" data-message-id="${item.message_id}" title="Receber no Telegram">Receber</button>
+                </td>
+            `;
+            // --- FIM: ALTERAÇÃO CRÍTICA NA FASE 2 ---
         } else {
             tr.innerHTML = `<td colspan="4"><a href="#/${[...path, name].map(encodeURIComponent).join('/')}" class="file-item-name"><span>📁</span> <span>${name}</span></a></td>`;
         }
@@ -254,26 +344,22 @@ function renderFilesPage(path) {
         bulkActionsContainer.style.display = 'flex'; bulkActionsContainer.style.gap = '10px';
         bulkActionsContainer.innerHTML = '';
         
-        const downloadBtn = document.createElement('button');
-        downloadBtn.textContent = `Receber ${selected.length} Arquivo(s)`;
-        downloadBtn.onclick = async () => {
-            if (!state.token) { alert("Você precisa estar logado para usar esta função."); window.location.hash = '/login'; return; }
+        const forwardBtn = document.createElement('button');
+        forwardBtn.textContent = `Receber ${selected.length} Arquivo(s)`;
+        forwardBtn.onclick = async () => {
+            if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
             const message_ids = selected.map(cb => parseInt(cb.dataset.messageId));
             try {
-                downloadBtn.textContent = 'Enviando...'; downloadBtn.disabled = true;
+                forwardBtn.textContent = 'Enviando...'; forwardBtn.disabled = true;
                 await apiCall('bulk-forward', 'POST', { message_ids });
-                alert("O bot começou a enviar os arquivos! Verifique seu Telegram.");
+                showNotification("O bot começou a enviar os arquivos! Verifique seu Telegram.", 'success');
             } catch (error) {
-                alert(`Ocorreu um erro: ${error.message}`);
+                showNotification(`Ocorreu um erro: ${error.message}`, 'error');
             } finally {
-                downloadBtn.textContent = `Receber ${selected.length} Arquivo(s)`; downloadBtn.disabled = false;
+                forwardBtn.textContent = `Receber ${selected.length} Arquivo(s)`; forwardBtn.disabled = false;
             }
         };
-        bulkActionsContainer.appendChild(downloadBtn);
-
-        if (state.role === 'admin' || state.role === 'owner') {
-             // Futuros botões de admin em massa (Mover, Deletar)
-        }
+        bulkActionsContainer.appendChild(forwardBtn);
     }
     selectAllCheckbox.onchange = (e) => { fileCheckboxes.forEach(cb => cb.checked = e.target.checked); updateBulkActions(); };
     fileCheckboxes.forEach(cb => cb.onchange = updateBulkActions);
@@ -291,15 +377,17 @@ async function router() {
         return;
     }
 
-    if (route === 'home' || route === '' || route === 'admin') {
-        if (!state.allFiles.length) {
-            try {
-                const data = await apiCall(`files?t=${new Date().getTime()}`, 'GET');
-                state.allFiles = data.files || [];
-                state.fileTree = buildFileTree(state.allFiles);
-            } catch (error) {
-                console.error("Não foi possível carregar a lista de arquivos.", error);
-            }
+    // --- ALTERAÇÃO AQUI: Garante que os arquivos sejam carregados apenas uma vez ou se o usuário fizer login ---
+    if (!state.fileTree.length && state.token) {
+        try {
+            const data = await apiCall(`files?t=${new Date().getTime()}`, 'GET');
+            state.allFiles = data.files || [];
+            state.fileTree = buildFileTree(state.allFiles);
+        } catch (error) {
+            console.error("Não foi possível carregar a lista de arquivos.", error);
+            showNotification("Sessão expirada ou erro ao carregar arquivos. Faça login novamente.", 'error');
+            logout();
+            return; // Interrompe o roteamento se os arquivos não puderem ser carregados
         }
     }
 
@@ -308,15 +396,38 @@ async function router() {
         case 'register': renderRegisterPage(); break;
         case 'admin':
             if (state.role === 'owner' || state.role === 'admin') { renderAdminPage(); } 
-            else { alert("Acesso negado."); window.location.hash = '/'; }
+            else { showNotification("Acesso negado.", 'error'); window.location.hash = '/'; }
             break;
         case 'profile': renderProfilePage(); break;
-        default: renderFilesPage(path); break;
+        default: 
+            if (state.token) {
+                renderFilesPage(path);
+            } else {
+                // Se não há token, vai para a página de login
+                window.location.hash = '/login';
+            }
+            break;
     }
 }
 
 // --- 9. INICIALIZAÇÃO ---
 document.addEventListener('DOMContentLoaded', () => {
+    // --- INÍCIO: EVENT LISTENERS ADICIONADOS NA FASE 2 ---
+    // Listeners para o Modal
+    document.getElementById('modal-close-btn').onclick = () => authModal.classList.remove('show');
+    document.getElementById('modal-login-btn').onclick = () => window.location.hash = '/login';
+    document.getElementById('modal-register-btn').onclick = () => window.location.hash = '/register';
+    authModal.onclick = (e) => { if (e.target === authModal) authModal.classList.remove('show'); };
+    
+    // Delegação de evento para cliques nos botões de arquivo
+    mainContent.addEventListener('click', (e) => {
+        const singleForwardButton = e.target.closest('.btn-single-forward');
+        if (singleForwardButton) {
+            handleSingleForward(singleForwardButton.dataset.messageId);
+        }
+    });
+    // --- FIM: EVENT LISTENERS ADICIONADOS NA FASE 2 ---
+
     window.addEventListener('hashchange', router);
     router(); // Chama o roteador pela primeira vez para carregar a página correta
 });
