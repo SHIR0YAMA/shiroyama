@@ -27,10 +27,22 @@
         .form-group label { display: block; margin-bottom: 5px; }
         .form-group input { width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #6272a4; background-color: #282a36; color: #f8f8f2; box-sizing: border-box; font-size: 16px; }
         
+        /* Contêiner para ações em massa */
+        #bulk-actions-container { 
+            display: none; /* Começa escondido */
+            margin-bottom: 15px; 
+            padding: 10px; 
+            background-color: #3b3e50; 
+            border-radius: 5px;
+            border: 1px solid #6272a4;
+        }
+
         .file-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        .file-table th { text-align: left; padding: 12px 15px; border-bottom: 2px solid #6272a4; color: #50fa7b; }
+        .file-table th, .file-table td { padding: 12px 15px; border-bottom: 1px solid #3b3e50; }
+        .file-table th { text-align: left; border-bottom: 2px solid #6272a4; color: #50fa7b; }
         .size-col, .download-col, .actions-col { text-align: right; }
-        .file-table td { padding: 12px 15px; border-bottom: 1px solid #3b3e50; word-break: break-all; }
+        .file-table td { word-break: break-all; }
+        .file-table tr:last-child td { border-bottom: none; }
         .file-table tr:hover { background-color: #3b3e50; }
         .file-item-name { display: flex; align-items: center; gap: 10px; }
         .admin-actions button { margin-left: 10px; padding: 5px 10px; font-size: 12px; }
