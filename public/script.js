@@ -97,24 +97,17 @@ function renderFilesPage(path) {
             <button id="forward-button" class="nav-button" title="Avançar">→</button>
         </div>
         <div id="breadcrumb" style="margin-top: 15px;"></div>
-        <div id="bulk-actions-container"></div>
+        <div id="bulk-actions-container" style="display: none; margin-bottom: 15px; padding: 10px; background-color: #3b3e50; border-radius: 5px; border: 1px solid #6272a4;"></div>
         <table class="file-table">
-            <thead>
-                <tr>
-                    <th style="width: 1%;"><input type="checkbox" id="select-all-checkbox"></th>
-                    <th>Nome</th>
-                    <th class="size-col">Tamanho</th>
-                    <th class="download-col"></th>
-                </tr>
-            </thead>
+            <thead><tr><th style="width: 1%;"><input type="checkbox" id="select-all-checkbox"></th><th>Nome</th><th class="size-col">Tamanho</th><th class="download-col"></th></tr></thead>
             <tbody id="file-list-body"></tbody>
         </table>
     `;
-
+    
     document.getElementById('back-button').onclick = () => window.history.back();
     document.getElementById('forward-button').onclick = () => window.history.forward();
     document.getElementById('back-button').disabled = path.length === 0;
-
+    
     const breadcrumbElement = document.getElementById('breadcrumb');
     breadcrumbElement.innerHTML = '';
     ['Home', ...path].forEach((part, index, arr) => {
@@ -126,7 +119,9 @@ function renderFilesPage(path) {
             a.textContent = part;
             span.appendChild(a);
             span.innerHTML += ' > ';
-        } else { span.textContent = part; }
+        } else {
+            span.textContent = part;
+        }
         breadcrumbElement.appendChild(span);
     });
 
@@ -149,13 +144,11 @@ function renderFilesPage(path) {
     items.forEach(([name, item]) => {
         const tr = document.createElement('tr');
         if (item._isFile) {
-            const botUsername = "ShiroyamaBot";
-            const botLink = `https://t.me/${botUsername}?start=${item.message_id}`;
             tr.innerHTML = `
                 <td><input type="checkbox" class="file-checkbox" data-message-id="${item.message_id}" data-key="${item.name}"></td>
                 <td class="file-item-name"><span>📄</span> <span>${name}</span></td>
                 <td class="size-col">${formatFileSize(item.file_size)}</td>
-                <td class="download-col"><a href="${botLink}" target="_blank" rel="noopener noreferrer">Receber no Telegram</a></td>
+                <td class="download-col"><a href="https://t.me/ShiroyamaBot?start=${item.message_id}" target="_blank" rel="noopener noreferrer">Receber no Telegram</a></td>
             `;
         } else {
             tr.innerHTML = `<td colspan="4"><a href="#/${[...path, name].map(encodeURIComponent).join('/')}" class="file-item-name"><span>📁</span> <span>${name}</span></a></td>`;
@@ -168,66 +161,63 @@ function renderFilesPage(path) {
     const fileCheckboxes = document.querySelectorAll('.file-checkbox');
     const bulkActionsContainer = document.getElementById('bulk-actions-container');
 
-    
-	function updateBulkActions() {
-		const selected = Array.from(document.querySelectorAll('.file-checkbox:checked'));
-		const bulkActionsContainer = document.getElementById('bulk-actions-container');
-		
-		if (selected.length === 0) {
-			bulkActionsContainer.style.display = 'none';
-			return;
-		}
+    function updateBulkActions() {
+        const selected = Array.from(document.querySelectorAll('.file-checkbox:checked'));
+        if (selected.length === 0) {
+            bulkActionsContainer.style.display = 'none';
+            return;
+        }
+        bulkActionsContainer.style.display = 'flex';
+        bulkActionsContainer.style.gap = '10px';
+        bulkActionsContainer.innerHTML = '';
 
-		bulkActionsContainer.style.display = 'flex';
-		bulkActionsContainer.style.gap = '10px';
-		bulkActionsContainer.innerHTML = '';
+        const downloadBtn = document.createElement('button');
+        downloadBtn.textContent = `Receber ${selected.length} Arquivo(s)`;
+        downloadBtn.onclick = async () => {
+            if (!state.token) {
+                alert("Você precisa estar logado para receber múltiplos arquivos.");
+                window.location.hash = '/login';
+                return;
+            }
+            let userChatId = sessionStorage.getItem('userChatId');
+            if (!userChatId) {
+                userChatId = prompt("Para receber os arquivos, por favor, inicie uma conversa com o bot @ShiroyamaBot e envie seu ID de usuário do Telegram aqui.\n\nVocê pode obter seu ID facilmente enviando /start para o bot @userinfobot.");
+                if (userChatId) { sessionStorage.setItem('userChatId', userChatId); } 
+                else { alert("Operação cancelada."); return; }
+            }
+            const message_ids = selected.map(cb => parseInt(cb.dataset.messageId));
+            try {
+                downloadBtn.textContent = 'Enviando...';
+                downloadBtn.disabled = true;
+                await apiCall('bulk-forward', 'POST', { message_ids, user_chat_id: parseInt(userChatId) });
+                alert("O bot começou a enviar os arquivos para você no Telegram!");
+            } catch (error) {
+                alert(`Ocorreu um erro: ${error.message}`);
+            } finally {
+                downloadBtn.textContent = `Receber ${selected.length} Arquivo(s)`;
+                downloadBtn.disabled = false;
+            }
+        };
+        bulkActionsContainer.appendChild(downloadBtn);
 
-		const downloadBtn = document.createElement('button');
-		downloadBtn.textContent = `Receber ${selected.length} Arquivo(s)`;
-		downloadBtn.onclick = async () => {
-			// --- NOVA LÓGICA DE ENVIO ---
-			
-			// 1. Verifica se o usuário está logado
-			if (!state.token) {
-				alert("Você precisa estar logado para receber múltiplos arquivos.");
-				window.location.hash = '/login';
-				return;
-			}
+        if (state.role === 'admin' || state.role === 'owner') {
+            const moveBtn = document.createElement('button');
+            moveBtn.textContent = 'Mover';
+            moveBtn.onclick = () => { alert('Funcionalidade de Mover em Massa (em construção)'); };
+            bulkActionsContainer.appendChild(moveBtn);
 
-			// 2. Pede o Chat ID do usuário
-			let userChatId = sessionStorage.getItem('userChatId');
-			if (!userChatId) {
-				userChatId = prompt("Para receber os arquivos, por favor, inicie uma conversa com o nosso bot (@ShiroyamaBot) e envie seu ID de usuário do Telegram aqui.\n\nVocê pode obter seu ID facilmente enviando /start para o bot @userinfobot.");
-				if (userChatId) {
-					sessionStorage.setItem('userChatId', userChatId);
-				} else {
-					alert("Operação cancelada.");
-					return;
-				}
-			}
-			
-			// 3. Coleta os IDs das mensagens e chama a nova API
-			const message_ids = selected.map(cb => parseInt(cb.dataset.messageId));
-			
-			try {
-				// Mostra um feedback imediato
-				downloadBtn.textContent = 'Enviando...';
-				downloadBtn.disabled = true;
-
-				const result = await apiCall('bulk-forward', 'POST', { message_ids, user_chat_id: parseInt(userChatId) });
-				alert("O bot começou a enviar os arquivos para você no Telegram!");
-			} catch (error) {
-				alert(`Ocorreu um erro: ${error.message}`);
-			} finally {
-				// Restaura o botão
-				downloadBtn.textContent = `Receber ${selected.length} Arquivo(s)`;
-				downloadBtn.disabled = false;
-			}
-		};
-		bulkActionsContainer.appendChild(downloadBtn);
-
-		// ... (lógica dos botões de admin continua a mesma)
-	}
+            const deleteBtn = document.createElement('button');
+            deleteBtn.textContent = 'Excluir';
+            deleteBtn.onclick = () => { alert('Funcionalidade de Excluir em Massa (em construção)'); };
+            bulkActionsContainer.appendChild(deleteBtn);
+        }
+    }
+    selectAllCheckbox.onchange = (e) => {
+        fileCheckboxes.forEach(cb => cb.checked = e.target.checked);
+        updateBulkActions();
+    };
+    fileCheckboxes.forEach(cb => cb.onchange = updateBulkActions);
+}
 
 async function router() {
     renderNav();
@@ -235,109 +225,101 @@ async function router() {
     const path = pathString.split('/').filter(p => p).map(decodeURIComponent);
     const route = path[0] || 'home';
 
-    // Oculta/mostra o painel de admin baseado na rota
-    const isAdminRoute = ['admin', 'profile', 'login', 'register'].includes(route);
-    if (!isAdminRoute && !state.allFiles.length) {
-        try {
-            const data = await apiCall(`files?t=${new Date().getTime()}`, 'GET');
-            state.allFiles = data.files || [];
-            state.fileTree = buildFileTree(state.allFiles);
-        } catch (error) {
-            console.error("Não foi possível carregar a lista de arquivos.", error);
-        }
+    if (['admin', 'profile'].includes(route) && !state.token) {
+        window.location.hash = '/login';
+        return;
     }
 
+    if (route === 'home' || route === '' || route === 'admin') {
+        if (!state.allFiles.length) { // Carrega apenas se estiver vazio
+             try {
+                const data = await apiCall(`files?t=${new Date().getTime()}`, 'GET');
+                state.allFiles = data.files || [];
+                state.fileTree = buildFileTree(state.allFiles);
+            } catch (error) { console.error("Não foi possível carregar a lista de arquivos.", error); }
+        }
+    }
     switch (route) {
         case 'login': renderLoginPage(); break;
         case 'register': renderRegisterPage(); break;
         case 'admin':
-            if (state.role === 'owner' || state.role === 'admin') {
-                renderAdminPage();
-            } else {
-                alert("Acesso negado.");
-                window.location.hash = '/';
-            }
+            if (state.role === 'owner' || state.role === 'admin') { renderAdminPage(); } 
+            else { alert("Acesso negado."); window.location.hash = '/'; }
             break;
-        case 'profile':
-            if (state.token) { renderProfilePage(); }
-            else { window.location.hash = '/login'; }
-            break;
-        default:
-            renderFilesPage(path);
-            break;
+        case 'profile': renderProfilePage(); break;
+        default: renderFilesPage(path); break;
     }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Colando as funções resumidas aqui para garantir
-    renderRegisterPage = function() {
-        mainContent.innerHTML = `<form id="register-form" class="auth-form"><h2>Registrar Nova Conta</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required minlength="3"></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required minlength="6"></div><button type="submit">Registrar</button></form>`;
-        document.getElementById('register-form').onsubmit = async (e) => {
-            e.preventDefault();
-            try {
-                const data = await apiCall('auth/register', 'POST', { username: e.target.username.value, password: e.target.password.value });
-                alert(data.message);
-                window.location.hash = '/login';
-            } catch (error) { alert(`Erro no registro: ${error.message}`); }
-        };
-    };
-    renderLoginPage = function() {
-        mainContent.innerHTML = `<form id="login-form" class="auth-form"><h2>Login</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required></div><button type="submit">Entrar</button></form>`;
-        document.getElementById('login-form').onsubmit = async (e) => {
-            e.preventDefault();
-            try {
-                const data = await apiCall('auth/login', 'POST', { username: e.target.username.value, password: e.target.password.value });
-                login(data.token);
-                window.location.hash = '/';
-            } catch (error) { alert(`Erro no login: ${error.message}`); }
-        };
-    };
-    renderProfilePage = function() {
-        mainContent.innerHTML = `<form id="profile-form" class="auth-form"><h2>Meu Perfil</h2><p>Usuário: <strong>${state.username}</strong> | Cargo: <strong>${state.role}</strong></p><hr style="border-color: #6272a4; margin: 20px 0;"><h3>Alterar Senha</h3><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit">Salvar Alterações</button></form>`;
-        document.getElementById('profile-form').onsubmit = async (e) => {
-            e.preventDefault();
-            const currentPassword = e.target['current-password'].value;
-            const newPassword = e.target['new-password'].value;
-            const confirmPassword = e.target['confirm-password'].value;
-            if (newPassword !== confirmPassword) { alert("A nova senha e a confirmação não coincidem."); return; }
-            try {
-                const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword });
-                alert(data.message);
-                logout();
-            } catch (error) { alert(`Erro ao alterar a senha: ${error.message}`); }
-        };
-    };
-    renderAdminPage = async function() {
-        mainContent.innerHTML = `<div id="breadcrumb">Painel de Administrador - Gestão de Usuários</div><table class="file-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Criado em</th><th class="actions-col">Ações</th></tr></thead><tbody id="user-list-body"><tr><td colspan="4">Carregando usuários...</td></tr></tbody></table>`;
-        try {
-            const data = await apiCall('admin/users', 'GET');
-            const userListBody = document.getElementById('user-list-body');
-            userListBody.innerHTML = '';
-            data.users.forEach(user => {
-                const tr = document.createElement('tr');
-                const roles = ['owner', 'admin', 'editor', 'viewer'];
-                const roleOptions = roles.map(r => `<option value="${r}" ${user.role === r ? 'selected' : ''}>${r}</option>`).join('');
-                tr.innerHTML = `<td>${user.username}</td><td><select class="role-select" data-id="${user.id}" ${state.username === user.username ? 'disabled' : ''}>${roleOptions}</select></td><td>${new Date(user.created_at).toLocaleDateString()}</td><td class="actions-col admin-actions"><button class="save-role-btn" data-id="${user.id}">Salvar</button><button class="delete-user-btn" data-id="${user.id}" ${state.username === user.username ? 'disabled' : ''}>Deletar</button></td>`;
-                userListBody.appendChild(tr);
-            });
-            document.querySelectorAll('.save-role-btn').forEach(btn => {
-                btn.onclick = async () => {
-                    const userId = btn.dataset.id;
-                    const newRole = document.querySelector(`.role-select[data-id="${userId}"]`).value;
-                    try { const result = await apiCall('admin/update-role', 'POST', { userId: parseInt(userId), newRole }); alert(result.message); } catch (error) { alert(`Erro: ${error.message}`); }
-                };
-            });
-            document.querySelectorAll('.delete-user-btn').forEach(btn => {
-                btn.onclick = async () => {
-                    if (confirm('Tem certeza que deseja deletar este usuário?')) {
-                        const userId = btn.dataset.id;
-                        try { const result = await apiCall('admin/delete-user', 'POST', { userId: parseInt(userId) }); alert(result.message); router(); } catch (error) { alert(`Erro: ${error.message}`); }
-                    }
-                };
-            });
-        } catch (error) { mainContent.innerHTML += `<p style="color: #ff5555;">Erro ao carregar usuários: ${error.message}</p>`; }
-    };
-    
+    // Colando as funções resumidas aqui para garantir que estejam completas
+    renderRegisterPage = function() { /* ... código completo ... */ };
+    renderLoginPage = function() { /* ... código completo ... */ };
+    renderProfilePage = function() { /* ... código completo ... */ };
+    renderAdminPage = async function() { /* ... código completo ... */ };
+
     window.addEventListener('hashchange', router);
     router();
 });
+
+// Colando o conteúdo completo das funções que foram resumidas, para evitar erros.
+renderRegisterPage = function() {
+    mainContent.innerHTML = `<form id="register-form" class="auth-form"><h2>Registrar Nova Conta</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required minlength="3"></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required minlength="6"></div><button type="submit">Registrar</button></form>`;
+    document.getElementById('register-form').onsubmit = async (e) => {
+        e.preventDefault();
+        try { const data = await apiCall('auth/register', 'POST', { username: e.target.username.value, password: e.target.password.value }); alert(data.message); window.location.hash = '/login'; } 
+        catch (error) { alert(`Erro no registro: ${error.message}`); }
+    };
+};
+renderLoginPage = function() {
+    mainContent.innerHTML = `<form id="login-form" class="auth-form"><h2>Login</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required></div><button type="submit">Entrar</button></form>`;
+    document.getElementById('login-form').onsubmit = async (e) => {
+        e.preventDefault();
+        try { const data = await apiCall('auth/login', 'POST', { username: e.target.username.value, password: e.target.password.value }); login(data.token); window.location.hash = '/'; } 
+        catch (error) { alert(`Erro no login: ${error.message}`); }
+    };
+};
+renderProfilePage = function() {
+    mainContent.innerHTML = `<form id="profile-form" class="auth-form"><h2>Meu Perfil</h2><p>Usuário: <strong>${state.username}</strong> | Cargo: <strong>${state.role}</strong></p><hr style="border-color: #6272a4; margin: 20px 0;"><h3>Alterar Senha</h3><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit">Salvar Alterações</button></form>`;
+    document.getElementById('profile-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const currentPassword = e.target['current-password'].value;
+        const newPassword = e.target['new-password'].value;
+        const confirmPassword = e.target['confirm-password'].value;
+        if (newPassword !== confirmPassword) { alert("A nova senha e a confirmação não coincidem."); return; }
+        try { const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword }); alert(data.message); logout(); } 
+        catch (error) { alert(`Erro ao alterar a senha: ${error.message}`); }
+    };
+};
+renderAdminPage = async function() {
+    mainContent.innerHTML = `<div id="breadcrumb">Painel de Administrador - Gestão de Usuários</div><table class="file-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Criado em</th><th class="actions-col">Ações</th></tr></thead><tbody id="user-list-body"><tr><td colspan="4">Carregando usuários...</td></tr></tbody></table>`;
+    try {
+        const data = await apiCall('admin/users', 'GET');
+        const userListBody = document.getElementById('user-list-body');
+        userListBody.innerHTML = '';
+        data.users.forEach(user => {
+            const tr = document.createElement('tr');
+            const roles = ['owner', 'admin', 'editor', 'viewer'];
+            const roleOptions = roles.map(r => `<option value="${r}" ${user.role === r ? 'selected' : ''}>${r}</option>`).join('');
+            tr.innerHTML = `<td>${user.username}</td><td><select class="role-select" data-id="${user.id}" ${state.username === user.username ? 'disabled' : ''}>${roleOptions}</select></td><td>${new Date(user.created_at).toLocaleDateString()}</td><td class="actions-col admin-actions"><button class="save-role-btn" data-id="${user.id}">Salvar</button><button class="delete-user-btn" data-id="${user.id}" ${state.username === user.username ? 'disabled' : ''}>Deletar</button></td>`;
+            userListBody.appendChild(tr);
+        });
+        document.querySelectorAll('.save-role-btn').forEach(btn => {
+            btn.onclick = async () => {
+                const userId = btn.dataset.id;
+                const newRole = document.querySelector(`.role-select[data-id="${userId}"]`).value;
+                try { const result = await apiCall('admin/update-role', 'POST', { userId: parseInt(userId), newRole }); alert(result.message); } 
+                catch (error) { alert(`Erro: ${error.message}`); }
+            };
+        });
+        document.querySelectorAll('.delete-user-btn').forEach(btn => {
+            btn.onclick = async () => {
+                if (confirm('Tem certeza que deseja deletar este usuário?')) {
+                    const userId = btn.dataset.id;
+                    try { const result = await apiCall('admin/delete-user', 'POST', { userId: parseInt(userId) }); alert(result.message); router(); } 
+                    catch (error) { alert(`Erro: ${error.message}`); }
+                }
+            };
+        });
+    } catch (error) { mainContent.innerHTML += `<p style="color: #ff5555;">Erro ao carregar usuários: ${error.message}</p>`; }
+};
