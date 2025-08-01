@@ -193,7 +193,20 @@ function renderNav() {
 }
 
 function renderLoginPage() {
-    mainContent.innerHTML = `<form id="login-form" class="auth-form"><h2>Login</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required></div><button type="submit">Entrar</button></form>`;
+    mainContent.innerHTML = `
+        <form id="login-form" class="auth-form">
+            <h2>Login</h2>
+            <div class="form-group">
+                <label for="username">Nome de Usuário</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Senha</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit">Entrar</button>
+        </form>
+    `;
     document.getElementById('login-form').onsubmit = async (e) => {
         e.preventDefault();
         try {
@@ -210,7 +223,20 @@ function renderLoginPage() {
 }
 
 function renderRegisterPage() {
-    mainContent.innerHTML = `<form id="register-form" class="auth-form"><h2>Registrar Nova Conta</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required minlength="3"></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required minlength="6"></div><button type="submit">Registrar</button></form>`;
+    mainContent.innerHTML = `
+        <form id="register-form" class="auth-form">
+            <h2>Registrar Nova Conta</h2>
+            <div class="form-group">
+                <label for="username">Nome de Usuário</label>
+                <input type="text" id="username" name="username" required minlength="3">
+            </div>
+            <div class="form-group">
+                <label for="password">Senha</label>
+                <input type="password" id="password" name="password" required minlength="6">
+            </div>
+            <button type="submit">Registrar</button>
+        </form>
+    `;
     document.getElementById('register-form').onsubmit = async (e) => {
         e.preventDefault();
         try {
@@ -232,11 +258,36 @@ async function renderProfilePage() {
         const userData = await apiCall('user/status', 'GET');
         let telegramSectionHTML = '';
         if (userData.telegram_chat_id) {
-            telegramSectionHTML = `<h3>Conta do Telegram Vinculada</h3> <p>Usuário: <strong>@${userData.telegram_username || 'N/A'}</strong></p> <p>Chat ID: <strong>${userData.telegram_chat_id}</strong></p> <button id="unlink-btn">Desvincular Conta</button>`;
+            telegramSectionHTML = `
+                <h3>Conta do Telegram Vinculada</h3>
+                <p>Usuário: <strong>@${userData.telegram_username || 'N/A'}</strong></p>
+                <p>Chat ID: <strong>${userData.telegram_chat_id}</strong></p>
+                <button id="unlink-btn">Desvincular Conta</button>
+            `;
         } else {
-            telegramSectionHTML = `<h3>Vincular Conta do Telegram</h3> <p>Clique no botão abaixo para autorizar o bot no Telegram.</p> <button id="link-telegram-btn">Vincular com o Telegram</button> <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>`;
+            telegramSectionHTML = `
+                <h3>Vincular Conta do Telegram</h3>
+                <p>Clique no botão abaixo para autorizar o bot no Telegram.</p>
+                <button id="link-telegram-btn">Vincular com o Telegram</button>
+                <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>
+            `;
         }
-        mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${userData.role}</strong></p><hr style="border-color: #6272a4; margin: 20px 0;">${telegramSectionHTML}<hr style="border-color: #6272a4; margin: 20px 0;"><h3>Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit">Salvar Nova Senha</button></form></div>`;
+        mainContent.innerHTML = `
+            <div class="auth-form">
+                <h2>Meu Perfil</h2>
+                <p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${userData.role}</strong></p>
+                <hr style="border-color: #6272a4; margin: 20px 0;">
+                ${telegramSectionHTML}
+                <hr style="border-color: #6272a4; margin: 20px 0;">
+                <h3>Alterar Senha</h3>
+                <form id="password-form">
+                    <div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div>
+                    <div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div>
+                    <div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div>
+                    <button type="submit">Salvar Nova Senha</button>
+                </form>
+            </div>
+        `;
         if (userData.telegram_chat_id) {
             document.getElementById('unlink-btn').onclick = async () => {
                 if (confirm('Tem certeza?')) {
@@ -417,9 +468,8 @@ function renderFilesPage(path) {
                 </div>
             `;
         } else {
-            // Garante que o checkbox de pastas não apareça e o link ocupe o espaço
             div.innerHTML = `
-                <div class="file-checkbox"></div> 
+                <div class="file-checkbox" style="visibility: hidden;"></div>
                 <a href="#/${[...path, name].map(encodeURIComponent).join('/')}" class="file-item-name" style="width: 100%; display: flex; align-items: center;">
                     <span class="file-icon">📁</span>
                     <span>${name}</span>
@@ -428,8 +478,6 @@ function renderFilesPage(path) {
         }
         fileListBodyElement.appendChild(div);
     });
-    
-    // O event listener para 'Select All' foi movido para a inicialização para evitar que seja perdido.
 }
 
 // --- 8. ROTEADOR PRINCIPAL ---
@@ -444,8 +492,6 @@ async function router() {
         return;
     }
 
-    // --- CORREÇÃO DO BUG DE ATUALIZAÇÃO ---
-    // Adiciona um timestamp para evitar o cache do navegador ao buscar arquivos.
     if (!state.allFiles.length && state.token) {
         try {
             const data = await apiCall(`files?t=${new Date().getTime()}`, 'GET');
@@ -460,16 +506,29 @@ async function router() {
     }
 
     switch (route) {
-        case 'login': renderLoginPage(); break;
-        case 'register': renderRegisterPage(); break;
-        case 'admin':
-            if (state.role === 'owner' || state.role === 'admin') renderAdminPage();
-            else { showNotification("Acesso negado.", 'error'); window.location.hash = '/'; }
+        case 'login':
+            renderLoginPage();
             break;
-        case 'profile': renderProfilePage(); break;
+        case 'register':
+            renderRegisterPage();
+            break;
+        case 'admin':
+            if (state.role === 'owner' || state.role === 'admin') {
+                renderAdminPage();
+            } else {
+                showNotification("Acesso negado.", 'error');
+                window.location.hash = '/';
+            }
+            break;
+        case 'profile':
+            renderProfilePage();
+            break;
         default:
-            if (state.token) renderFilesPage(path);
-            else window.location.hash = '/login';
+            if (state.token) {
+                renderFilesPage(path);
+            } else {
+                window.location.hash = '/login';
+            }
             break;
     }
 }
@@ -481,56 +540,63 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('modal-close-btn').onclick = () => authModal.classList.remove('show');
     document.getElementById('modal-login-btn').onclick = () => window.location.hash = '/login';
     document.getElementById('modal-register-btn').onclick = () => window.location.hash = '/register';
-    authModal.onclick = (e) => { if (e.target === authModal) authModal.classList.remove('show'); };
+    authModal.onclick = (e) => {
+        if (e.target === authModal) authModal.classList.remove('show');
+    };
     
     document.getElementById('why-modal-close-btn').onclick = () => whyLinkModal.classList.remove('show');
-    whyLinkModal.onclick = (e) => { if (e.target === whyLinkModal) whyLinkModal.classList.remove('show'); };
+    whyLinkModal.onclick = (e) => {
+        if (e.target === whyLinkModal) whyLinkModal.classList.remove('show');
+    };
 
-    // --- CORREÇÃO DO BUG "SELECIONAR TODOS" ---
-    // Usamos delegação de evento no container principal para garantir que os listeners sempre funcionem.
     mainContent.addEventListener('click', (e) => {
-        // Ação para o botão de envio único
         const singleForwardButton = e.target.closest('.btn-single-forward');
         if (singleForwardButton) {
             handleSingleForward(singleForwardButton.dataset.messageId);
         }
         
-        // Ação para o checkbox "Selecionar Todos"
         if (e.target.id === 'select-all-checkbox') {
             const isChecked = e.target.checked;
-            document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = isChecked);
-            
-            // Força a atualização da barra de ações em massa
-            const firstCheckbox = document.querySelector('.file-checkbox');
-            if(firstCheckbox) firstCheckbox.dispatchEvent(new Event('change'));
+            document.querySelectorAll('#file-list-body .file-checkbox').forEach(cb => cb.checked = isChecked);
+            const firstCheckbox = document.querySelector('#file-list-body .file-checkbox');
+            if (firstCheckbox) {
+                firstCheckbox.dispatchEvent(new Event('change', {
+                    bubbles: true
+                }));
+            }
         }
     });
 
-    // Listener para as checkboxes individuais para atualizar a barra de ações
     mainContent.addEventListener('change', (e) => {
         if (e.target.classList.contains('file-checkbox')) {
             const bulkActionsContainer = document.getElementById('bulk-actions-container');
             if (!bulkActionsContainer) return;
 
-            const selected = Array.from(document.querySelectorAll('.file-checkbox:checked'));
+            const selected = Array.from(document.querySelectorAll('#file-list-body .file-checkbox:checked'));
+            
             if (selected.length === 0) {
                 bulkActionsContainer.style.display = 'none';
+                document.getElementById('select-all-checkbox').checked = false;
                 return;
             }
             
-            bulkActionsContainer.style.display = 'flex';
-            bulkActionsContainer.style.gap = '10px';
+            bulkActionsContainer.style.display = 'block';
             bulkActionsContainer.innerHTML = '';
             
             const forwardBtn = document.createElement('button');
             forwardBtn.textContent = `Receber ${selected.length} Arquivo(s)`;
             forwardBtn.onclick = async () => {
-                if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
+                if (!state.token) {
+                    showNotification("Você precisa estar logado.", 'error');
+                    return;
+                }
                 const message_ids = selected.map(cb => parseInt(cb.dataset.messageId));
                 try {
                     forwardBtn.textContent = 'Enviando...';
                     forwardBtn.disabled = true;
-                    await apiCall('bulk-forward', 'POST', { message_ids });
+                    await apiCall('bulk-forward', 'POST', {
+                        message_ids
+                    });
                     showNotification("O bot começou a enviar os arquivos! Verifique seu Telegram.", 'success');
                 } catch (error) {
                     showNotification(`Ocorreu um erro: ${error.message}`, 'error');
