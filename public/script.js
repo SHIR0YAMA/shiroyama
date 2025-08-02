@@ -69,6 +69,7 @@ const mainNav = document.getElementById('main-nav');
 const authModal = document.getElementById('authModal');
 const whyLinkModal = document.getElementById('whyLinkModal');
 const moveFileModal = document.getElementById('move-file-modal');
+const createFolderModal = document.getElementById('create-folder-modal');
 
 // --- 4. FUNÇÃO CENTRAL DE API ---
 async function apiCall(endpoint, method = 'GET', body = null) {
@@ -178,7 +179,7 @@ async function handleSingleForward(messageId) {
     }
 }
 
-// --- 7. NOVAS FUNÇÕES PARA MOVER ARQUIVOS ---
+// --- 7. FUNÇÕES PARA MOVER ARQUIVOS ---
 let moveState = {
     oldKey: null,
     newKey: null,
@@ -247,8 +248,47 @@ async function confirmMoveFile() {
     }
 }
 
+// --- 8. FUNÇÕES PARA CRIAR PASTAS ---
+function openCreateFolderModal() {
+    document.getElementById('new-folder-name').value = '';
+    createFolderModal.classList.add('show');
+    document.getElementById('new-folder-name').focus();
+}
 
-// --- 8. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
+function closeCreateFolderModal() {
+    createFolderModal.classList.remove('show');
+}
+
+async function confirmCreateFolder() {
+    const folderNameInput = document.getElementById('new-folder-name');
+    const newFolderName = folderNameInput.value.trim();
+
+    if (!newFolderName) {
+        showNotification("O nome da pasta não pode estar vazio.", "error");
+        return;
+    }
+
+    if (newFolderName.includes('/') || newFolderName === '.placeholder') {
+        showNotification("Nome de pasta inválido.", "error");
+        return;
+    }
+
+    const currentPath = (window.location.hash.slice(1) || '/').split('/').filter(p => p && p !== '#');
+    const fullPath = [...currentPath, newFolderName].join('/');
+
+    try {
+        await apiCall('admin/create-folder', 'POST', {
+            folderPath: fullPath
+        });
+        showNotification(`Pasta "${newFolderName}" criada com sucesso!`, "success");
+        closeCreateFolderModal();
+        refreshFiles();
+    } catch (error) {
+        showNotification(`Erro ao criar pasta: ${error.message}`, "error");
+    }
+}
+
+// --- 9. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
 function renderNav() {
     if (state.token) {
         mainNav.innerHTML = `
@@ -476,7 +516,10 @@ function renderFilesPage(path) {
     mainContent.innerHTML = `
         <div class="controls">
             <div id="breadcrumb"></div>
-            <button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button>
+            <div class="controls-buttons">
+                <button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>
+                <button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button>
+            </div>
         </div>
         <div id="bulk-actions-container"></div>
         <div class="file-list-header">
@@ -556,7 +599,7 @@ function renderFilesPage(path) {
     });
 }
 
-// --- 8. ROTEADOR PRINCIPAL ---
+// --- 10. ROTEADOR PRINCIPAL ---
 async function router() {
     renderNav();
     const pathString = window.location.hash.slice(1) || '/';
@@ -573,7 +616,7 @@ async function router() {
             state.fileTree = buildFileTree(state.allFiles);
         } catch (error) {
             console.error("Não foi possível carregar a lista de arquivos.", error);
-            showNotification("Sessão expirada ou erro ao carregar arquivos.", 'error');
+            showNotification("Sessão expirada ou erro.", 'error');
             logout();
             return;
         }
@@ -606,53 +649,51 @@ async function router() {
     }
 }
 
-// --- 9. INICIALIZAÇÃO ---
+// --- 11. INICIALIZAÇÃO ---
 document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('focus', stopFaviconBlink);
+    
     document.getElementById('modal-close-btn').onclick = () => authModal.classList.remove('show');
     document.getElementById('modal-login-btn').onclick = () => window.location.hash = '/login';
     document.getElementById('modal-register-btn').onclick = () => window.location.hash = '/register';
-    authModal.onclick = (e) => {
-        if (e.target === authModal) authModal.classList.remove('show');
-    };
+    authModal.onclick = (e) => { if (e.target === authModal) authModal.classList.remove('show'); };
+    
     document.getElementById('why-modal-close-btn').onclick = () => whyLinkModal.classList.remove('show');
-    whyLinkModal.onclick = (e) => {
-        if (e.target === whyLinkModal) whyLinkModal.classList.remove('show');
-    };
+    whyLinkModal.onclick = (e) => { if (e.target === whyLinkModal) whyLinkModal.classList.remove('show'); };
+    
     document.getElementById('move-modal-close-btn').onclick = closeMoveModal;
     document.getElementById('move-file-cancel-btn').onclick = closeMoveModal;
     document.getElementById('move-file-confirm-btn').onclick = confirmMoveFile;
-    moveFileModal.onclick = (e) => {
-        if (e.target === moveFileModal) closeMoveModal();
-    };
+    moveFileModal.onclick = (e) => { if (e.target === moveFileModal) closeMoveModal(); };
+    
+    document.getElementById('create-folder-close-btn').onclick = closeCreateFolderModal;
+    document.getElementById('create-folder-cancel-btn').onclick = closeCreateFolderModal;
+    document.getElementById('create-folder-confirm-btn').onclick = confirmCreateFolder;
+    createFolderModal.onclick = (e) => { if (e.target === createFolderModal) closeCreateFolderModal(); };
+    document.getElementById('new-folder-name').addEventListener('keyup', (e) => { if (e.key === 'Enter') confirmCreateFolder(); });
 
     mainContent.addEventListener('click', (e) => {
         const singleForwardButton = e.target.closest('.btn-single-forward');
-        if (singleForwardButton) {
-            handleSingleForward(singleForwardButton.dataset.messageId);
-        }
+        if (singleForwardButton) { handleSingleForward(singleForwardButton.dataset.messageId); }
 
         const moveButton = e.target.closest('.btn-move-file');
-        if (moveButton) {
-            openMoveModal(moveButton.dataset.key);
-        }
+        if (moveButton) { openMoveModal(moveButton.dataset.key); }
 
         if (e.target.id === 'select-all-checkbox') {
             const isChecked = e.target.checked;
             document.querySelectorAll('#file-list-body .file-checkbox').forEach(cb => cb.checked = isChecked);
             const firstCheckbox = document.querySelector('#file-list-body .file-checkbox');
-            if (firstCheckbox) {
-                firstCheckbox.dispatchEvent(new Event('change', {
-                    bubbles: true
-                }));
-            }
+            if (firstCheckbox) { firstCheckbox.dispatchEvent(new Event('change', { bubbles: true })); }
+        }
+
+        if (e.target.id === 'create-folder-btn') {
+            openCreateFolderModal();
         }
     });
     
     document.getElementById('folder-navigation').addEventListener('click', e => {
         const action = e.target.closest('li')?.dataset.action;
         if (!action) return;
-
         if (action === 'up') {
             moveState.currentPath.pop();
         } else if (action === 'down') {
@@ -676,17 +717,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const forwardBtn = document.createElement('button');
             forwardBtn.textContent = `Receber ${selected.length} Arquivo(s)`;
             forwardBtn.onclick = async () => {
-                if (!state.token) {
-                    showNotification("Você precisa estar logado.", 'error');
-                    return;
-                }
+                if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
                 const message_ids = selected.map(cb => parseInt(cb.dataset.messageId));
                 try {
                     forwardBtn.textContent = 'Enviando...';
                     forwardBtn.disabled = true;
-                    await apiCall('bulk-forward', 'POST', {
-                        message_ids
-                    });
+                    await apiCall('bulk-forward', 'POST', { message_ids });
                     showNotification("O bot começou a enviar os arquivos! Verifique seu Telegram.", 'success');
                 } catch (error) {
                     showNotification(`Ocorreu um erro: ${error.message}`, 'error');

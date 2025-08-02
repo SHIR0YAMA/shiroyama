@@ -29,6 +29,7 @@
         .form-group input { width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #6272a4; background-color: #282a36; color: #f8f8f2; box-sizing: border-box; font-size: 16px; }
         #bulk-actions-container { display: none; margin-bottom: 15px; padding: 10px; background-color: #3b3e50; border-radius: 5px; border: 1px solid #6272a4; }
         .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .controls-buttons { display: flex; gap: 10px; }
         .file-list { display: flex; flex-direction: column; margin-top: 15px; }
         .file-list-header, .file-item { display: flex; align-items: center; padding: 12px 15px; border-bottom: 1px solid #3b3e50; }
         .file-list-header { color: #50fa7b; font-weight: bold; border-bottom-width: 2px; border-bottom-color: #6272a4; }
@@ -59,13 +60,13 @@
         .toast.success { border-left-color: #50fa7b; }
         .toast.error { border-left-color: #ff5555; }
         .toast.info { border-left-color: #8be9fd; }
-        #move-file-modal .modal-content { text-align: left; }
+        #move-file-modal .modal-content, #create-folder-modal .modal-content { text-align: left; }
         #folder-navigation { min-height: 200px; max-height: 40vh; overflow-y: auto; background-color: #282a36; border: 1px solid #6272a4; border-radius: 5px; padding: 10px; margin-top: 15px; }
         #folder-navigation ul { list-style: none; padding: 0; margin: 0; }
         #folder-navigation li { padding: 8px 12px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; gap: 10px; }
         #folder-navigation li:hover, #folder-navigation li.selected { background-color: #6272a4; }
         #move-file-path { font-family: monospace; background-color: #282a36; padding: 5px; border-radius: 3px; word-break: break-all; }
-        #move-file-modal-actions { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
+        #move-file-modal-actions, #create-folder-modal-actions { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
     </style>
 </head>
 <body>
@@ -104,6 +105,22 @@
             <div id="move-file-modal-actions">
                 <button id="move-file-cancel-btn">Cancelar</button>
                 <button id="move-file-confirm-btn" disabled>Mover Aqui</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="create-folder-modal" class="modal-overlay">
+        <div class="modal-content">
+            <span id="create-folder-close-btn" class="modal-close-btn">×</span>
+            <h2>Criar Nova Pasta</h2>
+            <p>Digite o nome para a nova pasta.</p>
+            <div class="form-group">
+                <label for="new-folder-name">Nome da Pasta</label>
+                <input type="text" id="new-folder-name" placeholder="Ex: Meus Animes Favoritos">
+            </div>
+            <div id="create-folder-modal-actions">
+                <button id="create-folder-cancel-btn">Cancelar</button>
+                <button id="create-folder-confirm-btn">Criar</button>
             </div>
         </div>
     </div>
