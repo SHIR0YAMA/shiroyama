@@ -14,6 +14,7 @@ async function sendMessage(env, chatId, text, extra_params = {}) {
     });
 }
 
+// --- FUNÇÃO DE PROCESSAMENTO CORRIGIDA PARA USAR KV ---
 async function processNewFile(env, fileData) {
     if (!fileData) {
         console.log("processNewFile foi chamado sem dados de arquivo.");
@@ -23,42 +24,46 @@ async function processNewFile(env, fileData) {
     const { file_id, file_unique_id, file_name, file_size, message_id, chat } = fileData;
     const from_chat_id = chat.id;
 
+    // Garante que o bot só salve arquivos do canal correto
     if (from_chat_id.toString() !== env.CHANNEL_ID) {
-        console.log(`Arquivo ignorado do chat ${from_chat_id} (não é o canal principal configurado em CHANNEL_ID)`);
+        console.log(`Arquivo ignorado do chat ${from_chat_id} (não é o canal principal)`);
         return;
     }
 
     const name = file_name || `arquivo_${file_unique_id}`;
+    
+    // A chave no KV será o ID único do arquivo
+    const key = file_unique_id;
+
+    // O valor será um objeto JSON com todos os detalhes do arquivo
+    const value = JSON.stringify({
+        name: name,
+        file_id: file_id,
+        unique_id: file_unique_id,
+        file_size: file_size,
+        message_id: message_id,
+        created_at: new Date().toISOString()
+    });
 
     try {
-        const stmt = env.DB.prepare(
-            'INSERT INTO files (name, file_id, unique_id, file_size, message_id) VALUES (?, ?, ?, ?, ?)'
-        );
-        await stmt.bind(name, file_id, file_unique_id, file_size, message_id).run();
-        console.log(`Arquivo salvo com sucesso no D1: ${name}`);
+        // Usa o método .put() para salvar no KV
+        await env.ARQUIVOS_TELEGRAM.put(key, value);
+        console.log(`Arquivo salvo com sucesso no KV com a chave ${key}: ${name}`);
     } catch (e) {
-        console.error(`Erro ao salvar arquivo no banco de dados D1: ${e.message}`);
+        console.error(`Erro ao salvar arquivo no KV ARQUIVOS_TELEGRAM: ${e.message}`);
     }
 }
+
 
 export async function onRequestPost(context) {
     const { request, env } = context;
     try {
         const data = await request.json();
-
-        // --- INÍCIO DA DEPURAÇÃO ---
-        console.log("================ INÍCIO DO EVENTO DO TELEGRAM ================");
-        console.log(JSON.stringify(data, null, 2));
-        console.log("================= FIM DO EVENTO DO TELEGRAM =================");
-        // --- FIM DA DEPURAÇÃO ---
-
+        
         const update = data.message || data.channel_post;
+        if (!update) return new Response('OK');
 
-        if (!update) {
-            console.log("Evento recebido, mas não contém 'message' ou 'channel_post'. Ignorando.");
-            return new Response('OK');
-        }
-
+        // Se for um comando de texto
         if (update.text) {
             const text = update.text;
             const chat_id = update.chat.id;
@@ -76,7 +81,7 @@ export async function onRequestPost(context) {
                         const replyMarkup = { inline_keyboard: [[{ text: "⬅️ Voltar ao Site", url: `https://shiroyama.pages.dev/#/profile` }]] };
                         await sendMessage(env, chat_id, successMessage, { reply_markup: replyMarkup });
                     } else {
-                        await sendMessage(env, chat_id, '❌ **Código Inválido.** Este código não foi encontrado ou já foi usado.');
+                        await sendMessage(env, chat_id, '❌ **Código Inválido.**');
                     }
                 } else {
                     await sendMessage(env, chat_id, `👋 Olá, ${from_user.first_name}! Use o site para interagir.`);
@@ -87,13 +92,14 @@ export async function onRequestPost(context) {
                 if (userToUnlink) {
                     const updateUserStmt = env.DB.prepare('UPDATE users SET telegram_chat_id = NULL, telegram_username = NULL WHERE id = ?');
                     await updateUserStmt.bind(userToUnlink.id).run();
-                    await sendMessage(env, chat_id, `✅ Sua conta do Telegram foi desvinculada do usuário \`${userToUnlink.username}\`.`);
+                    await sendMessage(env, chat_id, `✅ Sua conta foi desvinculada do usuário \`${userToUnlink.username}\`.`);
                 } else {
                     await sendMessage(env, chat_id, 'ℹ️ Esta conta não está vinculada a nenhum usuário.');
                 }
             }
-        } else if (update.document || update.video || update.audio) {
-            console.log("Evento de arquivo detectado. Processando...");
+        } 
+        // Se a mensagem contiver um arquivo
+        else if (update.document || update.video || update.audio) {
             const file = update.document || update.video || update.audio;
             const fileData = {
                 file_id: file.file_id,
@@ -104,8 +110,6 @@ export async function onRequestPost(context) {
                 chat: update.chat
             };
             await processNewFile(env, fileData);
-        } else {
-            console.log("Evento recebido, mas não é um comando de texto nem um arquivo reconhecido. Ignorando ação.");
         }
 
         return new Response('OK');
