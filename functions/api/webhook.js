@@ -14,16 +14,17 @@ async function sendMessage(env, chatId, text, extra_params = {}) {
     });
 }
 
-// --- FUNÇÃO DE PROCESSAMENTO DE ARQUIVOS (REUTILIZÁVEL) ---
 async function processNewFile(env, fileData) {
-    if (!fileData) return;
+    if (!fileData) {
+        console.log("processNewFile foi chamado sem dados de arquivo.");
+        return;
+    }
 
     const { file_id, file_unique_id, file_name, file_size, message_id, chat } = fileData;
     const from_chat_id = chat.id;
 
     if (from_chat_id.toString() !== env.CHANNEL_ID) {
-        // Ignora arquivos que não vêm do canal configurado
-        console.log(`Arquivo ignorado do chat ${from_chat_id} (não é o canal principal)`);
+        console.log(`Arquivo ignorado do chat ${from_chat_id} (não é o canal principal configurado em CHANNEL_ID)`);
         return;
     }
 
@@ -34,27 +35,30 @@ async function processNewFile(env, fileData) {
             'INSERT INTO files (name, file_id, unique_id, file_size, message_id) VALUES (?, ?, ?, ?, ?)'
         );
         await stmt.bind(name, file_id, file_unique_id, file_size, message_id).run();
-        console.log(`Arquivo salvo com sucesso: ${name}`);
+        console.log(`Arquivo salvo com sucesso no D1: ${name}`);
     } catch (e) {
-        console.error(`Erro ao salvar arquivo no banco de dados: ${e.message}`);
+        console.error(`Erro ao salvar arquivo no banco de dados D1: ${e.message}`);
     }
 }
-
 
 export async function onRequestPost(context) {
     const { request, env } = context;
     try {
         const data = await request.json();
 
-        // --- ALTERAÇÃO CRÍTICA AQUI ---
-        // Unifica o tratamento de 'message' (grupos) e 'channel_post' (canais)
+        // --- INÍCIO DA DEPURAÇÃO ---
+        console.log("================ INÍCIO DO EVENTO DO TELEGRAM ================");
+        console.log(JSON.stringify(data, null, 2));
+        console.log("================= FIM DO EVENTO DO TELEGRAM =================");
+        // --- FIM DA DEPURAÇÃO ---
+
         const update = data.message || data.channel_post;
 
         if (!update) {
-            return new Response('OK'); // Nenhum evento relevante
+            console.log("Evento recebido, mas não contém 'message' ou 'channel_post'. Ignorando.");
+            return new Response('OK');
         }
 
-        // Se for um comando de texto (como /start ou /unlink)
         if (update.text) {
             const text = update.text;
             const chat_id = update.chat.id;
@@ -72,7 +76,7 @@ export async function onRequestPost(context) {
                         const replyMarkup = { inline_keyboard: [[{ text: "⬅️ Voltar ao Site", url: `https://shiroyama.pages.dev/#/profile` }]] };
                         await sendMessage(env, chat_id, successMessage, { reply_markup: replyMarkup });
                     } else {
-                        await sendMessage(env, chat_id, '❌ **Código Inválido.**');
+                        await sendMessage(env, chat_id, '❌ **Código Inválido.** Este código não foi encontrado ou já foi usado.');
                     }
                 } else {
                     await sendMessage(env, chat_id, `👋 Olá, ${from_user.first_name}! Use o site para interagir.`);
@@ -83,15 +87,13 @@ export async function onRequestPost(context) {
                 if (userToUnlink) {
                     const updateUserStmt = env.DB.prepare('UPDATE users SET telegram_chat_id = NULL, telegram_username = NULL WHERE id = ?');
                     await updateUserStmt.bind(userToUnlink.id).run();
-                    await sendMessage(env, chat_id, `✅ Sua conta foi desvinculada do usuário \`${userToUnlink.username}\`.`);
+                    await sendMessage(env, chat_id, `✅ Sua conta do Telegram foi desvinculada do usuário \`${userToUnlink.username}\`.`);
                 } else {
                     await sendMessage(env, chat_id, 'ℹ️ Esta conta não está vinculada a nenhum usuário.');
                 }
             }
-        }
-        
-        // Se a mensagem contiver um arquivo (documento, vídeo ou áudio)
-        else if (update.document || update.video || update.audio) {
+        } else if (update.document || update.video || update.audio) {
+            console.log("Evento de arquivo detectado. Processando...");
             const file = update.document || update.video || update.audio;
             const fileData = {
                 file_id: file.file_id,
@@ -102,11 +104,13 @@ export async function onRequestPost(context) {
                 chat: update.chat
             };
             await processNewFile(env, fileData);
+        } else {
+            console.log("Evento recebido, mas não é um comando de texto nem um arquivo reconhecido. Ignorando ação.");
         }
 
         return new Response('OK');
     } catch (error) {
-        console.error("Erro Crítico no Webhook:", error);
+        console.error("Erro Crítico no Webhook:", error.stack);
         return new Response('Erro interno do servidor', { status: 500 });
     }
 }
