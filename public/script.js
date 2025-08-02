@@ -68,6 +68,7 @@ const mainContent = document.getElementById('main-content');
 const mainNav = document.getElementById('main-nav');
 const authModal = document.getElementById('authModal');
 const whyLinkModal = document.getElementById('whyLinkModal');
+const moveFileModal = document.getElementById('move-file-modal');
 
 // --- 4. FUNÇÃO CENTRAL DE API ---
 async function apiCall(endpoint, method = 'GET', body = null) {
@@ -177,12 +178,84 @@ async function handleSingleForward(messageId) {
     }
 }
 
-// --- 7. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
+// --- 7. NOVAS FUNÇÕES PARA MOVER ARQUIVOS ---
+let moveState = {
+    oldKey: null,
+    newKey: null,
+    currentPath: []
+};
+
+function openMoveModal(fileKey) {
+    moveState.oldKey = fileKey;
+    const fileName = fileKey.split('/').pop();
+    document.getElementById('move-file-name').textContent = fileName;
+    moveState.currentPath = [];
+    renderFolderNavigator();
+    moveFileModal.classList.add('show');
+}
+
+function closeMoveModal() {
+    moveFileModal.classList.remove('show');
+}
+
+function renderFolderNavigator() {
+    const navContainer = document.getElementById('folder-navigation');
+    const pathDisplay = document.getElementById('move-file-path');
+    const confirmBtn = document.getElementById('move-file-confirm-btn');
+    const currentFolderContent = getContentForPath(moveState.currentPath);
+    const subFolders = Object.entries(currentFolderContent)
+        .filter(([_, item]) => !item._isFile)
+        .map(([name, _]) => name);
+
+    let html = '<ul>';
+    if (moveState.currentPath.length > 0) {
+        html += `<li data-action="up">⬅️ .. (Voltar)</li>`;
+    }
+    subFolders.forEach(folder => {
+        html += `<li data-action="down" data-folder="${folder}">📁 ${folder}</li>`;
+    });
+    html += '</ul>';
+    navContainer.innerHTML = html;
+
+    const currentDisplayPath = `/${moveState.currentPath.join('/')}`;
+    pathDisplay.textContent = currentDisplayPath;
+
+    const originalPath = `/${moveState.oldKey.split('/').slice(0, -1).join('/')}`;
+    confirmBtn.disabled = (originalPath === currentDisplayPath);
+}
+
+async function confirmMoveFile() {
+    const fileName = moveState.oldKey.split('/').pop();
+    const newPath = moveState.currentPath.join('/');
+    moveState.newKey = newPath ? `${newPath}/${fileName}` : fileName;
+
+    if (moveState.oldKey === moveState.newKey) {
+        showNotification("O arquivo já está nesta pasta.", "info");
+        return;
+    }
+
+    try {
+        await apiCall('admin/move-file', 'POST', {
+            oldKey: moveState.oldKey,
+            newKey: moveState.newKey
+        });
+        showNotification("Arquivo movido com sucesso!", "success");
+        closeMoveModal();
+        refreshFiles();
+    } catch (error) {
+        showNotification(`Erro ao mover arquivo: ${error.message}`, "error");
+    }
+}
+
+
+// --- 8. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
 function renderNav() {
     if (state.token) {
-        mainNav.innerHTML = `<span>Olá, <a href="/#/profile"><strong>${state.username}</strong></a> (${state.role})</span>
+        mainNav.innerHTML = `
+            <span>Olá, <a href="/#/profile"><strong>${state.username}</strong></a> (${state.role})</span>
             ${state.role === 'owner' || state.role === 'admin' ? '<a href="/#/admin">Admin</a>' : ''}
-            <a href="#" id="logout-btn">Sair</a>`;
+            <a href="#" id="logout-btn">Sair</a>
+        `;
         document.getElementById('logout-btn').onclick = (e) => {
             e.preventDefault();
             logout();
@@ -462,6 +535,9 @@ function renderFilesPage(path) {
                 <span class="file-name">${name}</span>
                 <span class="file-size">${formatFileSize(item.file_size)}</span>
                 <div class="file-actions">
+                    <button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover Arquivo">
+                        <i class="fas fa-folder-open"></i>
+                    </button>
                     <button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber no Telegram">
                         <i class="fas fa-paper-plane"></i>
                     </button>
@@ -486,12 +562,10 @@ async function router() {
     const pathString = window.location.hash.slice(1) || '/';
     const path = pathString.split('/').filter(p => p).map(decodeURIComponent);
     const route = path[0] || 'home';
-
     if (['admin', 'profile'].includes(route) && !state.token) {
         window.location.hash = '/login';
         return;
     }
-
     if (!state.allFiles.length && state.token) {
         try {
             const data = await apiCall(`files?t=${new Date().getTime()}`, 'GET');
@@ -504,7 +578,6 @@ async function router() {
             return;
         }
     }
-
     switch (route) {
         case 'login':
             renderLoginPage();
@@ -536,17 +609,21 @@ async function router() {
 // --- 9. INICIALIZAÇÃO ---
 document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('focus', stopFaviconBlink);
-    
     document.getElementById('modal-close-btn').onclick = () => authModal.classList.remove('show');
     document.getElementById('modal-login-btn').onclick = () => window.location.hash = '/login';
     document.getElementById('modal-register-btn').onclick = () => window.location.hash = '/register';
     authModal.onclick = (e) => {
         if (e.target === authModal) authModal.classList.remove('show');
     };
-    
     document.getElementById('why-modal-close-btn').onclick = () => whyLinkModal.classList.remove('show');
     whyLinkModal.onclick = (e) => {
         if (e.target === whyLinkModal) whyLinkModal.classList.remove('show');
+    };
+    document.getElementById('move-modal-close-btn').onclick = closeMoveModal;
+    document.getElementById('move-file-cancel-btn').onclick = closeMoveModal;
+    document.getElementById('move-file-confirm-btn').onclick = confirmMoveFile;
+    moveFileModal.onclick = (e) => {
+        if (e.target === moveFileModal) closeMoveModal();
     };
 
     mainContent.addEventListener('click', (e) => {
@@ -554,7 +631,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (singleForwardButton) {
             handleSingleForward(singleForwardButton.dataset.messageId);
         }
-        
+
+        const moveButton = e.target.closest('.btn-move-file');
+        if (moveButton) {
+            openMoveModal(moveButton.dataset.key);
+        }
+
         if (e.target.id === 'select-all-checkbox') {
             const isChecked = e.target.checked;
             document.querySelectorAll('#file-list-body .file-checkbox').forEach(cb => cb.checked = isChecked);
@@ -566,23 +648,31 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
+    
+    document.getElementById('folder-navigation').addEventListener('click', e => {
+        const action = e.target.closest('li')?.dataset.action;
+        if (!action) return;
+
+        if (action === 'up') {
+            moveState.currentPath.pop();
+        } else if (action === 'down') {
+            moveState.currentPath.push(e.target.closest('li').dataset.folder);
+        }
+        renderFolderNavigator();
+    });
 
     mainContent.addEventListener('change', (e) => {
         if (e.target.classList.contains('file-checkbox')) {
             const bulkActionsContainer = document.getElementById('bulk-actions-container');
             if (!bulkActionsContainer) return;
-
             const selected = Array.from(document.querySelectorAll('#file-list-body .file-checkbox:checked'));
-            
             if (selected.length === 0) {
                 bulkActionsContainer.style.display = 'none';
                 document.getElementById('select-all-checkbox').checked = false;
                 return;
             }
-            
             bulkActionsContainer.style.display = 'block';
             bulkActionsContainer.innerHTML = '';
-            
             const forwardBtn = document.createElement('button');
             forwardBtn.textContent = `Receber ${selected.length} Arquivo(s)`;
             forwardBtn.onclick = async () => {
