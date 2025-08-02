@@ -53,7 +53,11 @@ const state = {
     username: localStorage.getItem('username'),
     role: localStorage.getItem('role'),
     fileTree: {},
-    allFiles: []
+    allFiles: [],
+    sort: {
+        key: 'name',
+        order: 'asc'
+    }
 };
 
 function refreshFiles() {
@@ -70,6 +74,7 @@ const authModal = document.getElementById('authModal');
 const whyLinkModal = document.getElementById('whyLinkModal');
 const moveFileModal = document.getElementById('move-file-modal');
 const createFolderModal = document.getElementById('create-folder-modal');
+const renameModal = document.getElementById('rename-modal');
 
 // --- 4. FUNÇÃO CENTRAL DE API ---
 async function apiCall(endpoint, method = 'GET', body = null) {
@@ -130,17 +135,34 @@ function logout() {
 // --- 6. FUNÇÕES DE LÓGICA DE ARQUIVOS ---
 function buildFileTree(files) {
     const tree = {};
+    
+    // Primeiro, cria todas as estruturas de pasta a partir dos placeholders
     files.forEach(file => {
+        if (file.name.endsWith('/.placeholder')) {
+            const folderOnlyPath = file.name.substring(0, file.name.length - 13);
+            const parts = folderOnlyPath.split('/').filter(p => p);
+            let currentLevel = tree;
+            parts.forEach(part => {
+                if (!currentLevel[part]) {
+                    currentLevel[part] = {};
+                }
+                currentLevel = currentLevel[part];
+            });
+        }
+    });
+
+    // Depois, insere os arquivos na árvore
+    files.forEach(file => {
+        if (file.name.endsWith('/.placeholder')) return; // Ignora os placeholders aqui
+        
         const parts = file.name.split('/').filter(p => p);
         let currentLevel = tree;
         parts.forEach((part, index) => {
             if (index === parts.length - 1) {
-                currentLevel[part] = { ...file,
-                    _isFile: true
-                };
+                currentLevel[part] = { ...file, _isFile: true };
             } else {
                 if (!currentLevel[part]) {
-                    currentLevel[part] = {};
+                    currentLevel[part] = {}; // Cria a pasta se não existir
                 }
                 currentLevel = currentLevel[part];
             }
@@ -179,17 +201,23 @@ async function handleSingleForward(messageId) {
     }
 }
 
-// --- 7. FUNÇÕES PARA MOVER ARQUIVOS ---
+// --- 7. OPERAÇÕES DE ARQUIVO (Modais) ---
 let moveState = {
-    oldKey: null,
-    newKey: null,
+    oldKeys: [],
+    destinationPath: null,
     currentPath: []
 };
+let renameState = {
+    oldKey: null,
+    newKey: null,
+    isFolder: false
+};
 
-function openMoveModal(fileKey) {
-    moveState.oldKey = fileKey;
-    const fileName = fileKey.split('/').pop();
-    document.getElementById('move-file-name').textContent = fileName;
+function openMoveModal(keysToMove) {
+    moveState.oldKeys = Array.isArray(keysToMove) ? keysToMove : [keysToMove];
+    const firstFileName = moveState.oldKeys[0].split('/').pop();
+    const displayName = moveState.oldKeys.length > 1 ? `${moveState.oldKeys.length} itens` : firstFileName;
+    document.getElementById('move-file-name').textContent = displayName;
     moveState.currentPath = [];
     renderFolderNavigator();
     moveFileModal.classList.add('show');
@@ -220,35 +248,24 @@ function renderFolderNavigator() {
 
     const currentDisplayPath = `/${moveState.currentPath.join('/')}`;
     pathDisplay.textContent = currentDisplayPath;
-
-    const originalPath = `/${moveState.oldKey.split('/').slice(0, -1).join('/')}`;
-    confirmBtn.disabled = (originalPath === currentDisplayPath);
+    confirmBtn.disabled = false;
 }
 
 async function confirmMoveFile() {
-    const fileName = moveState.oldKey.split('/').pop();
-    const newPath = moveState.currentPath.join('/');
-    moveState.newKey = newPath ? `${newPath}/${fileName}` : fileName;
-
-    if (moveState.oldKey === moveState.newKey) {
-        showNotification("O arquivo já está nesta pasta.", "info");
-        return;
-    }
-
+    moveState.destinationPath = moveState.currentPath.join('/');
     try {
-        await apiCall('admin/move-file', 'POST', {
-            oldKey: moveState.oldKey,
-            newKey: moveState.newKey
+        await apiCall('admin/bulk-move', 'POST', {
+            oldKeys: moveState.oldKeys,
+            destinationPath: moveState.destinationPath
         });
-        showNotification("Arquivo movido com sucesso!", "success");
+        showNotification("Item(ns) movido(s) com sucesso!", "success");
         closeMoveModal();
         refreshFiles();
     } catch (error) {
-        showNotification(`Erro ao mover arquivo: ${error.message}`, "error");
+        showNotification(`Erro ao mover: ${error.message}`, "error");
     }
 }
 
-// --- 8. FUNÇÕES PARA CRIAR PASTAS ---
 function openCreateFolderModal() {
     document.getElementById('new-folder-name').value = '';
     createFolderModal.classList.add('show');
@@ -267,20 +284,19 @@ async function confirmCreateFolder() {
         showNotification("O nome da pasta não pode estar vazio.", "error");
         return;
     }
-
     if (newFolderName.includes('/') || newFolderName === '.placeholder') {
         showNotification("Nome de pasta inválido.", "error");
         return;
     }
 
-    const currentPath = (window.location.hash.slice(1) || '/').split('/').filter(p => p && p !== '#');
+    const currentPath = (window.location.hash.slice(2) || '').split('/').filter(p => p);
     const fullPath = [...currentPath, newFolderName].join('/');
 
     try {
         await apiCall('admin/create-folder', 'POST', {
             folderPath: fullPath
         });
-        showNotification(`Pasta "${newFolderName}" criada com sucesso!`, "success");
+        showNotification(`Pasta "${newFolderName}" criada!`, "success");
         closeCreateFolderModal();
         refreshFiles();
     } catch (error) {
@@ -288,14 +304,72 @@ async function confirmCreateFolder() {
     }
 }
 
-// --- 9. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
+function openRenameModal(key, isFolder) {
+    renameState.oldKey = key;
+    renameState.isFolder = isFolder;
+    const currentName = key.split('/').pop();
+    document.getElementById('rename-old-name').textContent = currentName;
+    const renameInput = document.getElementById('rename-new-name');
+    renameInput.value = currentName;
+    renameModal.classList.add('show');
+    renameInput.focus();
+}
+
+function closeRenameModal() {
+    renameModal.classList.remove('show');
+}
+
+async function confirmRename() {
+    const newName = document.getElementById('rename-new-name').value.trim();
+    if (!newName || newName.includes('/')) {
+        showNotification("Nome inválido.", "error");
+        return;
+    }
+    const pathParts = renameState.oldKey.split('/');
+    pathParts.pop();
+    const newKey = [...pathParts, newName].join('/');
+    if (renameState.oldKey === newKey) {
+        closeRenameModal();
+        return;
+    }
+    try {
+        await apiCall('admin/rename', 'POST', {
+            oldKey: renameState.oldKey,
+            newKey,
+            isFolder: renameState.isFolder
+        });
+        showNotification("Renomeado com sucesso!", "success");
+        closeRenameModal();
+        refreshFiles();
+    } catch (error) {
+        showNotification(`Erro ao renomear: ${error.message}`, "error");
+    }
+}
+
+async function deleteItems(keys, isFolder = false, folderName = '') {
+    const keyCount = keys.length;
+    let message = isFolder ?
+        `Tem certeza que deseja excluir a pasta "${folderName}" e todo o seu conteúdo? Esta ação é irreversível.` :
+        `Tem certeza que deseja excluir ${keyCount} item(ns)? Esta ação é irreversível.`;
+    if (!confirm(message)) return;
+    try {
+        const payload = isFolder ? {
+            prefix: keys[0] + '/'
+        } : {
+            keys: keys
+        };
+        await apiCall('admin/bulk-delete', 'POST', payload);
+        showNotification("Item(ns) excluído(s) com sucesso!", "success");
+        refreshFiles();
+    } catch (error) {
+        showNotification(`Erro ao excluir: ${error.message}`, "error");
+    }
+}
+
+// --- 8. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
 function renderNav() {
     if (state.token) {
-        mainNav.innerHTML = `
-            <span>Olá, <a href="/#/profile"><strong>${state.username}</strong></a> (${state.role})</span>
-            ${state.role === 'owner' || state.role === 'admin' ? '<a href="/#/admin">Admin</a>' : ''}
-            <a href="#" id="logout-btn">Sair</a>
-        `;
+        mainNav.innerHTML = `<span>Olá, <a href="/#/profile"><strong>${state.username}</strong></a> (${state.role})</span> ${state.role === 'owner' || state.role === 'admin' ? '<a href="/#/admin">Admin</a>' : ''} <a href="#" id="logout-btn">Sair</a>`;
         document.getElementById('logout-btn').onclick = (e) => {
             e.preventDefault();
             logout();
@@ -306,20 +380,7 @@ function renderNav() {
 }
 
 function renderLoginPage() {
-    mainContent.innerHTML = `
-        <form id="login-form" class="auth-form">
-            <h2>Login</h2>
-            <div class="form-group">
-                <label for="username">Nome de Usuário</label>
-                <input type="text" id="username" name="username" required>
-            </div>
-            <div class="form-group">
-                <label for="password">Senha</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-            <button type="submit">Entrar</button>
-        </form>
-    `;
+    mainContent.innerHTML = `<form id="login-form" class="auth-form"><h2>Login</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required></div><button type="submit">Entrar</button></form>`;
     document.getElementById('login-form').onsubmit = async (e) => {
         e.preventDefault();
         try {
@@ -336,20 +397,7 @@ function renderLoginPage() {
 }
 
 function renderRegisterPage() {
-    mainContent.innerHTML = `
-        <form id="register-form" class="auth-form">
-            <h2>Registrar Nova Conta</h2>
-            <div class="form-group">
-                <label for="username">Nome de Usuário</label>
-                <input type="text" id="username" name="username" required minlength="3">
-            </div>
-            <div class="form-group">
-                <label for="password">Senha</label>
-                <input type="password" id="password" name="password" required minlength="6">
-            </div>
-            <button type="submit">Registrar</button>
-        </form>
-    `;
+    mainContent.innerHTML = `<form id="register-form" class="auth-form"><h2>Registrar Nova Conta</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required minlength="3"></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required minlength="6"></div><button type="submit">Registrar</button></form>`;
     document.getElementById('register-form').onsubmit = async (e) => {
         e.preventDefault();
         try {
@@ -371,36 +419,11 @@ async function renderProfilePage() {
         const userData = await apiCall('user/status', 'GET');
         let telegramSectionHTML = '';
         if (userData.telegram_chat_id) {
-            telegramSectionHTML = `
-                <h3>Conta do Telegram Vinculada</h3>
-                <p>Usuário: <strong>@${userData.telegram_username || 'N/A'}</strong></p>
-                <p>Chat ID: <strong>${userData.telegram_chat_id}</strong></p>
-                <button id="unlink-btn">Desvincular Conta</button>
-            `;
+            telegramSectionHTML = `<h3>Conta do Telegram Vinculada</h3> <p>Usuário: <strong>@${userData.telegram_username || 'N/A'}</strong></p> <p>Chat ID: <strong>${userData.telegram_chat_id}</strong></p> <button id="unlink-btn">Desvincular Conta</button>`;
         } else {
-            telegramSectionHTML = `
-                <h3>Vincular Conta do Telegram</h3>
-                <p>Clique no botão abaixo para autorizar o bot no Telegram.</p>
-                <button id="link-telegram-btn">Vincular com o Telegram</button>
-                <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>
-            `;
+            telegramSectionHTML = `<h3>Vincular Conta do Telegram</h3> <p>Clique no botão abaixo para autorizar o bot no Telegram.</p> <button id="link-telegram-btn">Vincular com o Telegram</button> <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>`;
         }
-        mainContent.innerHTML = `
-            <div class="auth-form">
-                <h2>Meu Perfil</h2>
-                <p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${userData.role}</strong></p>
-                <hr style="border-color: #6272a4; margin: 20px 0;">
-                ${telegramSectionHTML}
-                <hr style="border-color: #6272a4; margin: 20px 0;">
-                <h3>Alterar Senha</h3>
-                <form id="password-form">
-                    <div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div>
-                    <div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div>
-                    <div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div>
-                    <button type="submit">Salvar Nova Senha</button>
-                </form>
-            </div>
-        `;
+        mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${userData.role}</strong></p><hr style="border-color: #6272a4; margin: 20px 0;">${telegramSectionHTML}<hr style="border-color: #6272a4; margin: 20px 0;"><h3>Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit">Salvar Nova Senha</button></form></div>`;
         if (userData.telegram_chat_id) {
             document.getElementById('unlink-btn').onclick = async () => {
                 if (confirm('Tem certeza?')) {
@@ -513,26 +536,8 @@ async function renderAdminPage() {
 }
 
 function renderFilesPage(path) {
-    mainContent.innerHTML = `
-        <div class="controls">
-            <div id="breadcrumb"></div>
-            <div class="controls-buttons">
-                <button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>
-                <button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button>
-            </div>
-        </div>
-        <div id="bulk-actions-container"></div>
-        <div class="file-list-header">
-            <input type="checkbox" id="select-all-checkbox" class="file-checkbox">
-            <span class="file-name">Nome</span>
-            <span class="file-size">Tamanho</span>
-            <span class="file-actions">Ações</span>
-        </div>
-        <div id="file-list-body" class="file-list"></div>
-    `;
-
+    mainContent.innerHTML = `<div class="controls"><div id="breadcrumb"></div><div class="controls-buttons"><button id="create-folder-btn" title="Criar Nova Pasta">📁+</button><button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div></div><div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div>`;
     document.getElementById('refresh-files-btn').onclick = refreshFiles;
-
     const breadcrumbElement = document.getElementById('breadcrumb');
     breadcrumbElement.innerHTML = '';
     ['Home', ...path].forEach((part, index, arr) => {
@@ -549,7 +554,6 @@ function renderFilesPage(path) {
         }
         breadcrumbElement.appendChild(span);
     });
-
     const fileListBodyElement = document.getElementById('file-list-body');
     const content = getContentForPath(path);
     const items = Object.entries(content).sort(([nameA, itemA], [nameB, itemB]) => {
@@ -557,53 +561,45 @@ function renderFilesPage(path) {
         const isFileB = itemB._isFile;
         if (isFileA && !isFileB) return 1;
         if (!isFileA && isFileB) return -1;
-        return nameA.localeCompare(nameB, undefined, {
-            numeric: true
-        });
+        const sortOrder = state.sort.order === 'asc' ? 1 : -1;
+        if (state.sort.key === 'name') {
+            return nameA.localeCompare(nameB, undefined, {
+                numeric: true
+            }) * sortOrder;
+        }
+        if (state.sort.key === 'size') {
+            return (itemA.file_size - itemB.file_size) * sortOrder;
+        }
+        return 0;
     });
-
     if (items.length === 0) {
         fileListBodyElement.innerHTML = '<div class="file-item">Pasta vazia.</div>';
         document.getElementById('select-all-checkbox').disabled = true;
         return;
     }
-
     items.forEach(([name, item]) => {
         const div = document.createElement('div');
         div.className = 'file-item';
+        const itemPath = [...path, name].join('/');
         if (item._isFile) {
-            div.innerHTML = `
-                <input type="checkbox" class="file-checkbox" data-message-id="${item.message_id}">
-                <span class="file-icon">📄</span>
-                <span class="file-name">${name}</span>
-                <span class="file-size">${formatFileSize(item.file_size)}</span>
-                <div class="file-actions">
-                    <button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover Arquivo">
-                        <i class="fas fa-folder-open"></i>
-                    </button>
-                    <button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber no Telegram">
-                        <i class="fas fa-paper-plane"></i>
-                    </button>
-                </div>
-            `;
+            div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}"><span class="file-icon">📄</span><span class="file-name">${name}</span><span class="file-size">${formatFileSize(item.file_size)}</span><div class="file-actions"><button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear"><i class="fas fa-edit"></i></button><button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover"><i class="fas fa-folder-open"></i></button><button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button><button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button></div>`;
         } else {
-            div.innerHTML = `
-                <div class="file-checkbox" style="visibility: hidden;"></div>
-                <a href="#/${[...path, name].map(encodeURIComponent).join('/')}" class="file-item-name" style="width: 100%; display: flex; align-items: center;">
-                    <span class="file-icon">📁</span>
-                    <span>${name}</span>
-                </a>
-            `;
+            div.innerHTML = `<div class="file-checkbox" style="visibility: hidden;"></div><a href="#/${itemPath}" class="file-item-name" style="width: 100%; display: flex; align-items: center;"><span class="file-icon">📁</span><span>${name}</span></a><div class="file-actions"><button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear"><i class="fas fa-edit"></i></button><button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir"><i class="fas fa-trash"></i></button></div>`;
         }
         fileListBodyElement.appendChild(div);
     });
+    document.querySelectorAll('.sortable-header').forEach(header => {
+        if (header.dataset.sort === state.sort.key) {
+            header.querySelector('.sort-indicator').classList.add(state.sort.order);
+        }
+    });
 }
 
-// --- 10. ROTEADOR PRINCIPAL ---
+// --- 9. ROTEADOR PRINCIPAL ---
 async function router() {
     renderNav();
     const pathString = window.location.hash.slice(1) || '/';
-    const path = pathString.split('/').filter(p => p).map(decodeURIComponent);
+    const path = pathString.split('/').filter(p => p && p !== '#').map(decodeURIComponent);
     const route = path[0] || 'home';
     if (['admin', 'profile'].includes(route) && !state.token) {
         window.location.hash = '/login';
@@ -629,9 +625,8 @@ async function router() {
             renderRegisterPage();
             break;
         case 'admin':
-            if (state.role === 'owner' || state.role === 'admin') {
-                renderAdminPage();
-            } else {
+            if (state.role === 'owner' || state.role === 'admin') renderAdminPage();
+            else {
                 showNotification("Acesso negado.", 'error');
                 window.location.hash = '/';
             }
@@ -640,57 +635,49 @@ async function router() {
             renderProfilePage();
             break;
         default:
-            if (state.token) {
-                renderFilesPage(path);
-            } else {
-                window.location.hash = '/login';
-            }
+            if (state.token) renderFilesPage(path);
+            else window.location.hash = '/login';
             break;
     }
 }
 
-// --- 11. INICIALIZAÇÃO ---
+// --- 10. INICIALIZAÇÃO ---
 document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('focus', stopFaviconBlink);
-    
     document.getElementById('modal-close-btn').onclick = () => authModal.classList.remove('show');
     document.getElementById('modal-login-btn').onclick = () => window.location.hash = '/login';
     document.getElementById('modal-register-btn').onclick = () => window.location.hash = '/register';
-    authModal.onclick = (e) => { if (e.target === authModal) authModal.classList.remove('show'); };
-    
+    authModal.onclick = (e) => {
+        if (e.target === authModal) authModal.classList.remove('show');
+    };
     document.getElementById('why-modal-close-btn').onclick = () => whyLinkModal.classList.remove('show');
-    whyLinkModal.onclick = (e) => { if (e.target === whyLinkModal) whyLinkModal.classList.remove('show'); };
-    
+    whyLinkModal.onclick = (e) => {
+        if (e.target === whyLinkModal) whyLinkModal.classList.remove('show');
+    };
     document.getElementById('move-modal-close-btn').onclick = closeMoveModal;
     document.getElementById('move-file-cancel-btn').onclick = closeMoveModal;
     document.getElementById('move-file-confirm-btn').onclick = confirmMoveFile;
-    moveFileModal.onclick = (e) => { if (e.target === moveFileModal) closeMoveModal(); };
-    
+    moveFileModal.onclick = (e) => {
+        if (e.target === moveFileModal) closeMoveModal();
+    };
     document.getElementById('create-folder-close-btn').onclick = closeCreateFolderModal;
     document.getElementById('create-folder-cancel-btn').onclick = closeCreateFolderModal;
     document.getElementById('create-folder-confirm-btn').onclick = confirmCreateFolder;
-    createFolderModal.onclick = (e) => { if (e.target === createFolderModal) closeCreateFolderModal(); };
-    document.getElementById('new-folder-name').addEventListener('keyup', (e) => { if (e.key === 'Enter') confirmCreateFolder(); });
-
-    mainContent.addEventListener('click', (e) => {
-        const singleForwardButton = e.target.closest('.btn-single-forward');
-        if (singleForwardButton) { handleSingleForward(singleForwardButton.dataset.messageId); }
-
-        const moveButton = e.target.closest('.btn-move-file');
-        if (moveButton) { openMoveModal(moveButton.dataset.key); }
-
-        if (e.target.id === 'select-all-checkbox') {
-            const isChecked = e.target.checked;
-            document.querySelectorAll('#file-list-body .file-checkbox').forEach(cb => cb.checked = isChecked);
-            const firstCheckbox = document.querySelector('#file-list-body .file-checkbox');
-            if (firstCheckbox) { firstCheckbox.dispatchEvent(new Event('change', { bubbles: true })); }
-        }
-
-        if (e.target.id === 'create-folder-btn') {
-            openCreateFolderModal();
-        }
+    createFolderModal.onclick = (e) => {
+        if (e.target === createFolderModal) closeCreateFolderModal();
+    };
+    document.getElementById('rename-close-btn').onclick = closeRenameModal;
+    document.getElementById('rename-cancel-btn').onclick = closeRenameModal;
+    document.getElementById('rename-confirm-btn').onclick = confirmRename;
+    renameModal.onclick = (e) => {
+        if (e.target === renameModal) closeRenameModal();
+    };
+    document.getElementById('new-folder-name').addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') confirmCreateFolder();
     });
-    
+    document.getElementById('rename-new-name').addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') confirmRename();
+    });
     document.getElementById('folder-navigation').addEventListener('click', e => {
         const action = e.target.closest('li')?.dataset.action;
         if (!action) return;
@@ -700,6 +687,48 @@ document.addEventListener('DOMContentLoaded', () => {
             moveState.currentPath.push(e.target.closest('li').dataset.folder);
         }
         renderFolderNavigator();
+    });
+
+    mainContent.addEventListener('click', (e) => {
+        const target = e.target.closest('button, .sortable-header');
+        if (!target) return;
+        if (target.classList.contains('btn-single-forward')) {
+            handleSingleForward(target.dataset.messageId);
+        }
+        if (target.classList.contains('btn-move-file')) {
+            openMoveModal(target.dataset.key);
+        }
+        if (target.classList.contains('btn-rename')) {
+            openRenameModal(target.dataset.key, target.dataset.isfolder === 'true');
+        }
+        if (target.classList.contains('btn-delete')) {
+            const isFolder = target.dataset.isfolder === 'true';
+            const key = target.dataset.key;
+            deleteItems([key], isFolder, isFolder ? key.split('/').pop() : '');
+        }
+        if (target.id === 'create-folder-btn') {
+            openCreateFolderModal();
+        }
+        if (target.id === 'select-all-checkbox') {
+            const isChecked = target.checked;
+            document.querySelectorAll('#file-list-body .file-checkbox').forEach(cb => cb.checked = isChecked);
+            const firstCheckbox = document.querySelector('#file-list-body .file-checkbox');
+            if (firstCheckbox) {
+                firstCheckbox.dispatchEvent(new Event('change', {
+                    bubbles: true
+                }));
+            }
+        }
+        if (target.classList.contains('sortable-header')) {
+            const sortKey = target.dataset.sort;
+            if (state.sort.key === sortKey) {
+                state.sort.order = state.sort.order === 'asc' ? 'desc' : 'asc';
+            } else {
+                state.sort.key = sortKey;
+                state.sort.order = 'asc';
+            }
+            router();
+        }
     });
 
     mainContent.addEventListener('change', (e) => {
@@ -712,26 +741,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('select-all-checkbox').checked = false;
                 return;
             }
-            bulkActionsContainer.style.display = 'block';
-            bulkActionsContainer.innerHTML = '';
-            const forwardBtn = document.createElement('button');
-            forwardBtn.textContent = `Receber ${selected.length} Arquivo(s)`;
-            forwardBtn.onclick = async () => {
-                if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
-                const message_ids = selected.map(cb => parseInt(cb.dataset.messageId));
+            bulkActionsContainer.style.display = 'flex';
+            const keys = selected.map(cb => cb.dataset.key);
+            const messageIds = selected.map(cb => cb.dataset.messageId);
+            bulkActionsContainer.innerHTML = `
+                <span>${selected.length} item(ns) selecionado(s)</span>
+                <button id="bulk-receive-btn">Receber</button>
+                <button id="bulk-move-btn">Mover</button>
+                <button id="bulk-delete-btn" style="background-color: #ff5555;">Excluir</button>
+            `;
+            document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys);
+            document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys);
+            document.getElementById('bulk-receive-btn').onclick = async () => {
+                if (!state.token) {
+                    showNotification("Você precisa estar logado.", 'error');
+                    return;
+                }
+                const btn = document.getElementById('bulk-receive-btn');
                 try {
-                    forwardBtn.textContent = 'Enviando...';
-                    forwardBtn.disabled = true;
-                    await apiCall('bulk-forward', 'POST', { message_ids });
+                    btn.textContent = 'Enviando...';
+                    btn.disabled = true;
+                    await apiCall('bulk-forward', 'POST', {
+                        message_ids: messageIds.map(id => parseInt(id))
+                    });
                     showNotification("O bot começou a enviar os arquivos! Verifique seu Telegram.", 'success');
                 } catch (error) {
                     showNotification(`Ocorreu um erro: ${error.message}`, 'error');
                 } finally {
-                    forwardBtn.textContent = `Receber ${selected.length} Arquivo(s)`;
-                    forwardBtn.disabled = false;
+                    btn.textContent = `Receber`;
+                    btn.disabled = false;
                 }
             };
-            bulkActionsContainer.appendChild(forwardBtn);
         }
     });
 
