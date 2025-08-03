@@ -59,7 +59,6 @@ function getIconForFile(fileName) {
     return '<i class="fas fa-file-alt"></i>';
 }
 
-
 // --- 2. ESTADO GLOBAL E FUNÇÕES RELACIONADAS ---
 const state = {
     token: localStorage.getItem('jwtToken'),
@@ -97,21 +96,13 @@ const roleModal = document.getElementById('role-modal');
 
 // --- 4. FUNÇÃO CENTRAL DE API ---
 async function apiCall(endpoint, method = 'GET', body = null) {
-    const headers = {
-        'Content-Type': 'application/json'
-    };
+    const headers = { 'Content-Type': 'application/json' };
     if (state.token) {
         headers['Authorization'] = `Bearer ${state.token}`;
     }
     try {
-        const response = await fetch(`/api/${endpoint}`, {
-            method,
-            headers,
-            body: body ? JSON.stringify(body) : null
-        });
-        if (response.status === 204) {
-            return null;
-        }
+        const response = await fetch(`/api/${endpoint}`, { method, headers, body: body ? JSON.stringify(body) : null });
+        if (response.status === 204) return null;
         const result = await response.json();
         if (!response.ok) {
             if (response.status === 401 && endpoint !== 'auth/login') {
@@ -152,9 +143,11 @@ function logout() {
 }
 
 function parseJwt() {
-    if (state.token) {
+    const token = localStorage.getItem('jwtToken');
+    state.token = token;
+    if (token) {
         try {
-            const payload = JSON.parse(atob(state.token.split('.')[1]));
+            const payload = JSON.parse(atob(token.split('.')[1]));
             state.username = payload.username;
             state.role = payload.role;
             state.permissions = payload.permissions || [];
@@ -174,9 +167,7 @@ function buildFileTree(files) {
             const parts = folderOnlyPath.split('/').filter(p => p);
             let currentLevel = tree;
             parts.forEach(part => {
-                if (!currentLevel[part]) {
-                    currentLevel[part] = {};
-                }
+                if (!currentLevel[part]) { currentLevel[part] = {}; }
                 currentLevel = currentLevel[part];
             });
             return;
@@ -184,16 +175,8 @@ function buildFileTree(files) {
         const parts = file.name.split('/').filter(p => p);
         let currentLevel = tree;
         parts.forEach((part, index) => {
-            if (index === parts.length - 1) {
-                currentLevel[part] = { ...file,
-                    _isFile: true
-                };
-            } else {
-                if (!currentLevel[part]) {
-                    currentLevel[part] = {};
-                }
-                currentLevel = currentLevel[part];
-            }
+            if (index === parts.length - 1) { currentLevel[part] = { ...file, _isFile: true }; }
+            else { if (!currentLevel[part]) { currentLevel[part] = {}; } currentLevel = currentLevel[part]; }
         });
     });
     return tree;
@@ -209,19 +192,11 @@ function getContentForPath(path) {
 }
 
 async function handleSingleForward(messageId) {
-    if (!hasPermission('can_receive_files')) {
-        showNotification("Você não tem permissão para esta ação.", "error");
-        return;
-    }
-    if (!state.token) {
-        authModal.classList.add('show');
-        return;
-    }
+    if (!hasPermission('can_receive_files')) { showNotification("Você não tem permissão para esta ação.", "error"); return; }
+    if (!state.token) { authModal.classList.add('show'); return; }
     showNotification('Enviando para o seu Telegram...', 'info');
     try {
-        await apiCall('single-forward', 'POST', {
-            message_id: parseInt(messageId)
-        });
+        await apiCall('single-forward', 'POST', { message_id: parseInt(messageId) });
         showNotification('✅ Arquivo enviado com sucesso!', 'success');
     } catch (error) {
         if (error.message.includes('vinculada')) {
@@ -234,21 +209,9 @@ async function handleSingleForward(messageId) {
 }
 
 // --- 7. OPERAÇÕES DE ARQUIVO (Modais) ---
-let moveState = {
-    oldKeys: [],
-    destinationPath: null,
-    currentPath: [],
-    isFolder: false
-};
-let renameState = {
-    oldKey: null,
-    newKey: null,
-    isFolder: false
-};
-let roleState = {
-    id: null,
-    allPermissions: []
-};
+let moveState = { oldKeys: [], destinationPath: null, currentPath: [], isFolder: false };
+let renameState = { oldKey: null, newKey: null, isFolder: false };
+let roleState = { id: null, allPermissions: [] };
 
 function openMoveModal(keysToMove, isFolder = false) {
     moveState.oldKeys = Array.isArray(keysToMove) ? keysToMove : [keysToMove];
@@ -261,29 +224,19 @@ function openMoveModal(keysToMove, isFolder = false) {
     moveFileModal.classList.add('show');
 }
 
-function closeMoveModal() {
-    moveFileModal.classList.remove('show');
-}
+function closeMoveModal() { moveFileModal.classList.remove('show'); }
 
 function renderFolderNavigator() {
     const navContainer = document.getElementById('folder-navigation');
     const pathDisplay = document.getElementById('move-file-path');
     const confirmBtn = document.getElementById('move-file-confirm-btn');
     const currentFolderContent = getContentForPath(moveState.currentPath);
-    const subFolders = Object.entries(currentFolderContent)
-        .filter(([_, item]) => !item._isFile)
-        .map(([name, _]) => name);
-
+    const subFolders = Object.entries(currentFolderContent).filter(([_, item]) => !item._isFile).map(([name, _]) => name);
     let html = '<ul>';
-    if (moveState.currentPath.length > 0) {
-        html += `<li data-action="up">⬅️ .. (Voltar)</li>`;
-    }
-    subFolders.forEach(folder => {
-        html += `<li data-action="down" data-folder="${folder}">📁 ${folder}</li>`;
-    });
+    if (moveState.currentPath.length > 0) { html += `<li data-action="up">⬅️ .. (Voltar)</li>`; }
+    subFolders.forEach(folder => { html += `<li data-action="down" data-folder="${folder}">📁 ${folder}</li>`; });
     html += '</ul>';
     navContainer.innerHTML = html;
-
     const currentDisplayPath = `/${moveState.currentPath.join('/')}`;
     pathDisplay.textContent = currentDisplayPath;
     confirmBtn.disabled = false;
@@ -293,14 +246,9 @@ async function confirmMoveFile() {
     moveState.destinationPath = moveState.currentPath.join('/');
     try {
         const apiToCall = moveState.isFolder ? 'admin/rename' : 'admin/bulk-move';
-        const payload = moveState.isFolder ? {
-            oldKey: moveState.oldKeys[0],
-            newKey: `${moveState.destinationPath}/${moveState.oldKeys[0].split('/').pop()}`,
-            isFolder: true
-        } : {
-            oldKeys: moveState.oldKeys,
-            destinationPath: moveState.destinationPath
-        };
+        const payload = moveState.isFolder ?
+            { oldKey: moveState.oldKeys[0], newKey: `${moveState.destinationPath}/${moveState.oldKeys[0].split('/').pop()}`, isFolder: true } :
+            { oldKeys: moveState.oldKeys, destinationPath: moveState.destinationPath };
         await apiCall(apiToCall, 'POST', payload);
         showNotification("Item(ns) movido(s) com sucesso!", "success");
         closeMoveModal();
@@ -317,31 +265,20 @@ function openCreateFolderModal(fromMoveModal = false) {
     document.getElementById('new-folder-name').focus();
 }
 
-function closeCreateFolderModal() {
-    createFolderModal.classList.remove('show');
-}
+function closeCreateFolderModal() { createFolderModal.classList.remove('show'); }
 
 async function confirmCreateFolder() {
     const folderNameInput = document.getElementById('new-folder-name');
     const newFolderName = folderNameInput.value.trim();
-
-    if (!newFolderName || newFolderName.includes('/') || newFolderName === '.placeholder') {
-        showNotification("Nome de pasta inválido.", "error");
-        return;
-    }
-
+    if (!newFolderName || newFolderName.includes('/') || newFolderName === '.placeholder') { showNotification("Nome de pasta inválido.", "error"); return; }
     const wasOpenedFromMoveModal = createFolderModal.dataset.fromMoveModal === 'true';
     const basePath = wasOpenedFromMoveModal ? moveState.currentPath : (window.location.hash.slice(2) || '').split('/').filter(p => p);
     const fullPath = [...basePath, newFolderName].join('/');
-
     try {
-        await apiCall('admin/create-folder', 'POST', {
-            folderPath: fullPath
-        });
+        await apiCall('admin/create-folder', 'POST', { folderPath: fullPath });
         showNotification(`Pasta "${newFolderName}" criada!`, "success");
         closeCreateFolderModal();
         await refreshFiles();
-
         if (wasOpenedFromMoveModal) {
             openMoveModal(moveState.oldKeys, moveState.isFolder);
         }
@@ -361,29 +298,17 @@ function openRenameModal(key, isFolder) {
     renameInput.focus();
 }
 
-function closeRenameModal() {
-    renameModal.classList.remove('show');
-}
+function closeRenameModal() { renameModal.classList.remove('show'); }
 
 async function confirmRename() {
     const newName = document.getElementById('rename-new-name').value.trim();
-    if (!newName || newName.includes('/')) {
-        showNotification("Nome inválido.", "error");
-        return;
-    }
+    if (!newName || newName.includes('/')) { showNotification("Nome inválido.", "error"); return; }
     const pathParts = renameState.oldKey.split('/');
     pathParts.pop();
     const newKey = [...pathParts, newName].join('/');
-    if (renameState.oldKey === newKey) {
-        closeRenameModal();
-        return;
-    }
+    if (renameState.oldKey === newKey) { closeRenameModal(); return; }
     try {
-        await apiCall('admin/rename', 'POST', {
-            oldKey: renameState.oldKey,
-            newKey,
-            isFolder: renameState.isFolder
-        });
+        await apiCall('admin/rename', 'POST', { oldKey: renameState.oldKey, newKey, isFolder: renameState.isFolder });
         showNotification("Renomeado com sucesso!", "success");
         closeRenameModal();
         refreshFiles();
@@ -394,16 +319,10 @@ async function confirmRename() {
 
 async function deleteItems(keys, isFolder = false, folderName = '') {
     const keyCount = keys.length;
-    let message = isFolder ?
-        `Tem certeza que deseja excluir a pasta "${folderName}" e todo o seu conteúdo? Esta ação é irreversível.` :
-        `Tem certeza que deseja excluir ${keyCount} item(ns)? Esta ação é irreversível.`;
+    let message = isFolder ? `Tem certeza que deseja excluir a pasta "${folderName}" e todo o seu conteúdo? Esta ação é irreversível.` : `Tem certeza que deseja excluir ${keyCount} item(ns)? Esta ação é irreversível.`;
     if (!confirm(message)) return;
     try {
-        const payload = isFolder ? {
-            prefix: keys[0] + '/'
-        } : {
-            keys: keys
-        };
+        const payload = isFolder ? { prefix: keys[0] + '/' } : { keys: keys };
         await apiCall('admin/bulk-delete', 'POST', payload);
         showNotification("Item(ns) excluído(s) com sucesso!", "success");
         refreshFiles();
@@ -421,7 +340,6 @@ async function openRoleModal(role = null) {
     nameInput.value = role ? role.name : '';
     levelInput.value = role ? role.level : '';
     roleState.id = role ? role.id : null;
-
     if (roleState.allPermissions.length === 0) {
         try {
             roleState.allPermissions = await apiCall('admin/permissions');
@@ -431,17 +349,12 @@ async function openRoleModal(role = null) {
         }
     }
     let permsHTML = '';
-    roleState.allPermissions.forEach(perm => {
-        const isChecked = role ? role.permissions.includes(perm.name) : false;
-        permsHTML += `<div><input type="checkbox" id="perm-${perm.id}" value="${perm.id}" ${isChecked ? 'checked' : ''}><label for="perm-${perm.id}"> ${perm.name}</label></div>`;
-    });
+    roleState.allPermissions.forEach(perm => { const isChecked = role ? role.permissions.includes(perm.name) : false; permsHTML += `<div><input type="checkbox" id="perm-${perm.id}" value="${perm.id}" ${isChecked ? 'checked' : ''}><label for="perm-${perm.id}"> ${perm.name}</label></div>`; });
     permsContainer.innerHTML = permsHTML;
     roleModal.classList.add('show');
 }
 
-function closeRoleModal() {
-    roleModal.classList.remove('show');
-}
+function closeRoleModal() { roleModal.classList.remove('show'); }
 
 async function confirmSaveRole() {
     const name = document.getElementById('role-name').value;
@@ -450,11 +363,7 @@ async function confirmSaveRole() {
     const endpoint = roleState.id ? `admin/roles/${roleState.id}` : 'admin/roles';
     const method = roleState.id ? 'PUT' : 'POST';
     try {
-        await apiCall(endpoint, method, {
-            name,
-            level,
-            permissions: selectedPerms
-        });
+        await apiCall(endpoint, method, { name, level, permissions: selectedPerms });
         showNotification("Cargo salvo com sucesso!", "success");
         closeRoleModal();
         router('admin/roles');
@@ -463,7 +372,7 @@ async function confirmSaveRole() {
     }
 }
 
-// --- 8. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
+// --- 8. FUNÇÕES DE RENDERIZAÇÃO ---
 function renderNav() {
     parseJwt();
     mainNav.innerHTML = `<span>Olá, <a href="/#/profile"><strong>${state.username || 'Visitante'}</strong></a>${state.role ? ` (${state.role})` : ''}</span>`;
@@ -486,10 +395,7 @@ function renderLoginPage() {
     document.getElementById('login-form').onsubmit = async (e) => {
         e.preventDefault();
         try {
-            const data = await apiCall('auth/login', 'POST', {
-                username: e.target.username.value,
-                password: e.target.password.value
-            });
+            const data = await apiCall('auth/login', 'POST', { username: e.target.username.value, password: e.target.password.value });
             login(data.token);
             window.location.hash = '/';
         } catch (error) {
@@ -503,10 +409,7 @@ function renderRegisterPage() {
     document.getElementById('register-form').onsubmit = async (e) => {
         e.preventDefault();
         try {
-            const data = await apiCall('auth/register', 'POST', {
-                username: e.target.username.value,
-                password: e.target.password.value
-            });
+            const data = await apiCall('auth/register', 'POST', { username: e.target.username.value, password: e.target.password.value });
             showNotification(data.message, 'success');
             window.location.hash = '/login';
         } catch (error) {
@@ -529,13 +432,7 @@ async function renderProfilePage() {
         if (userData.telegram_chat_id) {
             document.getElementById('unlink-btn').onclick = async () => {
                 if (confirm('Tem certeza?')) {
-                    try {
-                        await apiCall('user/unlink-telegram', 'POST');
-                        showNotification('Conta desvinculada com sucesso.', 'success');
-                        router();
-                    } catch (error) {
-                        showNotification(`Erro: ${error.message}`, 'error');
-                    }
+                    try { await apiCall('user/unlink-telegram', 'POST'); showNotification('Conta desvinculada com sucesso.', 'success'); router(); } catch (error) { showNotification(`Erro: ${error.message}`, 'error'); }
                 }
             };
         } else {
@@ -545,38 +442,17 @@ async function renderProfilePage() {
                 linkButton.textContent = 'Gerando...';
                 const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
                 const linkCodeWithPrefix = `link_${randomCode}`;
-                apiCall('user/prepare-link-code', 'POST', {
-                    linkCode: linkCodeWithPrefix
-                }).then(() => {
-                    window.open(`https://t.me/ShiroyamaBot?start=${linkCodeWithPrefix}`, '_blank');
-                    linkButton.textContent = 'Verifique o Telegram!';
-                    showNotification('Conclua o vínculo no Telegram.', 'info');
-                    startFaviconBlink();
-                    setTimeout(() => router(), 15000);
-                }).catch(err => {
-                    showNotification(`Erro: ${err.message}`, 'error');
-                    linkButton.disabled = false;
-                    linkButton.textContent = 'Vincular com o Telegram';
-                });
+                apiCall('user/prepare-link-code', 'POST', { linkCode: linkCodeWithPrefix }).then(() => { window.open(`https://t.me/ShiroyamaBot?start=${linkCodeWithPrefix}`, '_blank'); linkButton.textContent = 'Verifique o Telegram!'; showNotification('Conclua o vínculo no Telegram.', 'info'); startFaviconBlink(); setTimeout(() => router(), 15000); }).catch(err => { showNotification(`Erro: ${err.message}`, 'error'); linkButton.disabled = false; linkButton.textContent = 'Vincular com o Telegram'; });
             };
-            document.getElementById('why-link-q').onclick = (e) => {
-                e.preventDefault();
-                whyLinkModal.classList.add('show');
-            };
+            document.getElementById('why-link-q').onclick = (e) => { e.preventDefault(); whyLinkModal.classList.add('show'); };
         }
         document.getElementById('password-form').onsubmit = async (e) => {
             e.preventDefault();
             const currentPassword = e.target['current-password'].value;
             const newPassword = e.target['new-password'].value;
-            if (newPassword !== e.target['confirm-password'].value) {
-                showNotification("As senhas não coincidem.", 'error');
-                return;
-            }
+            if (newPassword !== e.target['confirm-password'].value) { showNotification("As senhas não coincidem.", 'error'); return; }
             try {
-                const data = await apiCall('auth/change-password', 'POST', {
-                    currentPassword,
-                    newPassword
-                });
+                const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword });
                 showNotification(data.message, 'success');
                 logout();
             } catch (error) {
@@ -593,10 +469,10 @@ async function renderAdminPage(subpage) {
     else if (!subpage && hasPermission('can_manage_roles')) subpage = 'roles';
 
     mainContent.innerHTML = `<h2>Painel de Administrador</h2><div class="admin-tabs">${hasPermission('can_manage_users') ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}">Gerenciar Usuários</button>` : ''}${hasPermission('can_manage_roles') ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}">Gerenciar Cargos</button>` : ''}</div><div id="admin-content">Carregando...</div>`;
-
-    if (hasPermission('can_manage_users')) document.getElementById('admin-tab-users').onclick = () => router('admin/users');
-    if (hasPermission('can_manage_roles')) document.getElementById('admin-tab-roles').onclick = () => router('admin/roles');
-
+    
+    if (hasPermission('can_manage_users')) { document.getElementById('admin-tab-users').onclick = () => router('admin/users'); }
+    if (hasPermission('can_manage_roles')) { document.getElementById('admin-tab-roles').onclick = () => router('admin/roles'); }
+    
     const adminContent = document.getElementById('admin-content');
     try {
         if (subpage === 'users' && hasPermission('can_manage_users')) {
@@ -618,9 +494,7 @@ async function renderAdminPage(subpage) {
 
 function renderFilesPage(path) {
     let controlsHTML = `<div class="controls-buttons">`;
-    if (hasPermission('can_create_folders')) {
-        controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`;
-    }
+    if (hasPermission('can_create_folders')) { controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`; }
     controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div>`;
     mainContent.innerHTML = `<div class="controls"><div id="breadcrumb"></div>${controlsHTML}</div><div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div>`;
     document.getElementById('refresh-files-btn').onclick = refreshFiles;
@@ -628,16 +502,7 @@ function renderFilesPage(path) {
     breadcrumbElement.innerHTML = '';
     ['Home', ...path].forEach((part, index, arr) => {
         const span = document.createElement('span');
-        if (index < arr.length - 1) {
-            const a = document.createElement('a');
-            const targetPath = arr.slice(1, index + 1).map(encodeURIComponent).join('/');
-            a.href = `#/${targetPath}`;
-            a.textContent = part;
-            span.appendChild(a);
-            span.innerHTML += ' > ';
-        } else {
-            span.textContent = part;
-        }
+        if (index < arr.length - 1) { const a = document.createElement('a'); const targetPath = arr.slice(1, index + 1).map(encodeURIComponent).join('/'); a.href = `#/${targetPath}`; a.textContent = part; span.appendChild(a); span.innerHTML += ' > '; } else { span.textContent = part; }
         breadcrumbElement.appendChild(span);
     });
     const fileListBodyElement = document.getElementById('file-list-body');
@@ -648,14 +513,8 @@ function renderFilesPage(path) {
         if (isFileA && !isFileB) return 1;
         if (!isFileA && isFileB) return -1;
         const sortOrder = state.sort.order === 'asc' ? 1 : -1;
-        if (state.sort.key === 'name') {
-            return nameA.localeCompare(nameB, undefined, {
-                numeric: true
-            }) * sortOrder;
-        }
-        if (state.sort.key === 'size') {
-            return (itemA.file_size || 0) - (itemB.file_size || 0) * sortOrder;
-        }
+        if (state.sort.key === 'name') { return nameA.localeCompare(nameB, undefined, { numeric: true }) * sortOrder; }
+        if (state.sort.key === 'size') { return (itemA.file_size || 0) - (itemB.file_size || 0) * sortOrder; }
         return 0;
     });
     if (items.length === 0) {
@@ -669,28 +528,14 @@ function renderFilesPage(path) {
         const itemPath = [...path, name].join('/');
         let actionsHTML = '<div class="file-actions">';
         if (item._isFile) {
-            if (hasPermission('can_rename_items')) {
-                actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear"><i class="fas fa-edit"></i></button>`;
-            }
-            if (hasPermission('can_move_items')) {
-                actionsHTML += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover"><i class="fas fa-folder-open"></i></button>`;
-            }
-            if (hasPermission('can_receive_files')) {
-                actionsHTML += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
-            }
-            if (hasPermission('can_delete_items')) {
-                actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`;
-            }
+            if (hasPermission('can_rename_items')) { actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear"><i class="fas fa-edit"></i></button>`; }
+            if (hasPermission('can_move_items')) { actionsHTML += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover"><i class="fas fa-folder-open"></i></button>`; }
+            if (hasPermission('can_receive_files')) { actionsHTML += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`; }
+            if (hasPermission('can_delete_items')) { actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`; }
         } else {
-            if (hasPermission('can_rename_items')) {
-                actionsHTML += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear"><i class="fas fa-edit"></i></button>`;
-            }
-            if (hasPermission('can_move_items')) {
-                actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-open"></i></button>`;
-            }
-            if (hasPermission('can_delete_items')) {
-                actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir"><i class="fas fa-trash"></i></button>`;
-            }
+            if (hasPermission('can_rename_items')) { actionsHTML += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear"><i class="fas fa-edit"></i></button>`; }
+            if (hasPermission('can_move_items')) { actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-open"></i></button>`; }
+            if (hasPermission('can_delete_items')) { actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir"><i class="fas fa-trash"></i></button>`; }
         }
         actionsHTML += '</div>';
         if (item._isFile) {
@@ -714,7 +559,6 @@ async function router(forceRoute) {
     const pathString = forceRoute || window.location.hash.slice(1) || '/';
     const path = pathString.split('/').filter(p => p && p !== '#').map(decodeURIComponent);
     const route = path[0] || 'home';
-
     if (route === 'admin' && !hasPermission('can_manage_users') && !hasPermission('can_manage_roles')) {
         showNotification("Acesso negado.", "error");
         window.location.hash = '/';
@@ -734,7 +578,6 @@ async function router(forceRoute) {
             return;
         }
     }
-
     switch (route) {
         case 'login':
             renderLoginPage();
@@ -824,16 +667,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const target = e.target.closest('button, .sortable-header');
         if (!target) return;
 
-        if (target.classList.contains('btn-single-forward')) handleSingleForward(target.dataset.messageId);
-        if (target.classList.contains('btn-move-file')) openMoveModal(target.dataset.key, false);
-        if (target.classList.contains('btn-move-folder')) openMoveModal(target.dataset.key, true);
-        if (target.classList.contains('btn-rename')) openRenameModal(target.dataset.key, target.dataset.isfolder === 'true');
+        if (target.classList.contains('btn-single-forward')) {
+            handleSingleForward(target.dataset.messageId);
+        }
+        if (target.classList.contains('btn-move-file')) {
+            openMoveModal(target.dataset.key, false);
+        }
+        if (target.classList.contains('btn-move-folder')) {
+            openMoveModal(target.dataset.key, true);
+        }
+        if (target.classList.contains('btn-rename')) {
+            openRenameModal(target.dataset.key, target.dataset.isfolder === 'true');
+        }
         if (target.classList.contains('btn-delete')) {
             const isFolder = target.dataset.isfolder === 'true';
             const key = target.dataset.key;
             deleteItems([key], isFolder, isFolder ? key.split('/').pop() : '');
         }
-        if (target.id === 'create-folder-btn') openCreateFolderModal(false);
+        if (target.id === 'create-folder-btn') {
+            openCreateFolderModal(false);
+        }
         if (target.classList.contains('sortable-header')) {
             const sortKey = target.dataset.sort;
             if (state.sort.key === sortKey) {
@@ -845,13 +698,16 @@ document.addEventListener('DOMContentLoaded', () => {
             router();
         }
 
-        // Eventos da página de admin
+        // --- Eventos da página de admin ---
         if (target.classList.contains('save-user-role-btn')) {
             const userId = target.dataset.id;
             const newRoleId = document.querySelector(`.role-select[data-id="${userId}"]`).value;
-            apiCall('admin/users/update-role', 'POST', { userId: parseInt(userId), newRoleId: parseInt(newRoleId) })
-                .then(() => showNotification("Cargo do usuário atualizado.", "success"))
-                .catch(err => showNotification(`Erro: ${err.message}`, "error"));
+            apiCall('admin/users/update-role', 'POST', {
+                userId: parseInt(userId),
+                newRoleId: parseInt(newRoleId)
+            })
+            .then(() => showNotification("Cargo do usuário atualizado.", "success"))
+            .catch(err => showNotification(`Erro: ${err.message}`, "error"));
         }
         if (target.classList.contains('delete-user-btn')) {
             const userId = target.dataset.id;
