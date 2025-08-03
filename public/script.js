@@ -59,6 +59,7 @@ function getIconForFile(fileName) {
     return '<i class="fas fa-file-alt"></i>';
 }
 
+
 // --- 2. ESTADO GLOBAL E FUNÇÕES RELACIONADAS ---
 const state = {
     token: localStorage.getItem('jwtToken'),
@@ -462,7 +463,7 @@ async function confirmSaveRole() {
     }
 }
 
-// --- 8. FUNÇÕES DE RENDERIZAÇÃO ---
+// --- 8. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
 function renderNav() {
     parseJwt();
     mainNav.innerHTML = `<span>Olá, <a href="/#/profile"><strong>${state.username || 'Visitante'}</strong></a>${state.role ? ` (${state.role})` : ''}</span>`;
@@ -587,27 +588,27 @@ async function renderProfilePage() {
     }
 }
 
-async function renderAdminPage(subpage = 'users') {
+async function renderAdminPage(subpage) {
+    if (!subpage && hasPermission('can_manage_users')) subpage = 'users';
+    else if (!subpage && hasPermission('can_manage_roles')) subpage = 'roles';
+
     mainContent.innerHTML = `<h2>Painel de Administrador</h2><div class="admin-tabs">${hasPermission('can_manage_users') ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}">Gerenciar Usuários</button>` : ''}${hasPermission('can_manage_roles') ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}">Gerenciar Cargos</button>` : ''}</div><div id="admin-content">Carregando...</div>`;
-    if (hasPermission('can_manage_users')) {
-        document.getElementById('admin-tab-users').onclick = () => router('admin/users');
-    }
-    if (hasPermission('can_manage_roles')) {
-        document.getElementById('admin-tab-roles').onclick = () => router('admin/roles');
-    }
+
+    if (hasPermission('can_manage_users')) document.getElementById('admin-tab-users').onclick = () => router('admin/users');
+    if (hasPermission('can_manage_roles')) document.getElementById('admin-tab-roles').onclick = () => router('admin/roles');
+
     const adminContent = document.getElementById('admin-content');
     try {
         if (subpage === 'users' && hasPermission('can_manage_users')) {
             const [usersData, rolesData] = await Promise.all([apiCall('admin/users'), apiCall('admin/roles')]);
             const rolesOptions = rolesData.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
-            adminContent.innerHTML = `<div class="table-container"><table class="file-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>ID do Chat</th><th>Criado em</th><th>Ações</th></tr></thead><tbody>${usersData.users.map(user => `<tr><td>${user.username}</td><td><select class="role-select" data-id="${user.id}">${rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`)}</select></td><td>${user.telegram_chat_id || 'N/A'}</td><td>${new Date(user.created_at).toLocaleDateString()}</td><td><button class="save-role-btn" data-id="${user.id}">Salvar</button><button class="delete-user-btn btn-danger" data-id="${user.id}">Excluir</button></td></tr>`).join('')}</tbody></table></div>`;
+            adminContent.innerHTML = `<div class="table-container"><table class="file-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>ID do Chat</th><th>Criado em</th><th>Ações</th></tr></thead><tbody>${usersData.users.map(user => `<tr><td>${user.username}</td><td><select class="role-select" data-id="${user.id}">${rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`)}</select></td><td>${user.telegram_chat_id || 'N/A'}</td><td>${new Date(user.created_at).toLocaleDateString()}</td><td><button class="save-user-role-btn" data-id="${user.id}">Salvar</button><button class="delete-user-btn btn-danger" data-id="${user.id}">Excluir</button></td></tr>`).join('')}</tbody></table></div>`;
         } else if (subpage === 'roles' && hasPermission('can_manage_roles')) {
             const rolesData = await apiCall('admin/roles');
             adminContent.innerHTML = `<div style="text-align: right; margin-bottom: 10px;"><button id="create-new-role-btn">Criar Novo Cargo</button></div><div class="table-container"><table class="file-table"><thead><tr><th>Cargo</th><th>Nível</th><th>Permissões</th><th>Ações</th></tr></thead><tbody>${rolesData.map(role => `<tr><td>${role.name}</td><td>${role.level}</td><td>${role.permissions.join(', ') || 'Nenhuma'}</td><td><button class="edit-role-btn" data-role='${JSON.stringify(role)}'>Editar</button><button class="delete-role-btn btn-danger" data-id="${role.id}">Excluir</button></td></tr>`).join('')}</tbody></table></div>`;
         } else {
-            // Se o usuário não tem permissão para a subpágina padrão, mas tem para outra.
-            if(hasPermission('can_manage_users')) router('admin/users');
-            else if(hasPermission('can_manage_roles')) router('admin/roles');
+            if (hasPermission('can_manage_users')) router('admin/users');
+            else if (hasPermission('can_manage_roles')) router('admin/roles');
             else adminContent.innerHTML = `<p>Você não tem permissão para ver esta seção.</p>`;
         }
     } catch (error) {
@@ -668,14 +669,28 @@ function renderFilesPage(path) {
         const itemPath = [...path, name].join('/');
         let actionsHTML = '<div class="file-actions">';
         if (item._isFile) {
-            if (hasPermission('can_rename_items')) { actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear"><i class="fas fa-edit"></i></button>`; }
-            if (hasPermission('can_move_items')) { actionsHTML += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover"><i class="fas fa-folder-open"></i></button>`; }
-            if (hasPermission('can_receive_files')) { actionsHTML += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`; }
-            if (hasPermission('can_delete_items')) { actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`; }
+            if (hasPermission('can_rename_items')) {
+                actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear"><i class="fas fa-edit"></i></button>`;
+            }
+            if (hasPermission('can_move_items')) {
+                actionsHTML += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover"><i class="fas fa-folder-open"></i></button>`;
+            }
+            if (hasPermission('can_receive_files')) {
+                actionsHTML += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
+            }
+            if (hasPermission('can_delete_items')) {
+                actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`;
+            }
         } else {
-            if (hasPermission('can_rename_items')) { actionsHTML += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear"><i class="fas fa-edit"></i></button>`; }
-            if (hasPermission('can_move_items')) { actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-open"></i></button>`; }
-            if (hasPermission('can_delete_items')) { actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir"><i class="fas fa-trash"></i></button>`; }
+            if (hasPermission('can_rename_items')) {
+                actionsHTML += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear"><i class="fas fa-edit"></i></button>`;
+            }
+            if (hasPermission('can_move_items')) {
+                actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-open"></i></button>`;
+            }
+            if (hasPermission('can_delete_items')) {
+                actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir"><i class="fas fa-trash"></i></button>`;
+            }
         }
         actionsHTML += '</div>';
         if (item._isFile) {
@@ -699,6 +714,7 @@ async function router(forceRoute) {
     const pathString = forceRoute || window.location.hash.slice(1) || '/';
     const path = pathString.split('/').filter(p => p && p !== '#').map(decodeURIComponent);
     const route = path[0] || 'home';
+
     if (route === 'admin' && !hasPermission('can_manage_users') && !hasPermission('can_manage_roles')) {
         showNotification("Acesso negado.", "error");
         window.location.hash = '/';
@@ -718,6 +734,7 @@ async function router(forceRoute) {
             return;
         }
     }
+
     switch (route) {
         case 'login':
             renderLoginPage();
@@ -807,26 +824,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const target = e.target.closest('button, .sortable-header');
         if (!target) return;
 
-        if (target.classList.contains('btn-single-forward')) {
-            handleSingleForward(target.dataset.messageId);
-        }
-        if (target.classList.contains('btn-move-file')) {
-            openMoveModal(target.dataset.key, false);
-        }
-        if (target.classList.contains('btn-move-folder')) {
-            openMoveModal(target.dataset.key, true);
-        }
-        if (target.classList.contains('btn-rename')) {
-            openRenameModal(target.dataset.key, target.dataset.isfolder === 'true');
-        }
+        if (target.classList.contains('btn-single-forward')) handleSingleForward(target.dataset.messageId);
+        if (target.classList.contains('btn-move-file')) openMoveModal(target.dataset.key, false);
+        if (target.classList.contains('btn-move-folder')) openMoveModal(target.dataset.key, true);
+        if (target.classList.contains('btn-rename')) openRenameModal(target.dataset.key, target.dataset.isfolder === 'true');
         if (target.classList.contains('btn-delete')) {
             const isFolder = target.dataset.isfolder === 'true';
             const key = target.dataset.key;
             deleteItems([key], isFolder, isFolder ? key.split('/').pop() : '');
         }
-        if (target.id === 'create-folder-btn') {
-            openCreateFolderModal(false);
-        }
+        if (target.id === 'create-folder-btn') openCreateFolderModal(false);
         if (target.classList.contains('sortable-header')) {
             const sortKey = target.dataset.sort;
             if (state.sort.key === sortKey) {
@@ -837,11 +844,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             router();
         }
-        // --- Eventos da página de admin ---
-        if (target.classList.contains('save-role-btn')) {
+
+        // Eventos da página de admin
+        if (target.classList.contains('save-user-role-btn')) {
             const userId = target.dataset.id;
             const newRoleId = document.querySelector(`.role-select[data-id="${userId}"]`).value;
-            apiCall('admin/update-role', 'POST', { userId: parseInt(userId), newRoleId: parseInt(newRoleId) })
+            apiCall('admin/users/update-role', 'POST', { userId: parseInt(userId), newRoleId: parseInt(newRoleId) })
                 .then(() => showNotification("Cargo do usuário atualizado.", "success"))
                 .catch(err => showNotification(`Erro: ${err.message}`, "error"));
         }
