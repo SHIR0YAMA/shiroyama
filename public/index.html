@@ -35,6 +35,11 @@
         .file-list { display: flex; flex-direction: column; margin-top: 15px; }
         .file-list-header, .file-item { display: flex; align-items: center; padding: 12px 15px; border-bottom: 1px solid #3b3e50; }
         .file-list-header { color: #50fa7b; font-weight: bold; border-bottom-width: 2px; border-bottom-color: #6272a4; }
+        .sortable-header { cursor: pointer; user-select: none; }
+        .sortable-header:hover { color: #8affad; }
+        .sort-indicator { margin-left: 5px; display: inline-block; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; }
+        .sort-indicator.asc { border-bottom: 5px solid #f1fa8c; }
+        .sort-indicator.desc { border-top: 5px solid #f1fa8c; }
         .file-item:last-child { border-bottom: none; }
         .file-item:hover { background-color: #3b3e50; }
         .file-item > *, .file-list-header > * { padding: 0 5px; }
@@ -86,7 +91,7 @@
         <div class="modal-content">
             <span id="modal-close-btn" class="modal-close-btn">×</span>
             <h2>Ação Necessária</h2>
-            <p>Para receber este arquivo, você precisa ter uma conta e estar logado.</p>
+            <p>Para realizar esta ação, você precisa ter uma conta e estar logado.</p>
             <div class="modal-actions">
                 <button id="modal-login-btn">Fazer Login</button>
                 <button id="modal-register-btn">Criar Conta</button>
