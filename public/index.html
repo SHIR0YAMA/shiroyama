@@ -35,11 +35,6 @@
         .file-list { display: flex; flex-direction: column; margin-top: 15px; }
         .file-list-header, .file-item { display: flex; align-items: center; padding: 12px 15px; border-bottom: 1px solid #3b3e50; }
         .file-list-header { color: #50fa7b; font-weight: bold; border-bottom-width: 2px; border-bottom-color: #6272a4; }
-        .sortable-header { cursor: pointer; user-select: none; }
-        .sortable-header:hover { color: #8affad; }
-        .sort-indicator { margin-left: 5px; display: inline-block; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; }
-        .sort-indicator.asc { border-bottom: 5px solid #f1fa8c; }
-        .sort-indicator.desc { border-top: 5px solid #f1fa8c; }
         .file-item:last-child { border-bottom: none; }
         .file-item:hover { background-color: #3b3e50; }
         .file-item > *, .file-list-header > * { padding: 0 5px; }
@@ -55,7 +50,7 @@
         .btn-refresh:hover { background-color: #8affad; }
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.75); display: flex; justify-content: center; align-items: center; z-index: 1000; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0s 0.3s; }
         .modal-overlay.show { opacity: 1; visibility: visible; transition-delay: 0s; }
-        .modal-content { background-color: #44475a; padding: 30px; border-radius: 8px; width: 90%; max-width: 450px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.5); transform: scale(0.9); transition: transform 0.3s ease; position: relative; }
+        .modal-content { background-color: #44475a; padding: 30px; border-radius: 8px; width: 90%; max-width: 500px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.5); transform: scale(0.9); transition: transform 0.3s ease; position: relative; }
         .modal-overlay.show .modal-content { transform: scale(1); }
         .modal-content h2 { margin-top: 0; color: #8be9fd; }
         .modal-content p { margin-bottom: 25px; line-height: 1.6; }
@@ -68,13 +63,17 @@
         .toast.success { border-left-color: #50fa7b; }
         .toast.error { border-left-color: #ff5555; }
         .toast.info { border-left-color: #8be9fd; }
-        #move-file-modal .modal-content, #create-folder-modal .modal-content, #rename-modal .modal-content { text-align: left; }
+        .modal-content { text-align: left; }
         #folder-navigation { min-height: 200px; max-height: 40vh; overflow-y: auto; background-color: #282a36; border: 1px solid #6272a4; border-radius: 5px; padding: 10px; margin-top: 15px; }
         #folder-navigation ul { list-style: none; padding: 0; margin: 0; }
         #folder-navigation li { padding: 8px 12px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; gap: 10px; }
         #folder-navigation li:hover, #folder-navigation li.selected { background-color: #6272a4; }
         #move-file-path { font-family: monospace; background-color: #282a36; padding: 5px; border-radius: 3px; word-break: break-all; }
         .modal-footer { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
+        .admin-tabs { display: flex; gap: 10px; border-bottom: 2px solid #6272a4; margin-bottom: 20px; }
+        .admin-tabs button { background: none; border: none; border-bottom: 3px solid transparent; padding: 10px 15px; color: #f8f8f2; cursor: pointer; font-size: 16px; }
+        .admin-tabs button.active { border-bottom-color: #ff79c6; }
+        .permission-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; text-align: left; }
     </style>
 </head>
 <body>
@@ -145,6 +144,27 @@
             <div class="modal-footer">
                 <button id="rename-cancel-btn">Cancelar</button>
                 <button id="rename-confirm-btn">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="role-modal" class="modal-overlay">
+        <div class="modal-content">
+            <span id="role-modal-close-btn" class="modal-close-btn">×</span>
+            <h2 id="role-modal-title">Criar Novo Cargo</h2>
+            <div class="form-group">
+                <label for="role-name">Nome do Cargo</label>
+                <input type="text" id="role-name">
+            </div>
+            <div class="form-group">
+                <label for="role-level">Nível de Hierarquia (menor = mais poder)</label>
+                <input type="number" id="role-level" min="1">
+            </div>
+            <h3>Permissões</h3>
+            <div id="permissions-container" class="permission-grid"></div>
+            <div class="modal-footer">
+                <button id="role-modal-cancel-btn">Cancelar</button>
+                <button id="role-modal-save-btn">Salvar</button>
             </div>
         </div>
     </div>
