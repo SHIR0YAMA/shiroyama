@@ -342,7 +342,6 @@ async function confirmCreateFolder() {
         await refreshFiles();
 
         if (wasOpenedFromMoveModal) {
-            // Reabre o modal de mover para continuar a operação
             openMoveModal(moveState.oldKeys, moveState.isFolder);
         }
     } catch (error) {
@@ -457,13 +456,13 @@ async function confirmSaveRole() {
         });
         showNotification("Cargo salvo com sucesso!", "success");
         closeRoleModal();
-        router('admin/roles'); // Força o refresh da aba de cargos
+        router('admin/roles');
     } catch (error) {
         showNotification(`Erro ao salvar cargo: ${error.message}`, "error");
     }
 }
 
-// --- 8. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
+// --- 8. FUNÇÕES DE RENDERIZAÇÃO ---
 function renderNav() {
     parseJwt();
     mainNav.innerHTML = `<span>Olá, <a href="/#/profile"><strong>${state.username || 'Visitante'}</strong></a>${state.role ? ` (${state.role})` : ''}</span>`;
@@ -588,19 +587,14 @@ async function renderProfilePage() {
     }
 }
 
-async function renderAdminPage(subpage) {
-    if (!subpage && hasPermission('can_manage_users')) subpage = 'users';
-    else if (!subpage && hasPermission('can_manage_roles')) subpage = 'roles';
-
+async function renderAdminPage(subpage = 'users') {
     mainContent.innerHTML = `<h2>Painel de Administrador</h2><div class="admin-tabs">${hasPermission('can_manage_users') ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}">Gerenciar Usuários</button>` : ''}${hasPermission('can_manage_roles') ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}">Gerenciar Cargos</button>` : ''}</div><div id="admin-content">Carregando...</div>`;
-
     if (hasPermission('can_manage_users')) {
         document.getElementById('admin-tab-users').onclick = () => router('admin/users');
     }
     if (hasPermission('can_manage_roles')) {
         document.getElementById('admin-tab-roles').onclick = () => router('admin/roles');
     }
-
     const adminContent = document.getElementById('admin-content');
     try {
         if (subpage === 'users' && hasPermission('can_manage_users')) {
@@ -611,7 +605,10 @@ async function renderAdminPage(subpage) {
             const rolesData = await apiCall('admin/roles');
             adminContent.innerHTML = `<div style="text-align: right; margin-bottom: 10px;"><button id="create-new-role-btn">Criar Novo Cargo</button></div><div class="table-container"><table class="file-table"><thead><tr><th>Cargo</th><th>Nível</th><th>Permissões</th><th>Ações</th></tr></thead><tbody>${rolesData.map(role => `<tr><td>${role.name}</td><td>${role.level}</td><td>${role.permissions.join(', ') || 'Nenhuma'}</td><td><button class="edit-role-btn" data-role='${JSON.stringify(role)}'>Editar</button><button class="delete-role-btn btn-danger" data-id="${role.id}">Excluir</button></td></tr>`).join('')}</tbody></table></div>`;
         } else {
-            adminContent.innerHTML = `<p>Você não tem permissão para ver esta seção.</p>`;
+            // Se o usuário não tem permissão para a subpágina padrão, mas tem para outra.
+            if(hasPermission('can_manage_users')) router('admin/users');
+            else if(hasPermission('can_manage_roles')) router('admin/roles');
+            else adminContent.innerHTML = `<p>Você não tem permissão para ver esta seção.</p>`;
         }
     } catch (error) {
         adminContent.innerHTML = `<p style="color: #ff5555;">Erro ao carregar dados: ${error.message}</p>`;
@@ -651,7 +648,9 @@ function renderFilesPage(path) {
         if (!isFileA && isFileB) return -1;
         const sortOrder = state.sort.order === 'asc' ? 1 : -1;
         if (state.sort.key === 'name') {
-            return nameA.localeCompare(nameB, undefined, { numeric: true }) * sortOrder;
+            return nameA.localeCompare(nameB, undefined, {
+                numeric: true
+            }) * sortOrder;
         }
         if (state.sort.key === 'size') {
             return (itemA.file_size || 0) - (itemB.file_size || 0) * sortOrder;
@@ -752,55 +751,123 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('modal-close-btn').onclick = () => authModal.classList.remove('show');
     document.getElementById('modal-login-btn').onclick = () => window.location.hash = '/login';
     document.getElementById('modal-register-btn').onclick = () => window.location.hash = '/register';
-    authModal.onclick = (e) => { if (e.target === authModal) authModal.classList.remove('show'); };
+    authModal.onclick = (e) => {
+        if (e.target === authModal) authModal.classList.remove('show');
+    };
     document.getElementById('why-modal-close-btn').onclick = () => whyLinkModal.classList.remove('show');
-    whyLinkModal.onclick = (e) => { if (e.target === whyLinkModal) whyLinkModal.classList.remove('show'); };
+    whyLinkModal.onclick = (e) => {
+        if (e.target === whyLinkModal) whyLinkModal.classList.remove('show');
+    };
     document.getElementById('move-modal-close-btn').onclick = closeMoveModal;
     document.getElementById('move-file-cancel-btn').onclick = closeMoveModal;
     document.getElementById('move-file-confirm-btn').onclick = confirmMoveFile;
-    moveFileModal.onclick = (e) => { if (e.target === moveFileModal) closeMoveModal(); };
+    moveFileModal.onclick = (e) => {
+        if (e.target === moveFileModal) closeMoveModal();
+    };
     document.getElementById('create-folder-close-btn').onclick = closeCreateFolderModal;
     document.getElementById('create-folder-cancel-btn').onclick = closeCreateFolderModal;
     document.getElementById('create-folder-confirm-btn').onclick = confirmCreateFolder;
-    createFolderModal.onclick = (e) => { if (e.target === createFolderModal) closeCreateFolderModal(); };
+    createFolderModal.onclick = (e) => {
+        if (e.target === createFolderModal) closeCreateFolderModal();
+    };
     document.getElementById('rename-close-btn').onclick = closeRenameModal;
     document.getElementById('rename-cancel-btn').onclick = closeRenameModal;
     document.getElementById('rename-confirm-btn').onclick = confirmRename;
-    renameModal.onclick = (e) => { if (e.target === renameModal) closeRenameModal(); };
+    renameModal.onclick = (e) => {
+        if (e.target === renameModal) closeRenameModal();
+    };
     document.getElementById('role-modal-close-btn').onclick = closeRoleModal;
     document.getElementById('role-modal-cancel-btn').onclick = closeRoleModal;
     document.getElementById('role-modal-save-btn').onclick = confirmSaveRole;
-    roleModal.onclick = (e) => { if (e.target === roleModal) closeRoleModal(); };
-    document.getElementById('new-folder-name').addEventListener('keyup', (e) => { if (e.key === 'Enter') confirmCreateFolder(); });
-    document.getElementById('rename-new-name').addEventListener('keyup', (e) => { if (e.key === 'Enter') confirmRename(); });
-    document.getElementById('folder-navigation').addEventListener('click', e => { const action = e.target.closest('li')?.dataset.action; if (!action) return; if (action === 'up') { moveState.currentPath.pop(); } else if (action === 'down') { moveState.currentPath.push(e.target.closest('li').dataset.folder); } renderFolderNavigator(); });
-    document.getElementById('create-folder-in-move-modal-btn').onclick = () => { closeMoveModal(); openCreateFolderModal(true); };
+    roleModal.onclick = (e) => {
+        if (e.target === roleModal) closeRoleModal();
+    };
+    document.getElementById('new-folder-name').addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') confirmCreateFolder();
+    });
+    document.getElementById('rename-new-name').addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') confirmRename();
+    });
+    document.getElementById('folder-navigation').addEventListener('click', e => {
+        const action = e.target.closest('li')?.dataset.action;
+        if (!action) return;
+        if (action === 'up') {
+            moveState.currentPath.pop();
+        } else if (action === 'down') {
+            moveState.currentPath.push(e.target.closest('li').dataset.folder);
+        }
+        renderFolderNavigator();
+    });
+    document.getElementById('create-folder-in-move-modal-btn').onclick = () => {
+        closeMoveModal();
+        openCreateFolderModal(true);
+    };
 
     mainContent.addEventListener('click', (e) => {
         const target = e.target.closest('button, .sortable-header');
         if (!target) return;
 
-        if (target.classList.contains('btn-single-forward')) handleSingleForward(target.dataset.messageId);
-        if (target.classList.contains('btn-move-file')) openMoveModal(target.dataset.key, false);
-        if (target.classList.contains('btn-move-folder')) openMoveModal(target.dataset.key, true);
-        if (target.classList.contains('btn-rename')) openRenameModal(target.dataset.key, target.dataset.isfolder === 'true');
+        if (target.classList.contains('btn-single-forward')) {
+            handleSingleForward(target.dataset.messageId);
+        }
+        if (target.classList.contains('btn-move-file')) {
+            openMoveModal(target.dataset.key, false);
+        }
+        if (target.classList.contains('btn-move-folder')) {
+            openMoveModal(target.dataset.key, true);
+        }
+        if (target.classList.contains('btn-rename')) {
+            openRenameModal(target.dataset.key, target.dataset.isfolder === 'true');
+        }
         if (target.classList.contains('btn-delete')) {
             const isFolder = target.dataset.isfolder === 'true';
             const key = target.dataset.key;
             deleteItems([key], isFolder, isFolder ? key.split('/').pop() : '');
         }
-        if (target.id === 'create-folder-btn') openCreateFolderModal(false);
+        if (target.id === 'create-folder-btn') {
+            openCreateFolderModal(false);
+        }
         if (target.classList.contains('sortable-header')) {
             const sortKey = target.dataset.sort;
-            if (state.sort.key === sortKey) { state.sort.order = state.sort.order === 'asc' ? 'desc' : 'asc'; } else { state.sort.key = sortKey; state.sort.order = 'asc'; }
+            if (state.sort.key === sortKey) {
+                state.sort.order = state.sort.order === 'asc' ? 'desc' : 'asc';
+            } else {
+                state.sort.key = sortKey;
+                state.sort.order = 'asc';
+            }
             router();
         }
-        // Eventos da página de admin
-        if (target.classList.contains('save-role-btn')) { /* Lógica para salvar cargo do usuário */ }
-        if (target.classList.contains('delete-user-btn')) { /* Lógica para deletar usuário */ }
-        if (target.id === 'create-new-role-btn') { openRoleModal(); }
-        if (target.classList.contains('edit-role-btn')) { const roleData = JSON.parse(target.dataset.role); openRoleModal(roleData); }
-        if (target.classList.contains('delete-role-btn')) { /* Lógica para deletar cargo */ }
+        // --- Eventos da página de admin ---
+        if (target.classList.contains('save-role-btn')) {
+            const userId = target.dataset.id;
+            const newRoleId = document.querySelector(`.role-select[data-id="${userId}"]`).value;
+            apiCall('admin/update-role', 'POST', { userId: parseInt(userId), newRoleId: parseInt(newRoleId) })
+                .then(() => showNotification("Cargo do usuário atualizado.", "success"))
+                .catch(err => showNotification(`Erro: ${err.message}`, "error"));
+        }
+        if (target.classList.contains('delete-user-btn')) {
+            const userId = target.dataset.id;
+            if (confirm('Tem certeza que deseja excluir este usuário?')) {
+                apiCall('admin/delete-user', 'POST', { userId: parseInt(userId) })
+                    .then(() => { showNotification("Usuário excluído.", "success"); router('admin/users'); })
+                    .catch(err => showNotification(`Erro: ${err.message}`, "error"));
+            }
+        }
+        if (target.id === 'create-new-role-btn') {
+            openRoleModal();
+        }
+        if (target.classList.contains('edit-role-btn')) {
+            const roleData = JSON.parse(target.dataset.role);
+            openRoleModal(roleData);
+        }
+        if (target.classList.contains('delete-role-btn')) {
+            const roleId = target.dataset.id;
+            if (confirm('Tem certeza que deseja excluir este cargo?')) {
+                apiCall(`admin/roles/${roleId}`, 'DELETE')
+                    .then(() => { showNotification("Cargo excluído.", "success"); router('admin/roles'); })
+                    .catch(err => showNotification(`Erro: ${err.message}`, "error"));
+            }
+        }
     });
 
     mainContent.addEventListener('change', (e) => {
@@ -821,20 +888,31 @@ document.addEventListener('DOMContentLoaded', () => {
             const keys = selected.map(cb => cb.dataset.key);
             const messageIds = selected.map(cb => cb.dataset.messageId);
             let buttonsHTML = `<span>${selected.length} item(ns) selecionado(s)</span>`;
-            if (hasPermission('can_receive_files')) { buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`; }
-            if (hasPermission('can_move_items')) { buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`; }
-            if (hasPermission('can_delete_items')) { buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`; }
+            if (hasPermission('can_receive_files')) {
+                buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
+            }
+            if (hasPermission('can_move_items')) {
+                buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`;
+            }
+            if (hasPermission('can_delete_items')) {
+                buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`;
+            }
             bulkActionsContainer.innerHTML = buttonsHTML;
             if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
             if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys);
             if (document.getElementById('bulk-receive-btn')) {
                 document.getElementById('bulk-receive-btn').onclick = async () => {
-                    if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
+                    if (!state.token) {
+                        showNotification("Você precisa estar logado.", 'error');
+                        return;
+                    }
                     const btn = document.getElementById('bulk-receive-btn');
                     try {
                         btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
                         btn.disabled = true;
-                        await apiCall('bulk-forward', 'POST', { message_ids: messageIds.map(id => parseInt(id)) });
+                        await apiCall('bulk-forward', 'POST', {
+                            message_ids: messageIds.map(id => parseInt(id))
+                        });
                         showNotification("O bot começou a enviar os arquivos! Verifique seu Telegram.", 'success');
                     } catch (error) {
                         showNotification(`Ocorreu um erro: ${error.message}`, 'error');
