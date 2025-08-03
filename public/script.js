@@ -310,14 +310,22 @@ async function deleteItems(keys, isFolder = false, folderName = '') {
 
 // --- 8. FUNÇÕES DE RENDERIZAÇÃO ---
 function renderNav() {
+    parseJwt(); // Carrega as permissões do token para o state.permissions
+
+    mainNav.innerHTML = `<span>Olá, <a href="/#/profile"><strong>${state.username || 'Visitante'}</strong></a>${state.role ? ` (${state.role})` : ''}</span>`;
+    
     if (state.token) {
-        mainNav.innerHTML = `<span>Olá, <a href="/#/profile"><strong>${state.username}</strong></a> (${state.role})</span> ${state.role === 'owner' || state.role === 'admin' ? '<a href="/#/admin">Admin</a>' : ''} <a href="#" id="logout-btn">Sair</a>`;
+        // A CONDIÇÃO CORRETA:
+        if (hasPermission('can_manage_users') || hasPermission('can_manage_roles')) {
+            mainNav.innerHTML += `<a href="/#/admin">Admin</a>`;
+        }
+        mainNav.innerHTML += `<a href="#" id="logout-btn">Sair</a>`;
         document.getElementById('logout-btn').onclick = (e) => {
             e.preventDefault();
             logout();
         };
     } else {
-        mainNav.innerHTML = `<a href="/#/login">Login</a> <a href="/#/register">Registrar</a>`;
+        mainNav.innerHTML += `<a href="/#/login">Login</a> <a href="/#/register">Registrar</a>`;
     }
 }
 
