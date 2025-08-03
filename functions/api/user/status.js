@@ -28,8 +28,22 @@ export async function onRequestGet(context) {
         const token = authHeader.split(' ')[1];
         const payload = await verifyJwt(token, env.JWT_SECRET);
         
-        const stmt = env.DB.prepare('SELECT id, username, role, telegram_chat_id, telegram_username FROM users WHERE id = ?');
-        const user = await stmt.bind(payload.userId).first();
+        // --- ALTERAÇÃO CRÍTICA AQUI ---
+        // A query agora junta a tabela 'users' com a 'roles' para pegar o nome do cargo (role_name)
+        // em vez da coluna 'role' que não existe mais.
+        const query = `
+            SELECT 
+                u.id, 
+                u.username, 
+                r.name as role_name, 
+                u.telegram_chat_id, 
+                u.telegram_username 
+            FROM users u
+            JOIN roles r ON u.role_id = r.id
+            WHERE u.id = ?
+        `;
+        const stmt = env.DB.prepare(query).bind(payload.userId);
+        const user = await stmt.first();
 
         if (!user) {
             return new Response(JSON.stringify({ message: 'Usuário não encontrado' }), { status: 404 });
@@ -38,6 +52,7 @@ export async function onRequestGet(context) {
         return new Response(JSON.stringify(user));
 
     } catch (error) {
+        console.error("Erro em /api/user/status:", error.stack);
         return new Response(JSON.stringify({ message: error.message }), { status: 500 });
     }
 }
