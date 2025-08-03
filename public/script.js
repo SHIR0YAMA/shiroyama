@@ -133,10 +133,7 @@ function login(token) {
 }
 
 function logout() {
-    state.token = null;
-    state.username = null;
-    state.role = null;
-    state.permissions = [];
+    state.token = null; state.username = null; state.role = null; state.permissions = [];
     localStorage.clear();
     window.location.hash = '/';
     window.location.reload();
@@ -372,7 +369,7 @@ async function confirmSaveRole() {
     }
 }
 
-// --- 8. FUNÇÕES DE RENDERIZAÇÃO ---
+// --- 8. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
 function renderNav() {
     parseJwt();
     mainNav.innerHTML = `<span>Olá, <a href="/#/profile"><strong>${state.username || 'Visitante'}</strong></a>${state.role ? ` (${state.role})` : ''}</span>`;
@@ -430,11 +427,7 @@ async function renderProfilePage() {
         }
         mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${userData.role_name}</strong></p><hr style="border-color: #6272a4; margin: 20px 0;">${telegramSectionHTML}<hr style="border-color: #6272a4; margin: 20px 0;"><h3>Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit">Salvar Nova Senha</button></form></div>`;
         if (userData.telegram_chat_id) {
-            document.getElementById('unlink-btn').onclick = async () => {
-                if (confirm('Tem certeza?')) {
-                    try { await apiCall('user/unlink-telegram', 'POST'); showNotification('Conta desvinculada com sucesso.', 'success'); router(); } catch (error) { showNotification(`Erro: ${error.message}`, 'error'); }
-                }
-            };
+            document.getElementById('unlink-btn').onclick = async () => { if (confirm('Tem certeza?')) { try { await apiCall('user/unlink-telegram', 'POST'); showNotification('Conta desvinculada com sucesso.', 'success'); router(); } catch (error) { showNotification(`Erro: ${error.message}`, 'error'); } } };
         } else {
             document.getElementById('link-telegram-btn').onclick = (e) => {
                 const linkButton = e.target;
@@ -446,19 +439,7 @@ async function renderProfilePage() {
             };
             document.getElementById('why-link-q').onclick = (e) => { e.preventDefault(); whyLinkModal.classList.add('show'); };
         }
-        document.getElementById('password-form').onsubmit = async (e) => {
-            e.preventDefault();
-            const currentPassword = e.target['current-password'].value;
-            const newPassword = e.target['new-password'].value;
-            if (newPassword !== e.target['confirm-password'].value) { showNotification("As senhas não coincidem.", 'error'); return; }
-            try {
-                const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword });
-                showNotification(data.message, 'success');
-                logout();
-            } catch (error) {
-                showNotification(`Erro: ${error.message}`, 'error');
-            }
-        };
+        document.getElementById('password-form').onsubmit = async (e) => { e.preventDefault(); const currentPassword = e.target['current-password'].value; const newPassword = e.target['new-password'].value; if (newPassword !== e.target['confirm-password'].value) { showNotification("As senhas não coincidem.", 'error'); return; } try { const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword }); showNotification(data.message, 'success'); logout(); } catch (error) { showNotification(`Erro: ${error.message}`, 'error'); } };
     } catch (error) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Erro ao carregar perfil</h2><p style="color: #ff5555;">${error.message}</p></div>`;
     }
@@ -472,7 +453,7 @@ async function renderAdminPage(subpage) {
     
     if (hasPermission('can_manage_users')) { document.getElementById('admin-tab-users').onclick = () => router('admin/users'); }
     if (hasPermission('can_manage_roles')) { document.getElementById('admin-tab-roles').onclick = () => router('admin/roles'); }
-    
+
     const adminContent = document.getElementById('admin-content');
     try {
         if (subpage === 'users' && hasPermission('can_manage_users')) {
@@ -559,15 +540,8 @@ async function router(forceRoute) {
     const pathString = forceRoute || window.location.hash.slice(1) || '/';
     const path = pathString.split('/').filter(p => p && p !== '#').map(decodeURIComponent);
     const route = path[0] || 'home';
-    if (route === 'admin' && !hasPermission('can_manage_users') && !hasPermission('can_manage_roles')) {
-        showNotification("Acesso negado.", "error");
-        window.location.hash = '/';
-        return;
-    }
-    if (route === 'profile' && !state.token) {
-        window.location.hash = '/login';
-        return;
-    }
+    if (route === 'admin' && !hasPermission('can_manage_users') && !hasPermission('can_manage_roles')) { showNotification("Acesso negado.", "error"); window.location.hash = '/'; return; }
+    if (route === 'profile' && !state.token) { window.location.hash = '/login'; return; }
     if (!state.allFiles.length && state.token && hasPermission('can_view_files')) {
         try {
             const data = await apiCall(`files?t=${new Date().getTime()}`);
@@ -611,103 +585,47 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('modal-close-btn').onclick = () => authModal.classList.remove('show');
     document.getElementById('modal-login-btn').onclick = () => window.location.hash = '/login';
     document.getElementById('modal-register-btn').onclick = () => window.location.hash = '/register';
-    authModal.onclick = (e) => {
-        if (e.target === authModal) authModal.classList.remove('show');
-    };
+    authModal.onclick = (e) => { if (e.target === authModal) authModal.classList.remove('show'); };
     document.getElementById('why-modal-close-btn').onclick = () => whyLinkModal.classList.remove('show');
-    whyLinkModal.onclick = (e) => {
-        if (e.target === whyLinkModal) whyLinkModal.classList.remove('show');
-    };
+    whyLinkModal.onclick = (e) => { if (e.target === whyLinkModal) whyLinkModal.classList.remove('show'); };
     document.getElementById('move-modal-close-btn').onclick = closeMoveModal;
     document.getElementById('move-file-cancel-btn').onclick = closeMoveModal;
     document.getElementById('move-file-confirm-btn').onclick = confirmMoveFile;
-    moveFileModal.onclick = (e) => {
-        if (e.target === moveFileModal) closeMoveModal();
-    };
+    moveFileModal.onclick = (e) => { if (e.target === moveFileModal) closeMoveModal(); };
     document.getElementById('create-folder-close-btn').onclick = closeCreateFolderModal;
     document.getElementById('create-folder-cancel-btn').onclick = closeCreateFolderModal;
     document.getElementById('create-folder-confirm-btn').onclick = confirmCreateFolder;
-    createFolderModal.onclick = (e) => {
-        if (e.target === createFolderModal) closeCreateFolderModal();
-    };
+    createFolderModal.onclick = (e) => { if (e.target === createFolderModal) closeCreateFolderModal(); };
     document.getElementById('rename-close-btn').onclick = closeRenameModal;
     document.getElementById('rename-cancel-btn').onclick = closeRenameModal;
     document.getElementById('rename-confirm-btn').onclick = confirmRename;
-    renameModal.onclick = (e) => {
-        if (e.target === renameModal) closeRenameModal();
-    };
+    renameModal.onclick = (e) => { if (e.target === renameModal) closeRenameModal(); };
     document.getElementById('role-modal-close-btn').onclick = closeRoleModal;
     document.getElementById('role-modal-cancel-btn').onclick = closeRoleModal;
     document.getElementById('role-modal-save-btn').onclick = confirmSaveRole;
-    roleModal.onclick = (e) => {
-        if (e.target === roleModal) closeRoleModal();
-    };
-    document.getElementById('new-folder-name').addEventListener('keyup', (e) => {
-        if (e.key === 'Enter') confirmCreateFolder();
-    });
-    document.getElementById('rename-new-name').addEventListener('keyup', (e) => {
-        if (e.key === 'Enter') confirmRename();
-    });
-    document.getElementById('folder-navigation').addEventListener('click', e => {
-        const action = e.target.closest('li')?.dataset.action;
-        if (!action) return;
-        if (action === 'up') {
-            moveState.currentPath.pop();
-        } else if (action === 'down') {
-            moveState.currentPath.push(e.target.closest('li').dataset.folder);
-        }
-        renderFolderNavigator();
-    });
-    document.getElementById('create-folder-in-move-modal-btn').onclick = () => {
-        closeMoveModal();
-        openCreateFolderModal(true);
-    };
+    roleModal.onclick = (e) => { if (e.target === roleModal) closeRoleModal(); };
+    document.getElementById('new-folder-name').addEventListener('keyup', (e) => { if (e.key === 'Enter') confirmCreateFolder(); });
+    document.getElementById('rename-new-name').addEventListener('keyup', (e) => { if (e.key === 'Enter') confirmRename(); });
+    document.getElementById('folder-navigation').addEventListener('click', e => { const action = e.target.closest('li')?.dataset.action; if (!action) return; if (action === 'up') { moveState.currentPath.pop(); } else if (action === 'down') { moveState.currentPath.push(e.target.closest('li').dataset.folder); } renderFolderNavigator(); });
+    document.getElementById('create-folder-in-move-modal-btn').onclick = () => { closeMoveModal(); openCreateFolderModal(true); };
 
     mainContent.addEventListener('click', (e) => {
         const target = e.target.closest('button, .sortable-header');
         if (!target) return;
 
-        if (target.classList.contains('btn-single-forward')) {
-            handleSingleForward(target.dataset.messageId);
-        }
-        if (target.classList.contains('btn-move-file')) {
-            openMoveModal(target.dataset.key, false);
-        }
-        if (target.classList.contains('btn-move-folder')) {
-            openMoveModal(target.dataset.key, true);
-        }
-        if (target.classList.contains('btn-rename')) {
-            openRenameModal(target.dataset.key, target.dataset.isfolder === 'true');
-        }
-        if (target.classList.contains('btn-delete')) {
-            const isFolder = target.dataset.isfolder === 'true';
-            const key = target.dataset.key;
-            deleteItems([key], isFolder, isFolder ? key.split('/').pop() : '');
-        }
-        if (target.id === 'create-folder-btn') {
-            openCreateFolderModal(false);
-        }
-        if (target.classList.contains('sortable-header')) {
-            const sortKey = target.dataset.sort;
-            if (state.sort.key === sortKey) {
-                state.sort.order = state.sort.order === 'asc' ? 'desc' : 'asc';
-            } else {
-                state.sort.key = sortKey;
-                state.sort.order = 'asc';
-            }
-            router();
-        }
-
-        // --- Eventos da página de admin ---
+        if (target.classList.contains('btn-single-forward')) handleSingleForward(target.dataset.messageId);
+        if (target.classList.contains('btn-move-file')) openMoveModal(target.dataset.key, false);
+        if (target.classList.contains('btn-move-folder')) openMoveModal(target.dataset.key, true);
+        if (target.classList.contains('btn-rename')) openRenameModal(target.dataset.key, target.dataset.isfolder === 'true');
+        if (target.classList.contains('btn-delete')) { const isFolder = target.dataset.isfolder === 'true'; const key = target.dataset.key; deleteItems([key], isFolder, isFolder ? key.split('/').pop() : ''); }
+        if (target.id === 'create-folder-btn') openCreateFolderModal(false);
+        if (target.classList.contains('sortable-header')) { const sortKey = target.dataset.sort; if (state.sort.key === sortKey) { state.sort.order = state.sort.order === 'asc' ? 'desc' : 'asc'; } else { state.sort.key = sortKey; state.sort.order = 'asc'; } router(); }
         if (target.classList.contains('save-user-role-btn')) {
             const userId = target.dataset.id;
             const newRoleId = document.querySelector(`.role-select[data-id="${userId}"]`).value;
-            apiCall('admin/users/update-role', 'POST', {
-                userId: parseInt(userId),
-                newRoleId: parseInt(newRoleId)
-            })
-            .then(() => showNotification("Cargo do usuário atualizado.", "success"))
-            .catch(err => showNotification(`Erro: ${err.message}`, "error"));
+            apiCall('admin/users/update-role', 'POST', { userId: parseInt(userId), newRoleId: parseInt(newRoleId) })
+                .then(() => showNotification("Cargo do usuário atualizado.", "success"))
+                .catch(err => showNotification(`Erro: ${err.message}`, "error"));
         }
         if (target.classList.contains('delete-user-btn')) {
             const userId = target.dataset.id;
@@ -752,31 +670,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const keys = selected.map(cb => cb.dataset.key);
             const messageIds = selected.map(cb => cb.dataset.messageId);
             let buttonsHTML = `<span>${selected.length} item(ns) selecionado(s)</span>`;
-            if (hasPermission('can_receive_files')) {
-                buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
-            }
-            if (hasPermission('can_move_items')) {
-                buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`;
-            }
-            if (hasPermission('can_delete_items')) {
-                buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`;
-            }
+            if (hasPermission('can_receive_files')) { buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`; }
+            if (hasPermission('can_move_items')) { buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`; }
+            if (hasPermission('can_delete_items')) { buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`; }
             bulkActionsContainer.innerHTML = buttonsHTML;
             if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
             if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys);
             if (document.getElementById('bulk-receive-btn')) {
                 document.getElementById('bulk-receive-btn').onclick = async () => {
-                    if (!state.token) {
-                        showNotification("Você precisa estar logado.", 'error');
-                        return;
-                    }
+                    if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
                     const btn = document.getElementById('bulk-receive-btn');
                     try {
                         btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
                         btn.disabled = true;
-                        await apiCall('bulk-forward', 'POST', {
-                            message_ids: messageIds.map(id => parseInt(id))
-                        });
+                        await apiCall('bulk-forward', 'POST', { message_ids: messageIds.map(id => parseInt(id)) });
                         showNotification("O bot começou a enviar os arquivos! Verifique seu Telegram.", 'success');
                     } catch (error) {
                         showNotification(`Ocorreu um erro: ${error.message}`, 'error');
