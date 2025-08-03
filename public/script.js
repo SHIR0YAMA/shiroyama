@@ -47,6 +47,19 @@ function stopFaviconBlink() {
     document.title = originalTitle;
 }
 
+function getIconForFile(fileName) {
+    const extension = fileName.split('.').pop().toLowerCase();
+    const videoExts = ['mp4', 'mkv', 'avi', 'mov', 'webm'];
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+    const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'flac'];
+
+    if (videoExts.includes(extension)) return '<i class="fas fa-file-video"></i>';
+    if (imageExts.includes(extension)) return '<i class="fas fa-file-image"></i>';
+    if (audioExts.includes(extension)) return '<i class="fas fa-file-audio"></i>';
+    return '<i class="fas fa-file-alt"></i>';
+}
+
+
 // --- 2. ESTADO GLOBAL E FUNÇÃO DE RECARGA ---
 const state = {
     token: localStorage.getItem('jwtToken'),
@@ -135,8 +148,7 @@ function logout() {
 // --- 6. FUNÇÕES DE LÓGICA DE ARQUIVOS ---
 function buildFileTree(files) {
     const tree = {};
-    
-    // Primeiro, cria todas as estruturas de pasta a partir dos placeholders
+
     files.forEach(file => {
         if (file.name.endsWith('/.placeholder')) {
             const folderOnlyPath = file.name.substring(0, file.name.length - 13);
@@ -148,13 +160,9 @@ function buildFileTree(files) {
                 }
                 currentLevel = currentLevel[part];
             });
+            return;
         }
-    });
 
-    // Depois, insere os arquivos na árvore
-    files.forEach(file => {
-        if (file.name.endsWith('/.placeholder')) return; // Ignora os placeholders aqui
-        
         const parts = file.name.split('/').filter(p => p);
         let currentLevel = tree;
         parts.forEach((part, index) => {
@@ -162,7 +170,7 @@ function buildFileTree(files) {
                 currentLevel[part] = { ...file, _isFile: true };
             } else {
                 if (!currentLevel[part]) {
-                    currentLevel[part] = {}; // Cria a pasta se não existir
+                    currentLevel[part] = {};
                 }
                 currentLevel = currentLevel[part];
             }
@@ -205,7 +213,8 @@ async function handleSingleForward(messageId) {
 let moveState = {
     oldKeys: [],
     destinationPath: null,
-    currentPath: []
+    currentPath: [],
+    isFolder: false
 };
 let renameState = {
     oldKey: null,
@@ -213,8 +222,9 @@ let renameState = {
     isFolder: false
 };
 
-function openMoveModal(keysToMove) {
+function openMoveModal(keysToMove, isFolder = false) {
     moveState.oldKeys = Array.isArray(keysToMove) ? keysToMove : [keysToMove];
+    moveState.isFolder = isFolder;
     const firstFileName = moveState.oldKeys[0].split('/').pop();
     const displayName = moveState.oldKeys.length > 1 ? `${moveState.oldKeys.length} itens` : firstFileName;
     document.getElementById('move-file-name').textContent = displayName;
@@ -254,10 +264,16 @@ function renderFolderNavigator() {
 async function confirmMoveFile() {
     moveState.destinationPath = moveState.currentPath.join('/');
     try {
-        await apiCall('admin/bulk-move', 'POST', {
-            oldKeys: moveState.oldKeys,
-            destinationPath: moveState.destinationPath
-        });
+        if (moveState.isFolder) {
+            const folderName = moveState.oldKeys[0].split('/').pop();
+            const newKey = moveState.destinationPath ? `${moveState.destinationPath}/${folderName}` : folderName;
+            await apiCall('admin/rename', 'POST', { oldKey: moveState.oldKeys[0], newKey, isFolder: true });
+        } else {
+            await apiCall('admin/bulk-move', 'POST', {
+                oldKeys: moveState.oldKeys,
+                destinationPath: moveState.destinationPath
+            });
+        }
         showNotification("Item(ns) movido(s) com sucesso!", "success");
         closeMoveModal();
         refreshFiles();
@@ -266,8 +282,9 @@ async function confirmMoveFile() {
     }
 }
 
-function openCreateFolderModal() {
+function openCreateFolderModal(fromMoveModal = false) {
     document.getElementById('new-folder-name').value = '';
+    createFolderModal.dataset.fromMoveModal = fromMoveModal;
     createFolderModal.classList.add('show');
     document.getElementById('new-folder-name').focus();
 }
@@ -280,17 +297,14 @@ async function confirmCreateFolder() {
     const folderNameInput = document.getElementById('new-folder-name');
     const newFolderName = folderNameInput.value.trim();
 
-    if (!newFolderName) {
-        showNotification("O nome da pasta não pode estar vazio.", "error");
-        return;
-    }
-    if (newFolderName.includes('/') || newFolderName === '.placeholder') {
+    if (!newFolderName || newFolderName.includes('/') || newFolderName === '.placeholder') {
         showNotification("Nome de pasta inválido.", "error");
         return;
     }
 
-    const currentPath = (window.location.hash.slice(2) || '').split('/').filter(p => p);
-    const fullPath = [...currentPath, newFolderName].join('/');
+    const wasOpenedFromMoveModal = createFolderModal.dataset.fromMoveModal === 'true';
+    const basePath = wasOpenedFromMoveModal ? moveState.currentPath : (window.location.hash.slice(2) || '').split('/').filter(p => p);
+    const fullPath = [...basePath, newFolderName].join('/');
 
     try {
         await apiCall('admin/create-folder', 'POST', {
@@ -298,11 +312,16 @@ async function confirmCreateFolder() {
         });
         showNotification(`Pasta "${newFolderName}" criada!`, "success");
         closeCreateFolderModal();
-        refreshFiles();
+        await refreshFiles();
+
+        if (wasOpenedFromMoveModal) {
+            openMoveModal(moveState.oldKeys, moveState.isFolder);
+        }
     } catch (error) {
         showNotification(`Erro ao criar pasta: ${error.message}`, "error");
     }
 }
+
 
 function openRenameModal(key, isFolder) {
     renameState.oldKey = key;
@@ -412,7 +431,6 @@ function renderRegisterPage() {
         }
     };
 }
-
 async function renderProfilePage() {
     mainContent.innerHTML = `<div class="auth-form"><h2>Carregando perfil...</h2></div>`;
     try {
@@ -485,7 +503,6 @@ async function renderProfilePage() {
         mainContent.innerHTML = `<div class="auth-form"><h2>Erro ao carregar perfil</h2><p style="color: #ff5555;">${error.message}</p></div>`;
     }
 }
-
 async function renderAdminPage() {
     mainContent.innerHTML = `<div id="breadcrumb">Painel de Administrador - Gestão de Usuários</div><table class="file-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>ID do Chat</th><th>Criado em</th><th class="actions-col">Ações</th></tr></thead><tbody id="user-list-body"><tr><td colspan="5">Carregando...</td></tr></tbody></table>`;
     try {
@@ -582,9 +599,9 @@ function renderFilesPage(path) {
         div.className = 'file-item';
         const itemPath = [...path, name].join('/');
         if (item._isFile) {
-            div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}"><span class="file-icon">📄</span><span class="file-name">${name}</span><span class="file-size">${formatFileSize(item.file_size)}</span><div class="file-actions"><button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear"><i class="fas fa-edit"></i></button><button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover"><i class="fas fa-folder-open"></i></button><button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button><button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button></div>`;
+            div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}"><span class="file-icon">${getIconForFile(name)}</span><span class="file-name">${name}</span><span class="file-size">${formatFileSize(item.file_size)}</span><div class="file-actions"><button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear"><i class="fas fa-edit"></i></button><button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover"><i class="fas fa-folder-open"></i></button><button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button><button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button></div>`;
         } else {
-            div.innerHTML = `<div class="file-checkbox" style="visibility: hidden;"></div><a href="#/${itemPath}" class="file-item-name" style="width: 100%; display: flex; align-items: center;"><span class="file-icon">📁</span><span>${name}</span></a><div class="file-actions"><button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear"><i class="fas fa-edit"></i></button><button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir"><i class="fas fa-trash"></i></button></div>`;
+            div.innerHTML = `<div class="file-checkbox" style="visibility: hidden;"></div><a href="#/${itemPath}" class="file-item-name" style="width: 100%; display: flex; align-items: center;"><span class="file-icon"><i class="fas fa-folder"></i></span><span>${name}</span></a><div class="file-actions"><button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear"><i class="fas fa-edit"></i></button><button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-open"></i></button><button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir"><i class="fas fa-trash"></i></button></div>`;
         }
         fileListBodyElement.appendChild(div);
     });
@@ -688,37 +705,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         renderFolderNavigator();
     });
+    document.getElementById('create-folder-in-move-modal-btn').onclick = () => {
+        closeMoveModal();
+        openCreateFolderModal(true);
+    };
 
     mainContent.addEventListener('click', (e) => {
         const target = e.target.closest('button, .sortable-header');
         if (!target) return;
-        if (target.classList.contains('btn-single-forward')) {
-            handleSingleForward(target.dataset.messageId);
-        }
-        if (target.classList.contains('btn-move-file')) {
-            openMoveModal(target.dataset.key);
-        }
-        if (target.classList.contains('btn-rename')) {
-            openRenameModal(target.dataset.key, target.dataset.isfolder === 'true');
-        }
+
+        if (target.classList.contains('btn-single-forward')) handleSingleForward(target.dataset.messageId);
+        if (target.classList.contains('btn-move-file')) openMoveModal(target.dataset.key, false);
+        if (target.classList.contains('btn-move-folder')) openMoveModal(target.dataset.key, true);
+        if (target.classList.contains('btn-rename')) openRenameModal(target.dataset.key, target.dataset.isfolder === 'true');
         if (target.classList.contains('btn-delete')) {
             const isFolder = target.dataset.isfolder === 'true';
             const key = target.dataset.key;
             deleteItems([key], isFolder, isFolder ? key.split('/').pop() : '');
         }
-        if (target.id === 'create-folder-btn') {
-            openCreateFolderModal();
-        }
-        if (target.id === 'select-all-checkbox') {
-            const isChecked = target.checked;
-            document.querySelectorAll('#file-list-body .file-checkbox').forEach(cb => cb.checked = isChecked);
-            const firstCheckbox = document.querySelector('#file-list-body .file-checkbox');
-            if (firstCheckbox) {
-                firstCheckbox.dispatchEvent(new Event('change', {
-                    bubbles: true
-                }));
-            }
-        }
+        if (target.id === 'create-folder-btn') openCreateFolderModal(false);
         if (target.classList.contains('sortable-header')) {
             const sortKey = target.dataset.sort;
             if (state.sort.key === sortKey) {
@@ -732,7 +737,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     mainContent.addEventListener('change', (e) => {
-        if (e.target.classList.contains('file-checkbox')) {
+        if (e.target.id === 'select-all-checkbox' || e.target.classList.contains('file-checkbox')) {
+            if (e.target.id === 'select-all-checkbox') {
+                const isChecked = e.target.checked;
+                document.querySelectorAll('#file-list-body .file-checkbox').forEach(cb => cb.checked = isChecked);
+            }
             const bulkActionsContainer = document.getElementById('bulk-actions-container');
             if (!bulkActionsContainer) return;
             const selected = Array.from(document.querySelectorAll('#file-list-body .file-checkbox:checked'));
@@ -746,11 +755,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const messageIds = selected.map(cb => cb.dataset.messageId);
             bulkActionsContainer.innerHTML = `
                 <span>${selected.length} item(ns) selecionado(s)</span>
-                <button id="bulk-receive-btn">Receber</button>
-                <button id="bulk-move-btn">Mover</button>
-                <button id="bulk-delete-btn" style="background-color: #ff5555;">Excluir</button>
+                <button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>
+                <button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>
+                <button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>
             `;
-            document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys);
+            document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
             document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys);
             document.getElementById('bulk-receive-btn').onclick = async () => {
                 if (!state.token) {
@@ -759,7 +768,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 const btn = document.getElementById('bulk-receive-btn');
                 try {
-                    btn.textContent = 'Enviando...';
+                    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
                     btn.disabled = true;
                     await apiCall('bulk-forward', 'POST', {
                         message_ids: messageIds.map(id => parseInt(id))
@@ -768,7 +777,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (error) {
                     showNotification(`Ocorreu um erro: ${error.message}`, 'error');
                 } finally {
-                    btn.textContent = `Receber`;
+                    btn.innerHTML = `<i class="fas fa-paper-plane"></i>`;
                     btn.disabled = false;
                 }
             };

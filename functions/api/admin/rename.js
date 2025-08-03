@@ -28,7 +28,6 @@ export async function onRequestPost(context) {
         const token = authHeader.split(' ')[1];
         const payload = await verifyJwt(token, env.JWT_SECRET);
 
-        // Apenas admins e donos podem renomear
         if (payload.role !== 'admin' && payload.role !== 'owner') {
             return new Response(JSON.stringify({ message: 'Acesso negado.' }), { status: 403 });
         }
@@ -39,15 +38,20 @@ export async function onRequestPost(context) {
             return new Response(JSON.stringify({ message: 'Nome antigo e novo são obrigatórios.' }), { status: 400 });
         }
         
-        // --- LÓGICA PARA RENOMEAR PASTA ---
         if (isFolder) {
-            // Pega todos os itens que começam com o caminho da pasta antiga
-            const list = await env.ARQUIVOS_TELEGRAM.list({ prefix: oldKey });
+            const list = await env.ARQUIVOS_TELEGRAM.list({ prefix: oldKey + '/' }); // Adiciona a barra para pegar o conteúdo
             if (list.keys.length === 0) {
-                return new Response(JSON.stringify({ message: 'Pasta de origem não encontrada ou vazia.' }), { status: 404 });
+                 // Se a pasta está vazia, ela só tem um .placeholder. Vamos mover/renomear ele.
+                const placeholderValue = await env.ARQUIVOS_TELEGRAM.get(oldKey + '/.placeholder');
+                if (placeholderValue) {
+                    await env.ARQUIVOS_TELEGRAM.put(newKey + '/.placeholder', placeholderValue);
+                    await env.ARQUIVOS_TELEGRAM.delete(oldKey + '/.placeholder');
+                    return new Response(JSON.stringify({ success: true, message: 'Pasta vazia movida/renomeada com sucesso.' }));
+                } else {
+                    return new Response(JSON.stringify({ message: 'Pasta de origem não encontrada.' }), { status: 404 });
+                }
             }
 
-            // Para cada item na pasta antiga, cria uma promessa de "copiar e apagar"
             const operations = list.keys.map(key => {
                 const originalValuePromise = env.ARQUIVOS_TELEGRAM.get(key.name);
                 return originalValuePromise.then(originalValue => {
@@ -63,8 +67,6 @@ export async function onRequestPost(context) {
             
             await Promise.all(operations);
             return new Response(JSON.stringify({ success: true, message: 'Pasta renomeada com sucesso.' }));
-
-        // --- LÓGICA PARA RENOMEAR ARQUIVO ÚNICO ---
         } else {
             const value = await env.ARQUIVOS_TELEGRAM.get(oldKey);
             if (value === null) {
