@@ -22,11 +22,12 @@ export async function onRequestGet(context) {
     const { request, env } = context;
     try {
         const authHeader = request.headers.get('Authorization');
-        if (!authHeader) return new Response(JSON.stringify({ message: 'Auth requerida' }), { status: 401 });
+        if (!authHeader) {
+            return new Response(JSON.stringify({ message: 'Auth requerida' }), { status: 401 });
+        }
         const token = authHeader.split(' ')[1];
         const payload = await verifyJwt(token, env.JWT_SECRET);
         
-        // ALTERAÇÃO AQUI: Buscamos também o telegram_username
         const stmt = env.DB.prepare('SELECT id, username, role, telegram_chat_id, telegram_username FROM users WHERE id = ?');
         const user = await stmt.bind(payload.userId).first();
 

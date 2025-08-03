@@ -148,7 +148,6 @@ function logout() {
 // --- 6. FUNÇÕES DE LÓGICA DE ARQUIVOS ---
 function buildFileTree(files) {
     const tree = {};
-
     files.forEach(file => {
         if (file.name.endsWith('/.placeholder')) {
             const folderOnlyPath = file.name.substring(0, file.name.length - 13);
@@ -162,7 +161,6 @@ function buildFileTree(files) {
             });
             return;
         }
-
         const parts = file.name.split('/').filter(p => p);
         let currentLevel = tree;
         parts.forEach((part, index) => {
@@ -267,7 +265,11 @@ async function confirmMoveFile() {
         if (moveState.isFolder) {
             const folderName = moveState.oldKeys[0].split('/').pop();
             const newKey = moveState.destinationPath ? `${moveState.destinationPath}/${folderName}` : folderName;
-            await apiCall('admin/rename', 'POST', { oldKey: moveState.oldKeys[0], newKey, isFolder: true });
+            await apiCall('admin/rename', 'POST', {
+                oldKey: moveState.oldKeys[0],
+                newKey,
+                isFolder: true
+            });
         } else {
             await apiCall('admin/bulk-move', 'POST', {
                 oldKeys: moveState.oldKeys,
@@ -431,17 +433,47 @@ function renderRegisterPage() {
         }
     };
 }
+
 async function renderProfilePage() {
     mainContent.innerHTML = `<div class="auth-form"><h2>Carregando perfil...</h2></div>`;
     try {
         const userData = await apiCall('user/status', 'GET');
         let telegramSectionHTML = '';
         if (userData.telegram_chat_id) {
-            telegramSectionHTML = `<h3>Conta do Telegram Vinculada</h3> <p>Usuário: <strong>@${userData.telegram_username || 'N/A'}</strong></p> <p>Chat ID: <strong>${userData.telegram_chat_id}</strong></p> <button id="unlink-btn">Desvincular Conta</button>`;
+            const displayUsername = userData.telegram_username ?
+                (userData.telegram_username.includes('@') ? userData.telegram_username : `@${userData.telegram_username}`) :
+                (userData.telegram_display_name || 'N/A');
+
+            telegramSectionHTML = `
+                <h3>Conta do Telegram Vinculada</h3>
+                <p>Usuário: <strong>${displayUsername}</strong></p>
+                <p>Chat ID: <strong>${userData.telegram_chat_id}</strong></p>
+                <button id="unlink-btn">Desvincular Conta</button>
+            `;
         } else {
-            telegramSectionHTML = `<h3>Vincular Conta do Telegram</h3> <p>Clique no botão abaixo para autorizar o bot no Telegram.</p> <button id="link-telegram-btn">Vincular com o Telegram</button> <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>`;
+            telegramSectionHTML = `
+                <h3>Vincular Conta do Telegram</h3>
+                <p>Clique no botão abaixo para autorizar o bot no Telegram.</p>
+                <button id="link-telegram-btn">Vincular com o Telegram</button>
+                <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>
+            `;
         }
-        mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${userData.role}</strong></p><hr style="border-color: #6272a4; margin: 20px 0;">${telegramSectionHTML}<hr style="border-color: #6272a4; margin: 20px 0;"><h3>Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit">Salvar Nova Senha</button></form></div>`;
+        mainContent.innerHTML = `
+            <div class="auth-form">
+                <h2>Meu Perfil</h2>
+                <p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${userData.role}</strong></p>
+                <hr style="border-color: #6272a4; margin: 20px 0;">
+                ${telegramSectionHTML}
+                <hr style="border-color: #6272a4; margin: 20px 0;">
+                <h3>Alterar Senha</h3>
+                <form id="password-form">
+                    <div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div>
+                    <div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div>
+                    <div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div>
+                    <button type="submit">Salvar Nova Senha</button>
+                </form>
+            </div>
+        `;
         if (userData.telegram_chat_id) {
             document.getElementById('unlink-btn').onclick = async () => {
                 if (confirm('Tem certeza?')) {
