@@ -28,9 +28,8 @@ export async function onRequestGet(context) {
         const token = authHeader.split(' ')[1];
         const payload = await verifyJwt(token, env.JWT_SECRET);
         
-        // --- ALTERAÇÃO CRÍTICA AQUI ---
-        // A query agora junta a tabela 'users' com a 'roles' para pegar o nome do cargo (role_name)
-        // em vez da coluna 'role' que não existe mais.
+        // --- CONSULTA SQL CORRIGIDA ---
+        // Esta query agora busca o nome do cargo (role_name) da tabela 'roles'
         const query = `
             SELECT 
                 u.id, 
@@ -39,7 +38,7 @@ export async function onRequestGet(context) {
                 u.telegram_chat_id, 
                 u.telegram_username 
             FROM users u
-            JOIN roles r ON u.role_id = r.id
+            LEFT JOIN roles r ON u.role_id = r.id
             WHERE u.id = ?
         `;
         const stmt = env.DB.prepare(query).bind(payload.userId);
@@ -49,6 +48,11 @@ export async function onRequestGet(context) {
             return new Response(JSON.stringify({ message: 'Usuário não encontrado' }), { status: 404 });
         }
         
+        // Renomeamos a propriedade no objeto de resposta para corresponder ao que o frontend espera
+        // (A API de login retorna 'role', então esta também deve)
+        user.role = user.role_name;
+        delete user.role_name;
+
         return new Response(JSON.stringify(user));
 
     } catch (error) {
