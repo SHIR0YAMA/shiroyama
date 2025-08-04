@@ -8,7 +8,7 @@
     <link id="favicon-normal" rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗂️</text></svg>">
     <link id="favicon-notif" rel="alternate icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📩</text></svg>">
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #282a36; color: #f8f8f2; margin: 0; padding: 20px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #282a36; color: #f8f8f2; margin: 0; padding: 20px; box-sizing: border-box; }
         .container { max-width: 960px; margin: auto; }
         a { color: #8be9fd; text-decoration: none; }
         a:hover { text-decoration: underline; }
@@ -20,16 +20,36 @@
         header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 10px 20px; background-color: #44475a; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
         header h1 { color: #bd93f9; margin: 0; font-size: 24px; }
         header h1 a { color: #bd93f9; }
-        header nav { display: flex; align-items: center; gap: 20px; }
-        header nav a { font-weight: bold; }
-        header nav span { color: #f1fa8c; }
+        
+        /* --- ESTILOS ADICIONADOS E AJUSTADOS --- */
+        header nav { display: flex; align-items: center; gap: 15px; }
+        header nav .nav-greeting { display: flex; align-items: center; gap: 10px; color: #f1fa8c; }
+        header nav .nav-links { display: flex; align-items: center; gap: 10px; }
+        .role-tag {
+            background-color: #282a36;
+            color: #bd93f9;
+            padding: 4px 8px;
+            border-radius: 12px; /* Deixa bem arredondado como uma pílula */
+            font-size: 12px;
+            font-weight: bold;
+            border: 1px solid #6272a4;
+        }
+        .nav-button {
+            padding: 8px 12px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        #logout-btn { background-color: #ff5555; }
+        #logout-btn:hover { background-color: #ff7070; }
+        /* --- FIM DOS ESTILOS ADICIONADOS --- */
+        
         main { background-color: #44475a; padding: 20px; border-radius: 8px; min-height: 400px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
         .auth-form { max-width: 400px; margin: 40px auto; }
         .auth-form h2 { text-align: center; color: #50fa7b; }
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; margin-bottom: 5px; }
         .form-group input { width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #6272a4; background-color: #282a36; color: #f8f8f2; box-sizing: border-box; font-size: 16px; }
-        #bulk-actions-container { display: none; margin-bottom: 15px; padding: 10px; background-color: #3b3e50; border-radius: 5px; border: 1px solid #6272a4; align-items: center; gap: 10px; }
+        #bulk-actions-container { display: none; margin-bottom: 15px; padding: 10px; background-color: #3b3e50; border-radius: 5px; border: 1px solid #6272a4; align-items: center; gap: 10px; flex-wrap: wrap; }
         .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         .controls-buttons { display: flex; gap: 10px; }
         .file-list { display: flex; flex-direction: column; margin-top: 15px; }
@@ -42,10 +62,12 @@
         .sort-indicator.desc { border-top: 5px solid #f1fa8c; }
         .file-item:last-child { border-bottom: none; }
         .file-item:hover { background-color: #3b3e50; }
-        .file-item > *, .file-list-header > * { padding: 0 5px; }
+        .file-item > * { padding: 0 5px; } /* Removido seletor de .file-list-header */
+        .file-list-header > * { padding: 0 5px; }
         .file-checkbox { flex-shrink: 0; flex-basis: 30px; }
         .file-icon { flex-shrink: 0; flex-basis: 30px; color: #8be9fd; text-align: center; font-size: 1.1em; }
         .file-name { flex-grow: 1; word-break: break-all; }
+        a.file-name { display: inline-block; } /* Para links de pastas */
         .file-size { flex-shrink: 0; flex-basis: 100px; text-align: right; color: #bd93f9; }
         .file-actions { flex-shrink: 0; flex-basis: 160px; text-align: center; display: flex; justify-content: flex-end; gap: 10px; }
         .btn-icon { background: none; border: none; color: #8be9fd; font-size: 1.2em; cursor: pointer; padding: 5px; width: 40px; height: 40px; border-radius: 50%; transition: background-color 0.2s, color 0.2s; }
@@ -84,7 +106,10 @@
 </head>
 <body>
     <div class="container">
-        <header><h1><a href="/#/">Shiroyama Files</a></h1><nav id="main-nav"></nav></header>
+        <header>
+            <h1><a href="/#/">Shiroyama Files</a></h1>
+            <nav id="main-nav"></nav>
+        </header>
         <main id="main-content"></main>
     </div>
     

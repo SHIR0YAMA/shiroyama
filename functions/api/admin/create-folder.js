@@ -1,9 +1,8 @@
-// /functions/api/admin/create-folder.js
+// /functions/api/admin/create-folder.js (VERSÃO CORRIGIDA)
 
 export async function onRequestPost(context) {
     const { request, env } = context;
     try {
-        // O _middleware.js já verificou a permissão 'can_create_folders'
         const { folderPath } = await request.json();
 
         if (!folderPath || folderPath.includes('//') || folderPath.endsWith('/')) {
@@ -17,8 +16,9 @@ export async function onRequestPost(context) {
             return new Response(JSON.stringify({ message: 'Uma pasta ou arquivo com este nome já existe.' }), { status: 409 });
         }
 
-        // Usando um valor simples para o placeholder
-        await env.ARQUIVOS_TELEGRAM.put(key, "placeholder");
+        // --- CORREÇÃO AQUI: Voltando a salvar o JSON com a data ---
+        const value = JSON.stringify({ created_at: new Date().toISOString() });
+        await env.ARQUIVOS_TELEGRAM.put(key, value);
 
         return new Response(JSON.stringify({ success: true, message: 'Pasta criada com sucesso.' }));
 

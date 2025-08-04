@@ -396,20 +396,28 @@ async function confirmRename() {
 }
 
 async function deleteItems(keys, isFolder = false, folderName = '') {
-    const keyCount = keys.length;
+    // BUG FIX: Garante que 'keys' seja sempre um array para a contagem e payload.
+    const itemsToDelete = Array.isArray(keys) ? keys : [keys];
+    const keyCount = itemsToDelete.length;
+
     let message = isFolder ?
         `Tem certeza que deseja excluir a pasta "${folderName}" e todo o seu conteúdo? Esta ação é irreversível.` :
         `Tem certeza que deseja excluir ${keyCount} item(ns)? Esta ação é irreversível.`;
+    
     if (!confirm(message)) return;
+
     try {
-        const payload = isFolder ? {
-            prefix: keys[0] + '/'
-        } : {
-            keys: keys
+        // BUG FIX: Monta o payload correto para a API.
+        const payload = isFolder ? { 
+            prefix: itemsToDelete[0] + '/' 
+        } : { 
+            keys: itemsToDelete
         };
+
         await apiCall('admin/bulk-delete', 'POST', payload);
         showNotification("Item(ns) excluído(s) com sucesso!", "success");
         await refreshFiles();
+
     } catch (error) {
         showNotification(`Erro ao excluir: ${error.message}`, "error");
     }
@@ -460,7 +468,7 @@ async function confirmSaveRole() {
         });
         showNotification("Cargo salvo com sucesso!", "success");
         closeRoleModal();
-        await router('admin/roles'); // Atualiza a página de cargos
+        await router('admin/roles');
     } catch (error) {
         showNotification(`Erro ao salvar cargo: ${error.message}`, "error");
     }
@@ -469,18 +477,34 @@ async function confirmSaveRole() {
 // --- 8. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
 function renderNav() {
     parseJwt();
-    mainNav.innerHTML = `<span class="nav-greeting">Olá, <a href="/#/profile"><strong>${state.username || 'Visitante'}</strong></a>${state.role ? ` (${state.role})` : ''}</span>`;
-    let navLinks = '';
+
+    let greetingHTML = `<span>Olá, <a href="/#/profile"><strong>${state.username || 'Visitante'}</strong></a>`;
+    if (state.role) {
+        // FEATURE: Adiciona uma tag estilizada para o cargo.
+        greetingHTML += `<span class="role-tag">${state.role}</span>`;
+    }
+    greetingHTML += `</span>`;
+    
+    let navLinksHTML = '';
     if (state.token) {
         if (hasPermission('can_manage_users') || hasPermission('can_manage_roles')) {
-            navLinks += `<a href="/#/admin">Admin</a>`;
+            // FEATURE: Transforma Admin em um botão.
+            navLinksHTML += `<button id="admin-btn" class="nav-button">Admin</button>`;
         }
-        navLinks += `<a href="#" id="logout-btn">Sair</a>`;
+        // FEATURE: Transforma Sair em um botão.
+        navLinksHTML += `<button id="logout-btn" class="nav-button">Sair</button>`;
     } else {
-        navLinks += `<a href="/#/login">Login</a> <a href="/#/register">Registrar</a>`;
+        navLinksHTML += `<a href="/#/login">Login</a> <a href="/#/register">Registrar</a>`;
     }
-    mainNav.innerHTML += `<span class="nav-links">${navLinks}</span>`;
+
+    mainNav.innerHTML = `${greetingHTML}<span class="nav-links">${navLinksHTML}</span>`;
+
+    // Adiciona os event listeners após o innerHTML ser setado.
     if (state.token) {
+        const adminBtn = document.getElementById('admin-btn');
+        if (adminBtn) {
+            adminBtn.onclick = () => window.location.hash = '/admin';
+        }
         document.getElementById('logout-btn').onclick = (e) => {
             e.preventDefault();
             logout();
@@ -532,7 +556,6 @@ async function renderProfilePage() {
         } else {
             telegramSectionHTML = `<h3>Vincular Conta do Telegram</h3> <p>Clique no botão abaixo para autorizar o bot no Telegram.</p> <button id="link-telegram-btn">Vincular com o Telegram</button> <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>`;
         }
-        // SOLUÇÃO 2: Usando state.role em vez de userData.role_name
         mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${state.role || 'N/A'}</strong></p><hr style="border-color: #6272a4; margin: 20px 0;">${telegramSectionHTML}<hr style="border-color: #6272a4; margin: 20px 0;"><h3>Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit">Salvar Nova Senha</button></form></div>`;
         if (userData.telegram_chat_id) {
             document.getElementById('unlink-btn').onclick = async () => {
@@ -556,7 +579,6 @@ async function renderProfilePage() {
                 apiCall('user/prepare-link-code', 'POST', {
                     linkCode: linkCodeWithPrefix
                 }).then(async () => {
-                    // SOLUÇÃO 3: Corrigido o nome do bot
                     window.open(`https://t.me/ShiroyamaBot?start=${linkCodeWithPrefix}`, '_blank');
                     linkButton.textContent = 'Verifique o Telegram!';
                     showNotification('Conclua o vínculo no Telegram.', 'info');
@@ -602,6 +624,7 @@ async function renderAdminPage(subpage) {
 
     mainContent.innerHTML = `<h2>Painel de Administrador</h2><div class="admin-tabs">${hasPermission('can_manage_users') ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}">Gerenciar Usuários</button>` : ''}${hasPermission('can_manage_roles') ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}">Gerenciar Cargos</button>` : ''}</div><div id="admin-content">Carregando...</div>`;
 
+    // BUG FIX: Adiciona os listeners que chamam o router com a rota correta.
     if (hasPermission('can_manage_users')) {
         document.getElementById('admin-tab-users').onclick = () => router('admin/users');
     }
@@ -669,12 +692,18 @@ function renderFilesPage(path) {
         const isFileB = itemB._isFile;
         if (isFileA && !isFileB) return 1;
         if (!isFileA && isFileB) return -1;
+        
         const sortOrder = state.sort.order === 'asc' ? 1 : -1;
+        
         if (state.sort.key === 'name') {
             return nameA.localeCompare(nameB, undefined, { numeric: true }) * sortOrder;
         }
-        if (state.sort.key === 'size' && itemA._isFile && itemB._isFile) {
-            return (itemA.file_size || 0) - (itemB.file_size || 0) * sortOrder;
+        
+        if (state.sort.key === 'size') {
+            // BUG FIX: Corrige a lógica de ordenação por tamanho.
+            const sizeA = itemA.file_size || 0;
+            const sizeB = itemB.file_size || 0;
+            return (sizeA - sizeB) * sortOrder;
         }
         return 0;
     });
@@ -706,7 +735,6 @@ function renderFilesPage(path) {
         if (item._isFile) {
             div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}"><span class="file-icon">${getIconForFile(name)}</span><span class="file-name">${name}</span><span class="file-size">${formatFileSize(item.file_size)}</span>${actionsHTML}`;
         } else {
-            // SOLUÇÃO 1: Estrutura da pasta agora imita a de um arquivo para alinhar corretamente
             div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><span class="file-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(itemPath)}" class="file-name">${name}</a><span class="file-size"></span>${actionsHTML}`;
         }
         fileListBodyElement.appendChild(div);
@@ -722,11 +750,11 @@ function renderFilesPage(path) {
 }
 
 // --- 9. ROTEADOR PRINCIPAL ---
-async function router() {
+async function router(routeOverride) {
     await parseJwt();
     await renderNav();
 
-    const pathString = window.location.hash.slice(1) || '/';
+    const pathString = routeOverride || window.location.hash.slice(1) || '/';
     const path = pathString.split('/').filter(p => p && p !== '#').map(decodeURIComponent);
     const primaryRoute = path[0] || 'home';
 
@@ -745,6 +773,7 @@ async function router() {
                 showNotification("Acesso negado.", "error");
                 window.location.hash = '/';
             } else {
+                // BUG FIX: Passa a sub-rota para a função de renderização.
                 await renderAdminPage(path[1]);
             }
             return;
@@ -779,15 +808,12 @@ async function router() {
 document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('focus', stopFaviconBlink);
 
-    // Fechar Modais
     document.getElementById('modal-close-btn').onclick = () => authModal.classList.remove('show');
     document.getElementById('why-modal-close-btn').onclick = () => whyLinkModal.classList.remove('show');
     document.getElementById('move-modal-close-btn').onclick = closeMoveModal;
     document.getElementById('create-folder-close-btn').onclick = closeCreateFolderModal;
     document.getElementById('rename-close-btn').onclick = closeRenameModal;
     document.getElementById('role-modal-close-btn').onclick = closeRoleModal;
-
-    // Ações de Botões de Modais
     document.getElementById('modal-login-btn').onclick = () => window.location.hash = '/login';
     document.getElementById('modal-register-btn').onclick = () => window.location.hash = '/register';
     document.getElementById('move-file-cancel-btn').onclick = closeMoveModal;
@@ -833,7 +859,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.classList.contains('btn-delete')) {
             const isFolder = target.dataset.isfolder === 'true';
             const key = target.dataset.key;
-            await deleteItems([key], isFolder, isFolder ? key.split('/').pop() : '');
+            await deleteItems(key, isFolder, isFolder ? key.split('/').pop() : '');
         }
 
         if (target.classList.contains('sortable-header')) {
@@ -844,6 +870,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.sort.key = sortKey;
                 state.sort.order = 'asc';
             }
+            // Chama o router sem argumentos para que ele redesenhe a view atual
             await router();
         }
 
@@ -898,13 +925,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const keys = selected.map(cb => cb.dataset.key);
         const messageIds = selected.map(cb => cb.dataset.messageId);
         let buttonsHTML = `<span>${selected.length} item(ns) selecionado(s)</span>`;
-        if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
-        if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`;
-        if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`;
+        if (hasPermission('can_receive_files')) { buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`; }
+        if (hasPermission('can_move_items')) { buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`; }
+        if (hasPermission('can_delete_items')) { buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`; }
         bulkActionsContainer.innerHTML = buttonsHTML;
 
         if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
-        if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys);
+        // BUG FIX: Garante que a chamada para deleteItems para bulk actions esteja correta.
+        if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys, false);
+        
         if (document.getElementById('bulk-receive-btn')) {
             document.getElementById('bulk-receive-btn').onclick = async () => {
                 if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
