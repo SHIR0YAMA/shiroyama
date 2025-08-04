@@ -2,15 +2,10 @@
 
 export async function onRequestPost(context) {
     try {
+        // O _middleware.js já verificou a permissão 'can_delete_items'.
         const { request, env } = context;
         const body = await request.json();
-
         const keyToDelete = body.key;
-        const secret = body.secret;
-
-        if (secret !== env.ADMIN_SECRET_KEY) {
-            return new Response(JSON.stringify({ success: false, message: 'Acesso não autorizado.' }), { status: 403 });
-        }
 
         if (!keyToDelete) {
             return new Response(JSON.stringify({ success: false, message: 'Chave do arquivo não fornecida.' }), { status: 400 });
@@ -18,11 +13,12 @@ export async function onRequestPost(context) {
 
         await env.ARQUIVOS_TELEGRAM.delete(keyToDelete);
 
-        return new Response(JSON.stringify({ success: true, message: `Arquivo "${keyToDelete}" deletado com sucesso.` }), {
+        return new Response(JSON.stringify({ success: true, message: `Item "${keyToDelete}" deletado com sucesso.` }), {
             headers: { 'Content-Type': 'application/json' },
         });
 
     } catch (error) {
+        console.error("Erro ao deletar item:", error);
         return new Response(JSON.stringify({ success: false, message: `Erro no servidor: ${error.message}` }), { status: 500 });
     }
 }
