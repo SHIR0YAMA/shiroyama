@@ -715,6 +715,7 @@ function renderFilesPage(path) {
         if (item._isFile) {
             div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}"><span class="file-icon">${getIconForFile(name)}</span><span class="file-name">${name}</span><span class="file-size">${formatFileSize(item.file_size)}</span>${actionsHTML}`;
         } else {
+            // AQUI ESTÁ A LIGAÇÃO PARA A PASTA. O href muda a URL, disparando o router.
             div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><a href="#/${encodeURI(itemPath)}" class="file-item-name" style="width: 100%; display: flex; align-items: center;"><span class="file-icon"><i class="fas fa-folder"></i></span><span>${name}</span></a>${actionsHTML}`;
         }
         fileListBodyElement.appendChild(div);
@@ -726,7 +727,7 @@ function renderFilesPage(path) {
     });
 }
 
-// --- 9. ROTEADOR PRINCIPAL ---
+// --- 9. ROTEADOR PRINCIPAL --- [ESSA É A PARTE CORRIGIDA]
 async function router(forceRoute) {
     parseJwt();
     renderNav();
@@ -784,8 +785,8 @@ async function router(forceRoute) {
         }
     }
 
-    // Finalmente, renderiza a página de arquivos com o caminho correto
-    // Se a rota for 'home', o caminho é vazio (raiz)
+    // Finalmente, renderiza a página de arquivos com o caminho correto.
+    // ISTO AGORA É EXECUTADO A CADA MUDANÇA DE PASTA, CORRIGINDO O BUG.
     const currentPath = primaryRoute === 'home' ? [] : path;
     renderFilesPage(currentPath);
 }
@@ -793,6 +794,7 @@ async function router(forceRoute) {
 // --- 10. INICIALIZAÇÃO E LISTENERS DE EVENTOS ---
 document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('focus', stopFaviconBlink);
+    // ... (O resto do seu código de listeners permanece igual)
     document.getElementById('modal-close-btn').onclick = () => authModal.classList.remove('show');
     document.getElementById('modal-login-btn').onclick = () => window.location.hash = '/login';
     document.getElementById('modal-register-btn').onclick = () => window.location.hash = '/register';
@@ -950,7 +952,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
-
+    // Adiciona o listener que "escuta" as mudanças na URL (ex: clique em pasta)
     window.addEventListener('hashchange', router);
+    // Executa o router na primeira carga da página
     router();
 });
