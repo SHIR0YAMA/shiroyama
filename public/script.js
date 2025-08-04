@@ -625,6 +625,7 @@ async function renderAdminPage(subpage) {
 }
 
 function renderFilesPage(path) {
+	console.log(`Dentro de renderFilesPage. Recebi o caminho: [${path.join(', ')}]`);
     let controlsHTML = `<div class="controls-buttons">`;
     if (hasPermission('can_create_folders')) {
         controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`;
@@ -729,30 +730,33 @@ function renderFilesPage(path) {
 
 // --- 9. ROTEADOR PRINCIPAL --- [ESSA É A PARTE CORRIGIDA]
 async function router(forceRoute) {
+    console.log("%c--- ROTEADOR ACIONADO ---", "color: yellow; font-weight: bold;");
+
     parseJwt();
     renderNav();
 
-    // Normaliza a rota a partir do hash da URL ou de um valor forçado
     const pathString = forceRoute || window.location.hash.slice(1) || '/';
+    console.log("1. String do caminho (hash):", pathString);
     const path = pathString.split('/').filter(p => p && p !== '#').map(decodeURIComponent);
     const primaryRoute = path[0] || 'home';
+    console.log("2. Rota primária identificada:", primaryRoute, "| Caminho completo:", path);
 
-    // Seção de rotas de "aplicação" (não relacionadas a arquivos)
+    // Seção de rotas de "aplicação"
     switch (primaryRoute) {
         case 'login':
+            console.log("Renderizando: Página de Login");
             renderLoginPage();
-            return; // Encerra a execução para esta rota
+            return;
         case 'register':
+            console.log("Renderizando: Página de Registro");
             renderRegisterPage();
             return;
         case 'profile':
-            if (!state.token) {
-                window.location.hash = '/login';
-            } else {
-                renderProfilePage();
-            }
+            console.log("Renderizando: Página de Perfil");
+            if (!state.token) { window.location.hash = '/login'; } else { renderProfilePage(); }
             return;
         case 'admin':
+            console.log("Renderizando: Página de Admin");
             if (!hasPermission('can_manage_users') && !hasPermission('can_manage_roles')) {
                 showNotification("Acesso negado.", "error");
                 window.location.hash = '/';
@@ -762,32 +766,39 @@ async function router(forceRoute) {
             return;
     }
 
-    // A partir daqui, a lógica é para visualização de arquivos
+    // Lógica para visualização de arquivos
+    console.log("3. Rota não é de aplicação, continuando para visualização de arquivos.");
     if (!state.token) {
+        console.log("Usuário não logado. Redirecionando para login.");
         renderLoginPage();
         return;
     }
-
     if (!hasPermission('can_view_files')) {
+        console.log("Usuário sem permissão para ver arquivos.");
         mainContent.innerHTML = "<h2>Acesso Negado</h2><p>Você não tem permissão para visualizar arquivos.</p>";
         return;
     }
 
-    // Carrega a lista de arquivos da API se ainda não tiver sido carregada
     if (state.allFiles.length === 0) {
+        console.log("4. Estado de arquivos está vazio. Buscando da API...");
         try {
             const data = await apiCall(`files?t=${new Date().getTime()}`);
             state.allFiles = data.files || [];
             state.fileTree = buildFileTree(state.allFiles);
+            console.log("5. Árvore de arquivos construída com sucesso.", state.fileTree);
         } catch (error) {
-            logout(); // Se falhar, desloga o usuário
+            console.error("Erro ao buscar arquivos da API:", error);
+            logout();
             return;
         }
+    } else {
+        console.log("4. Usando a árvore de arquivos já carregada no estado.");
     }
 
-    // Finalmente, renderiza a página de arquivos com o caminho correto.
-    // ISTO AGORA É EXECUTADO A CADA MUDANÇA DE PASTA, CORRIGINDO O BUG.
     const currentPath = primaryRoute === 'home' ? [] : path;
+    console.log(`%c6. CHAMANDO renderFilesPage com o caminho: [${currentPath.join(', ')}]`, "color: lightgreen; font-weight: bold;");
+    
+    // Adicione um log dentro da função renderFilesPage também
     renderFilesPage(currentPath);
 }
 
