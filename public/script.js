@@ -73,11 +73,11 @@ const state = {
     }
 };
 
-function refreshFiles() {
+async function refreshFiles() {
     showNotification('Atualizando lista de arquivos...', 'info');
     state.allFiles = [];
     state.fileTree = {};
-    router();
+    await router();
 }
 
 function hasPermission(perm) {
@@ -203,7 +203,7 @@ function buildFileTree(files) {
 function getContentForPath(path) {
     let currentLevel = state.fileTree;
     for (const folderName of path) {
-        if (!currentLevel[folderName]) return {}; // Retorna objeto vazio se o caminho não existir
+        if (!currentLevel || !currentLevel[folderName]) return {}; // Retorna objeto vazio se o caminho não existir
         currentLevel = currentLevel[folderName];
     }
     return currentLevel;
@@ -305,7 +305,7 @@ async function confirmMoveFile() {
         await apiCall(apiToCall, 'POST', payload);
         showNotification("Item(ns) movido(s) com sucesso!", "success");
         closeMoveModal();
-        refreshFiles();
+        await refreshFiles();
     } catch (error) {
         showNotification(`Erro ao mover: ${error.message}`, "error");
     }
@@ -346,7 +346,7 @@ async function confirmCreateFolder() {
         if (wasOpenedFromMoveModal) {
             moveState.currentPath = [...basePath, newFolderName];
             renderFolderNavigator();
-            moveFileModal.classList.add('show'); // Reabre o modal de mover
+            moveFileModal.classList.add('show');
         }
     } catch (error) {
         showNotification(`Erro ao criar pasta: ${error.message}`, "error");
@@ -390,7 +390,7 @@ async function confirmRename() {
         });
         showNotification("Renomeado com sucesso!", "success");
         closeRenameModal();
-        refreshFiles();
+        await refreshFiles();
     } catch (error) {
         showNotification(`Erro ao renomear: ${error.message}`, "error");
     }
@@ -410,7 +410,7 @@ async function deleteItems(keys, isFolder = false, folderName = '') {
         };
         await apiCall('admin/bulk-delete', 'POST', payload);
         showNotification("Item(ns) excluído(s) com sucesso!", "success");
-        refreshFiles();
+        await refreshFiles();
     } catch (error) {
         showNotification(`Erro ao excluir: ${error.message}`, "error");
     }
@@ -461,7 +461,7 @@ async function confirmSaveRole() {
         });
         showNotification("Cargo salvo com sucesso!", "success");
         closeRoleModal();
-        router('admin/roles');
+        await router();
     } catch (error) {
         showNotification(`Erro ao salvar cargo: ${error.message}`, "error");
     }
@@ -470,18 +470,22 @@ async function confirmSaveRole() {
 // --- 8. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
 function renderNav() {
     parseJwt();
-    mainNav.innerHTML = `<span>Olá, <a href="/#/profile"><strong>${state.username || 'Visitante'}</strong></a>${state.role ? ` (${state.role})` : ''}</span>`;
+    mainNav.innerHTML = `<span class="nav-greeting">Olá, <a href="/#/profile"><strong>${state.username || 'Visitante'}</strong></a>${state.role ? ` (${state.role})` : ''}</span>`;
+    let navLinks = '';
     if (state.token) {
         if (hasPermission('can_manage_users') || hasPermission('can_manage_roles')) {
-            mainNav.innerHTML += `<a href="/#/admin">Admin</a>`;
+            navLinks += `<a href="/#/admin">Admin</a>`;
         }
-        mainNav.innerHTML += `<a href="#" id="logout-btn">Sair</a>`;
+        navLinks += `<a href="#" id="logout-btn">Sair</a>`;
+    } else {
+        navLinks += `<a href="/#/login">Login</a> <a href="/#/register">Registrar</a>`;
+    }
+    mainNav.innerHTML += `<span class="nav-links">${navLinks}</span>`;
+    if (state.token) {
         document.getElementById('logout-btn').onclick = (e) => {
             e.preventDefault();
             logout();
         };
-    } else {
-        mainNav.innerHTML += `<a href="/#/login">Login</a> <a href="/#/register">Registrar</a>`;
     }
 }
 
@@ -496,6 +500,7 @@ function renderLoginPage() {
             });
             login(data.token);
             window.location.hash = '/';
+            await router();
         } catch (error) {
             showNotification(`Erro no login: ${error.message}`, 'error');
         }
@@ -536,7 +541,7 @@ async function renderProfilePage() {
                     try {
                         await apiCall('user/unlink-telegram', 'POST');
                         showNotification('Conta desvinculada com sucesso.', 'success');
-                        router();
+                        await router();
                     } catch (error) {
                         showNotification(`Erro: ${error.message}`, 'error');
                     }
@@ -551,12 +556,12 @@ async function renderProfilePage() {
                 const linkCodeWithPrefix = `link_${randomCode}`;
                 apiCall('user/prepare-link-code', 'POST', {
                     linkCode: linkCodeWithPrefix
-                }).then(() => {
-                    window.open(`https://t.me/ShiroyamaBot?start=${linkCodeWithPrefix}`, '_blank');
+                }).then(async () => {
+                    window.open(`https://t.me/YourBotName?start=${linkCodeWithPrefix}`, '_blank');
                     linkButton.textContent = 'Verifique o Telegram!';
                     showNotification('Conclua o vínculo no Telegram.', 'info');
                     startFaviconBlink();
-                    setTimeout(() => router(), 15000);
+                    setTimeout(async () => await router(), 15000);
                 }).catch(err => {
                     showNotification(`Erro: ${err.message}`, 'error');
                     linkButton.disabled = false;
@@ -599,10 +604,10 @@ async function renderAdminPage(subpage) {
     mainContent.innerHTML = `<h2>Painel de Administrador</h2><div class="admin-tabs">${hasPermission('can_manage_users') ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}">Gerenciar Usuários</button>` : ''}${hasPermission('can_manage_roles') ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}">Gerenciar Cargos</button>` : ''}</div><div id="admin-content">Carregando...</div>`;
 
     if (hasPermission('can_manage_users')) {
-        document.getElementById('admin-tab-users').onclick = () => router('admin/users');
+        document.getElementById('admin-tab-users').onclick = async () => await router('admin/users');
     }
     if (hasPermission('can_manage_roles')) {
-        document.getElementById('admin-tab-roles').onclick = () => router('admin/roles');
+        document.getElementById('admin-tab-roles').onclick = async () => await router('admin/roles');
     }
 
     const adminContent = document.getElementById('admin-content');
@@ -615,8 +620,8 @@ async function renderAdminPage(subpage) {
             const rolesData = await apiCall('admin/roles');
             adminContent.innerHTML = `<div style="text-align: right; margin-bottom: 10px;"><button id="create-new-role-btn">Criar Novo Cargo</button></div><div class="table-container"><table class="file-table"><thead><tr><th>Cargo</th><th>Nível</th><th>Permissões</th><th>Ações</th></tr></thead><tbody>${rolesData.map(role => `<tr><td>${role.name}</td><td>${role.level}</td><td>${role.permissions.join(', ') || 'Nenhuma'}</td><td><button class="edit-role-btn" data-role='${JSON.stringify(role)}'>Editar</button><button class="delete-role-btn btn-danger" data-id="${role.id}">Excluir</button></td></tr>`).join('')}</tbody></table></div>`;
         } else {
-            if (hasPermission('can_manage_users')) router('admin/users');
-            else if (hasPermission('can_manage_roles')) router('admin/roles');
+            if (hasPermission('can_manage_users')) await router('admin/users');
+            else if (hasPermission('can_manage_roles')) await router('admin/roles');
             else adminContent.innerHTML = `<p>Você não tem permissão para ver esta seção.</p>`;
         }
     } catch (error) {
@@ -625,7 +630,6 @@ async function renderAdminPage(subpage) {
 }
 
 function renderFilesPage(path) {
-	console.log(`Dentro de renderFilesPage. Recebi o caminho: [${path.join(', ')}]`);
     let controlsHTML = `<div class="controls-buttons">`;
     if (hasPermission('can_create_folders')) {
         controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`;
@@ -673,16 +677,20 @@ function renderFilesPage(path) {
                 numeric: true
             }) * sortOrder;
         }
-        if (state.sort.key === 'size') {
+        if (state.sort.key === 'size' && itemA._isFile && itemB._isFile) {
             return (itemA.file_size || 0) - (itemB.file_size || 0) * sortOrder;
         }
         return 0;
     });
+
     if (items.length === 0) {
-        fileListBodyElement.innerHTML = '<div class="file-item">Pasta vazia.</div>';
-        document.getElementById('select-all-checkbox').disabled = true;
+        fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Pasta vazia.</div>';
+        document.getElementById('select-all-checkbox').style.visibility = 'hidden';
         return;
     }
+    
+    document.getElementById('select-all-checkbox').style.visibility = 'visible';
+
     items.forEach(([name, item]) => {
         const div = document.createElement('div');
         div.className = 'file-item';
@@ -716,145 +724,116 @@ function renderFilesPage(path) {
         if (item._isFile) {
             div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}"><span class="file-icon">${getIconForFile(name)}</span><span class="file-name">${name}</span><span class="file-size">${formatFileSize(item.file_size)}</span>${actionsHTML}`;
         } else {
-            // AQUI ESTÁ A LIGAÇÃO PARA A PASTA. O href muda a URL, disparando o router.
-            div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><a href="#/${encodeURI(itemPath)}" class="file-item-name" style="width: 100%; display: flex; align-items: center;"><span class="file-icon"><i class="fas fa-folder"></i></span><span>${name}</span></a>${actionsHTML}`;
+            div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><a href="#/${encodeURI(itemPath)}" class="file-item-name"><span class="file-icon"><i class="fas fa-folder"></i></span><span>${name}</span></a>${actionsHTML}`;
         }
         fileListBodyElement.appendChild(div);
     });
+
     document.querySelectorAll('.sortable-header').forEach(header => {
+        const indicator = header.querySelector('.sort-indicator');
+        indicator.className = 'sort-indicator';
         if (header.dataset.sort === state.sort.key) {
-            header.querySelector('.sort-indicator').classList.add(state.sort.order);
+            indicator.classList.add(state.sort.order);
         }
     });
 }
 
-// --- 9. ROTEADOR PRINCIPAL --- [ESSA É A PARTE CORRIGIDA]
-async function router(forceRoute) {
-    console.log("%c--- ROTEADOR ACIONADO ---", "color: yellow; font-weight: bold;");
+// --- 9. ROTEADOR PRINCIPAL ---
+async function router() {
+    await parseJwt();
+    await renderNav();
 
-    parseJwt();
-    renderNav();
-
-    const pathString = forceRoute || window.location.hash.slice(1) || '/';
-    console.log("1. String do caminho (hash):", pathString);
+    // A CORREÇÃO ESTÁ AQUI: sempre pegamos o hash da window, ignorando argumentos de eventos.
+    const pathString = window.location.hash.slice(1) || '/';
     const path = pathString.split('/').filter(p => p && p !== '#').map(decodeURIComponent);
     const primaryRoute = path[0] || 'home';
-    console.log("2. Rota primária identificada:", primaryRoute, "| Caminho completo:", path);
 
-    // Seção de rotas de "aplicação"
+    // Seção de rotas de "aplicação" (não relacionadas a arquivos)
     switch (primaryRoute) {
         case 'login':
-            console.log("Renderizando: Página de Login");
             renderLoginPage();
             return;
         case 'register':
-            console.log("Renderizando: Página de Registro");
             renderRegisterPage();
             return;
         case 'profile':
-            console.log("Renderizando: Página de Perfil");
-            if (!state.token) { window.location.hash = '/login'; } else { renderProfilePage(); }
+            if (!state.token) { window.location.hash = '/login'; } else { await renderProfilePage(); }
             return;
         case 'admin':
-            console.log("Renderizando: Página de Admin");
             if (!hasPermission('can_manage_users') && !hasPermission('can_manage_roles')) {
                 showNotification("Acesso negado.", "error");
                 window.location.hash = '/';
             } else {
-                renderAdminPage(path[1]);
+                await renderAdminPage(path[1]);
             }
             return;
     }
 
-    // Lógica para visualização de arquivos
-    console.log("3. Rota não é de aplicação, continuando para visualização de arquivos.");
     if (!state.token) {
-        console.log("Usuário não logado. Redirecionando para login.");
         renderLoginPage();
         return;
     }
     if (!hasPermission('can_view_files')) {
-        console.log("Usuário sem permissão para ver arquivos.");
         mainContent.innerHTML = "<h2>Acesso Negado</h2><p>Você não tem permissão para visualizar arquivos.</p>";
         return;
     }
 
     if (state.allFiles.length === 0) {
-        console.log("4. Estado de arquivos está vazio. Buscando da API...");
         try {
             const data = await apiCall(`files?t=${new Date().getTime()}`);
             state.allFiles = data.files || [];
             state.fileTree = buildFileTree(state.allFiles);
-            console.log("5. Árvore de arquivos construída com sucesso.", state.fileTree);
         } catch (error) {
-            console.error("Erro ao buscar arquivos da API:", error);
             logout();
             return;
         }
-    } else {
-        console.log("4. Usando a árvore de arquivos já carregada no estado.");
     }
 
     const currentPath = primaryRoute === 'home' ? [] : path;
-    console.log(`%c6. CHAMANDO renderFilesPage com o caminho: [${currentPath.join(', ')}]`, "color: lightgreen; font-weight: bold;");
-    
-    // Adicione um log dentro da função renderFilesPage também
     renderFilesPage(currentPath);
 }
+
 
 // --- 10. INICIALIZAÇÃO E LISTENERS DE EVENTOS ---
 document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('focus', stopFaviconBlink);
-    // ... (O resto do seu código de listeners permanece igual)
+
+    // Fechar Modais
     document.getElementById('modal-close-btn').onclick = () => authModal.classList.remove('show');
+    document.getElementById('why-modal-close-btn').onclick = () => whyLinkModal.classList.remove('show');
+    document.getElementById('move-modal-close-btn').onclick = closeMoveModal;
+    document.getElementById('create-folder-close-btn').onclick = closeCreateFolderModal;
+    document.getElementById('rename-close-btn').onclick = closeRenameModal;
+    document.getElementById('role-modal-close-btn').onclick = closeRoleModal;
+
+    // Ações de Botões de Modais
     document.getElementById('modal-login-btn').onclick = () => window.location.hash = '/login';
     document.getElementById('modal-register-btn').onclick = () => window.location.hash = '/register';
-    authModal.onclick = (e) => {
-        if (e.target === authModal) authModal.classList.remove('show');
-    };
-    document.getElementById('why-modal-close-btn').onclick = () => whyLinkModal.classList.remove('show');
-    whyLinkModal.onclick = (e) => {
-        if (e.target === whyLinkModal) whyLinkModal.classList.remove('show');
-    };
-    document.getElementById('move-modal-close-btn').onclick = closeMoveModal;
     document.getElementById('move-file-cancel-btn').onclick = closeMoveModal;
     document.getElementById('move-file-confirm-btn').onclick = confirmMoveFile;
-    moveFileModal.onclick = (e) => {
-        if (e.target === moveFileModal) closeMoveModal();
-    };
-    document.getElementById('create-folder-close-btn').onclick = closeCreateFolderModal;
     document.getElementById('create-folder-cancel-btn').onclick = closeCreateFolderModal;
     document.getElementById('create-folder-confirm-btn').onclick = confirmCreateFolder;
-    createFolderModal.onclick = (e) => {
-        if (e.target === createFolderModal) closeCreateFolderModal();
-    };
-    document.getElementById('rename-close-btn').onclick = closeRenameModal;
     document.getElementById('rename-cancel-btn').onclick = closeRenameModal;
     document.getElementById('rename-confirm-btn').onclick = confirmRename;
-    renameModal.onclick = (e) => {
-        if (e.target === renameModal) closeRenameModal();
-    };
-    document.getElementById('role-modal-close-btn').onclick = closeRoleModal;
     document.getElementById('role-modal-cancel-btn').onclick = closeRoleModal;
     document.getElementById('role-modal-save-btn').onclick = confirmSaveRole;
-    roleModal.onclick = (e) => {
-        if (e.target === roleModal) closeRoleModal();
-    };
-    document.getElementById('new-folder-name').addEventListener('keyup', (e) => {
-        if (e.key === 'Enter') confirmCreateFolder();
+
+    // Fechar modal ao clicar fora
+    [authModal, whyLinkModal, moveFileModal, createFolderModal, renameModal, roleModal].forEach(modal => {
+        if (modal) modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('show'); };
     });
-    document.getElementById('rename-new-name').addEventListener('keyup', (e) => {
-        if (e.key === 'Enter') confirmRename();
-    });
+
+    // Ações de Enter em inputs
+    document.getElementById('new-folder-name').addEventListener('keyup', (e) => { if (e.key === 'Enter') confirmCreateFolder(); });
+    document.getElementById('rename-new-name').addEventListener('keyup', (e) => { if (e.key === 'Enter') confirmRename(); });
+
+    // Navegação no Modal de Mover
     document.getElementById('folder-navigation').addEventListener('click', e => {
         const li = e.target.closest('li');
         if (!li) return;
         const action = li.dataset.action;
-        if (action === 'up') {
-            moveState.currentPath.pop();
-        } else if (action === 'down') {
-            moveState.currentPath.push(li.dataset.folder);
-        }
+        if (action === 'up') moveState.currentPath.pop();
+        else if (action === 'down') moveState.currentPath.push(li.dataset.folder);
         renderFolderNavigator();
     });
     document.getElementById('create-folder-in-move-modal-btn').onclick = () => {
@@ -862,20 +841,26 @@ document.addEventListener('DOMContentLoaded', () => {
         openCreateFolderModal(true);
     };
 
-    mainContent.addEventListener('click', (e) => {
-        const target = e.target.closest('button, .sortable-header');
+    // Delegação de eventos no #main-content
+    mainContent.addEventListener('click', async (e) => {
+        const button = e.target.closest('button');
+        const header = e.target.closest('.sortable-header');
+        const target = button || header;
+
         if (!target) return;
 
-        if (target.classList.contains('btn-single-forward')) handleSingleForward(target.dataset.messageId);
+        // Ações de arquivo/pasta
+        if (target.classList.contains('btn-single-forward')) await handleSingleForward(target.dataset.messageId);
         if (target.classList.contains('btn-move-file')) openMoveModal(target.dataset.key, false);
         if (target.classList.contains('btn-move-folder')) openMoveModal(target.dataset.key, true);
         if (target.classList.contains('btn-rename')) openRenameModal(target.dataset.key, target.dataset.isfolder === 'true');
         if (target.classList.contains('btn-delete')) {
             const isFolder = target.dataset.isfolder === 'true';
             const key = target.dataset.key;
-            deleteItems([key], isFolder, isFolder ? key.split('/').pop() : '');
+            await deleteItems([key], isFolder, isFolder ? key.split('/').pop() : '');
         }
-        
+
+        // Ordenação da tabela
         if (target.classList.contains('sortable-header')) {
             const sortKey = target.dataset.sort;
             if (state.sort.key === sortKey) {
@@ -884,9 +869,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.sort.key = sortKey;
                 state.sort.order = 'asc';
             }
-            router();
+            await router();
         }
 
+        // Ações de Admin
         if (target.classList.contains('save-user-role-btn')) {
             const userId = target.dataset.id;
             const newRoleId = document.querySelector(`.role-select[data-id="${userId}"]`).value;
@@ -898,13 +884,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const userId = target.dataset.id;
             if (confirm('Tem certeza que deseja excluir este usuário?')) {
                 apiCall('admin/delete-user', 'POST', { userId: parseInt(userId) })
-                    .then(() => { showNotification("Usuário excluído.", "success"); router('admin/users'); })
+                    .then(async () => { showNotification("Usuário excluído.", "success"); await router('admin/users'); })
                     .catch(err => showNotification(`Erro: ${err.message}`, "error"));
             }
         }
-        if (target.id === 'create-new-role-btn') {
-            openRoleModal();
-        }
+        if (target.id === 'create-new-role-btn') openRoleModal();
         if (target.classList.contains('edit-role-btn')) {
             const roleData = JSON.parse(target.dataset.role);
             openRoleModal(roleData);
@@ -913,58 +897,61 @@ document.addEventListener('DOMContentLoaded', () => {
             const roleId = target.dataset.id;
             if (confirm('Tem certeza que deseja excluir este cargo?')) {
                 apiCall(`admin/roles/${roleId}`, 'DELETE')
-                    .then(() => { showNotification("Cargo excluído.", "success"); router('admin/roles'); })
+                    .then(async () => { showNotification("Cargo excluído.", "success"); await router('admin/roles'); })
                     .catch(err => showNotification(`Erro: ${err.message}`, "error"));
             }
         }
     });
 
+    // Delegação de eventos para checkboxes
     mainContent.addEventListener('change', (e) => {
-        if (e.target.id === 'select-all-checkbox' || e.target.classList.contains('file-checkbox')) {
-            if (e.target.id === 'select-all-checkbox') {
-                const isChecked = e.target.checked;
-                document.querySelectorAll('#file-list-body .file-checkbox').forEach(cb => cb.checked = isChecked);
-            }
-            const bulkActionsContainer = document.getElementById('bulk-actions-container');
-            if (!bulkActionsContainer) return;
-            const selected = Array.from(document.querySelectorAll('#file-list-body .file-checkbox:checked'));
-            if (selected.length === 0) {
-                bulkActionsContainer.style.display = 'none';
-                bulkActionsContainer.innerHTML = '';
-                document.getElementById('select-all-checkbox').checked = false;
-                return;
-            }
-            bulkActionsContainer.style.display = 'flex';
-            const keys = selected.map(cb => cb.dataset.key);
-            const messageIds = selected.map(cb => cb.dataset.messageId);
-            let buttonsHTML = `<span>${selected.length} item(ns) selecionado(s)</span>`;
-            if (hasPermission('can_receive_files')) { buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`; }
-            if (hasPermission('can_move_items')) { buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`; }
-            if (hasPermission('can_delete_items')) { buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`; }
-            bulkActionsContainer.innerHTML = buttonsHTML;
-            if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
-            if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys);
-            if (document.getElementById('bulk-receive-btn')) {
-                document.getElementById('bulk-receive-btn').onclick = async () => {
-                    if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
-                    const btn = document.getElementById('bulk-receive-btn');
-                    try {
-                        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
-                        btn.disabled = true;
-                        await apiCall('bulk-forward', 'POST', { message_ids: messageIds.map(id => parseInt(id)) });
-                        showNotification("O bot começou a enviar os arquivos! Verifique seu Telegram.", 'success');
-                    } catch (error) {
-                        showNotification(`Ocorreu um erro: ${error.message}`, 'error');
-                    } finally {
-                        btn.innerHTML = `<i class="fas fa-paper-plane"></i>`;
-                        btn.disabled = false;
-                    }
-                };
-            }
+        if (!e.target.classList.contains('file-checkbox')) return;
+
+        if (e.target.id === 'select-all-checkbox') {
+            document.querySelectorAll('#file-list-body .file-checkbox:not([style*="visibility: hidden"])').forEach(cb => cb.checked = e.target.checked);
+        }
+
+        const bulkActionsContainer = document.getElementById('bulk-actions-container');
+        if (!bulkActionsContainer) return;
+
+        const selected = Array.from(document.querySelectorAll('#file-list-body .file-checkbox:checked'));
+        if (selected.length === 0) {
+            bulkActionsContainer.style.display = 'none';
+            document.getElementById('select-all-checkbox').checked = false;
+            return;
+        }
+
+        bulkActionsContainer.style.display = 'flex';
+        const keys = selected.map(cb => cb.dataset.key);
+        const messageIds = selected.map(cb => cb.dataset.messageId);
+        let buttonsHTML = `<span>${selected.length} item(ns) selecionado(s)</span>`;
+        if (hasPermission('can_receive_files')) { buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`; }
+        if (hasPermission('can_move_items')) { buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`; }
+        if (hasPermission('can_delete_items')) { buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`; }
+        bulkActionsContainer.innerHTML = buttonsHTML;
+
+        if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
+        if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys);
+        if (document.getElementById('bulk-receive-btn')) {
+            document.getElementById('bulk-receive-btn').onclick = async () => {
+                if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
+                const btn = document.getElementById('bulk-receive-btn');
+                try {
+                    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+                    btn.disabled = true;
+                    await apiCall('bulk-forward', 'POST', { message_ids: messageIds.map(id => parseInt(id)) });
+                    showNotification("O bot começou a enviar os arquivos! Verifique seu Telegram.", 'success');
+                } catch (error) {
+                    showNotification(`Ocorreu um erro: ${error.message}`, 'error');
+                } finally {
+                    btn.innerHTML = `<i class="fas fa-paper-plane"></i>`;
+                    btn.disabled = false;
+                }
+            };
         }
     });
-    // Adiciona o listener que "escuta" as mudanças na URL (ex: clique em pasta)
+
+    // Listener principal da aplicação
     window.addEventListener('hashchange', router);
-    // Executa o router na primeira carga da página
     router();
 });
