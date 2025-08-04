@@ -396,7 +396,6 @@ async function confirmRename() {
 }
 
 async function deleteItems(keys, isFolder = false, folderName = '') {
-    // BUG FIX: Garante que 'keys' seja sempre um array para a contagem e payload.
     const itemsToDelete = Array.isArray(keys) ? keys : [keys];
     const keyCount = itemsToDelete.length;
 
@@ -407,7 +406,6 @@ async function deleteItems(keys, isFolder = false, folderName = '') {
     if (!confirm(message)) return;
 
     try {
-        // BUG FIX: Monta o payload correto para a API.
         const payload = isFolder ? { 
             prefix: itemsToDelete[0] + '/' 
         } : { 
@@ -458,8 +456,10 @@ async function confirmSaveRole() {
     const name = document.getElementById('role-name').value;
     const level = parseInt(document.getElementById('role-level').value);
     const selectedPerms = Array.from(document.querySelectorAll('#permissions-container input:checked')).map(el => parseInt(el.value));
+    
     const endpoint = roleState.id ? `admin/roles/${roleState.id}` : 'admin/roles';
     const method = roleState.id ? 'PUT' : 'POST';
+
     try {
         await apiCall(endpoint, method, {
             name,
@@ -480,7 +480,6 @@ function renderNav() {
 
     let greetingHTML = `<span>Olá, <a href="/#/profile"><strong>${state.username || 'Visitante'}</strong></a>`;
     if (state.role) {
-        // FEATURE: Adiciona uma tag estilizada para o cargo.
         greetingHTML += `<span class="role-tag">${state.role}</span>`;
     }
     greetingHTML += `</span>`;
@@ -488,13 +487,13 @@ function renderNav() {
     let navLinksHTML = '';
     if (state.token) {
         if (hasPermission('can_manage_users') || hasPermission('can_manage_roles')) {
-            // FEATURE: Transforma Admin em um botão.
             navLinksHTML += `<button id="admin-btn" class="nav-button">Admin</button>`;
         }
-        // FEATURE: Transforma Sair em um botão.
         navLinksHTML += `<button id="logout-btn" class="nav-button">Sair</button>`;
     } else {
-        navLinksHTML += `<a href="/#/login">Login</a> <a href="/#/register">Registrar</a>`;
+        // CORREÇÃO: Renderiza Login e Registrar como botões.
+        navLinksHTML += `<button id="login-btn" class="nav-button">Login</button>`;
+        navLinksHTML += `<button id="register-btn" class="nav-button">Registrar</button>`;
     }
 
     mainNav.innerHTML = `${greetingHTML}<span class="nav-links">${navLinksHTML}</span>`;
@@ -509,6 +508,9 @@ function renderNav() {
             e.preventDefault();
             logout();
         };
+    } else {
+        document.getElementById('login-btn').onclick = () => window.location.hash = '/login';
+        document.getElementById('register-btn').onclick = () => window.location.hash = '/register';
     }
 }
 
@@ -624,7 +626,6 @@ async function renderAdminPage(subpage) {
 
     mainContent.innerHTML = `<h2>Painel de Administrador</h2><div class="admin-tabs">${hasPermission('can_manage_users') ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}">Gerenciar Usuários</button>` : ''}${hasPermission('can_manage_roles') ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}">Gerenciar Cargos</button>` : ''}</div><div id="admin-content">Carregando...</div>`;
 
-    // BUG FIX: Adiciona os listeners que chamam o router com a rota correta.
     if (hasPermission('can_manage_users')) {
         document.getElementById('admin-tab-users').onclick = () => router('admin/users');
     }
@@ -700,7 +701,6 @@ function renderFilesPage(path) {
         }
         
         if (state.sort.key === 'size') {
-            // BUG FIX: Corrige a lógica de ordenação por tamanho.
             const sizeA = itemA.file_size || 0;
             const sizeB = itemB.file_size || 0;
             return (sizeA - sizeB) * sortOrder;
@@ -750,13 +750,16 @@ function renderFilesPage(path) {
 }
 
 // --- 9. ROTEADOR PRINCIPAL ---
-async function router() {
+async function router(routeOverride) {
     await parseJwt();
-    await renderNav();
-
-    const pathString = window.location.hash.slice(1) || '/';
+    
+    // CORREÇÃO: Verifica se routeOverride é uma string; se não for, usa o hash da URL.
+    // Isso resolve o conflito entre chamadas internas (ex: router('admin/roles')) e eventos do navegador.
+    const pathString = (typeof routeOverride === 'string') ? routeOverride : (window.location.hash.slice(1) || '/');
     const path = pathString.split('/').filter(p => p && p !== '#').map(decodeURIComponent);
     const primaryRoute = path[0] || 'home';
+    
+    await renderNav();
 
     switch (primaryRoute) {
         case 'login':
@@ -773,7 +776,6 @@ async function router() {
                 showNotification("Acesso negado.", "error");
                 window.location.hash = '/';
             } else {
-                // BUG FIX: Passa a sub-rota para a função de renderização.
                 await renderAdminPage(path[1]);
             }
             return;
@@ -802,7 +804,6 @@ async function router() {
     const currentPath = primaryRoute === 'home' ? [] : path;
     renderFilesPage(currentPath);
 }
-
 
 // --- 10. INICIALIZAÇÃO E LISTENERS DE EVENTOS ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -870,7 +871,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.sort.key = sortKey;
                 state.sort.order = 'asc';
             }
-            // Chama o router sem argumentos para que ele redesenhe a view atual
             await router();
         }
 
@@ -931,7 +931,6 @@ document.addEventListener('DOMContentLoaded', () => {
         bulkActionsContainer.innerHTML = buttonsHTML;
 
         if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
-        // BUG FIX: Garante que a chamada para deleteItems para bulk actions esteja correta.
         if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys, false);
         
         if (document.getElementById('bulk-receive-btn')) {

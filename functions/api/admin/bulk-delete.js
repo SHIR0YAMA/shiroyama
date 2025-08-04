@@ -26,12 +26,10 @@ export async function onRequestPost(context) {
             return new Response(JSON.stringify({ success: true, message: 'Nenhum arquivo para excluir.' }));
         }
 
-        // Usando o bulk delete do R2, que é mais eficiente que o do KV
-        const MAX_KEYS_PER_DELETE = 1000;
-        for (let i = 0; i < keysToDelete.length; i += MAX_KEYS_PER_DELETE) {
-            const batch = keysToDelete.slice(i, i + MAX_KEYS_PER_DELETE);
-            await env.ARQUIVOS_TELEGRAM.delete(batch);
-        }
+        // --- CORREÇÃO AQUI ---
+        // Itera sobre cada chave para deletar individualmente, pois KV não suporta delete em massa.
+        const deletePromises = keysToDelete.map(key => env.ARQUIVOS_TELEGRAM.delete(key));
+        await Promise.all(deletePromises);
 
         return new Response(JSON.stringify({ success: true, message: `${keysToDelete.length} item(ns) excluído(s) com sucesso.` }));
 
