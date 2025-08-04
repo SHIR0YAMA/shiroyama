@@ -203,8 +203,8 @@ function buildFileTree(files) {
 function getContentForPath(path) {
     let currentLevel = state.fileTree;
     for (const folderName of path) {
+        if (!currentLevel[folderName]) return {}; // Retorna objeto vazio se o caminho não existir
         currentLevel = currentLevel[folderName];
-        if (!currentLevel) return {};
     }
     return currentLevel;
 }
@@ -344,12 +344,15 @@ async function confirmCreateFolder() {
         await refreshFiles();
 
         if (wasOpenedFromMoveModal) {
-            openMoveModal(moveState.oldKeys, moveState.isFolder);
+            moveState.currentPath = [...basePath, newFolderName];
+            renderFolderNavigator();
+            moveFileModal.classList.add('show'); // Reabre o modal de mover
         }
     } catch (error) {
         showNotification(`Erro ao criar pasta: ${error.message}`, "error");
     }
 }
+
 
 function openRenameModal(key, isFolder) {
     renameState.oldKey = key;
@@ -629,22 +632,33 @@ function renderFilesPage(path) {
     controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div>`;
     mainContent.innerHTML = `<div class="controls"><div id="breadcrumb"></div>${controlsHTML}</div><div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div>`;
     document.getElementById('refresh-files-btn').onclick = refreshFiles;
+    if (hasPermission('can_create_folders')) {
+       document.getElementById('create-folder-btn').onclick = () => openCreateFolderModal(false);
+    }
+    
     const breadcrumbElement = document.getElementById('breadcrumb');
     breadcrumbElement.innerHTML = '';
-    ['Home', ...path].forEach((part, index, arr) => {
-        const span = document.createElement('span');
-        if (index < arr.length - 1) {
+    const homeLink = document.createElement('a');
+    homeLink.href = '#/';
+    homeLink.textContent = 'Home';
+    breadcrumbElement.appendChild(homeLink);
+
+    let cumulativePath = '';
+    path.forEach((part, index) => {
+        breadcrumbElement.innerHTML += ' > ';
+        cumulativePath += `/${encodeURIComponent(part)}`;
+        if (index < path.length - 1) {
             const a = document.createElement('a');
-            const targetPath = arr.slice(1, index + 1).map(encodeURIComponent).join('/');
-            a.href = `#/${targetPath}`;
+            a.href = `#${cumulativePath}`;
             a.textContent = part;
-            span.appendChild(a);
-            span.innerHTML += ' > ';
+            breadcrumbElement.appendChild(a);
         } else {
+            const span = document.createElement('span');
             span.textContent = part;
+            breadcrumbElement.appendChild(span);
         }
-        breadcrumbElement.appendChild(span);
     });
+
     const fileListBodyElement = document.getElementById('file-list-body');
     const content = getContentForPath(path);
     const items = Object.entries(content).sort(([nameA, itemA], [nameB, itemB]) => {
@@ -701,7 +715,7 @@ function renderFilesPage(path) {
         if (item._isFile) {
             div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}"><span class="file-icon">${getIconForFile(name)}</span><span class="file-name">${name}</span><span class="file-size">${formatFileSize(item.file_size)}</span>${actionsHTML}`;
         } else {
-            div.innerHTML = `<div class="file-checkbox" style="visibility: hidden;"></div><a href="#/${itemPath}" class="file-item-name" style="width: 100%; display: flex; align-items: center;"><span class="file-icon"><i class="fas fa-folder"></i></span><span>${name}</span></a>${actionsHTML}`;
+            div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><a href="#/${encodeURI(itemPath)}" class="file-item-name" style="width: 100%; display: flex; align-items: center;"><span class="file-icon"><i class="fas fa-folder"></i></span><span>${name}</span></a>${actionsHTML}`;
         }
         fileListBodyElement.appendChild(div);
     });
@@ -716,55 +730,64 @@ function renderFilesPage(path) {
 async function router(forceRoute) {
     parseJwt();
     renderNav();
+
+    // Normaliza a rota a partir do hash da URL ou de um valor forçado
     const pathString = forceRoute || window.location.hash.slice(1) || '/';
     const path = pathString.split('/').filter(p => p && p !== '#').map(decodeURIComponent);
-    const route = path[0] || 'home';
+    const primaryRoute = path[0] || 'home';
 
-    if (route === 'admin' && !hasPermission('can_manage_users') && !hasPermission('can_manage_roles')) {
-        showNotification("Acesso negado.", "error");
-        window.location.hash = '/';
+    // Seção de rotas de "aplicação" (não relacionadas a arquivos)
+    switch (primaryRoute) {
+        case 'login':
+            renderLoginPage();
+            return; // Encerra a execução para esta rota
+        case 'register':
+            renderRegisterPage();
+            return;
+        case 'profile':
+            if (!state.token) {
+                window.location.hash = '/login';
+            } else {
+                renderProfilePage();
+            }
+            return;
+        case 'admin':
+            if (!hasPermission('can_manage_users') && !hasPermission('can_manage_roles')) {
+                showNotification("Acesso negado.", "error");
+                window.location.hash = '/';
+            } else {
+                renderAdminPage(path[1]);
+            }
+            return;
+    }
+
+    // A partir daqui, a lógica é para visualização de arquivos
+    if (!state.token) {
+        renderLoginPage();
         return;
     }
-    if (route === 'profile' && !state.token) {
-        window.location.hash = '/login';
+
+    if (!hasPermission('can_view_files')) {
+        mainContent.innerHTML = "<h2>Acesso Negado</h2><p>Você não tem permissão para visualizar arquivos.</p>";
         return;
     }
-    if ((route === 'home' || !route || state.allFiles.length === 0) && state.token && hasPermission('can_view_files')) {
+
+    // Carrega a lista de arquivos da API se ainda não tiver sido carregada
+    if (state.allFiles.length === 0) {
         try {
             const data = await apiCall(`files?t=${new Date().getTime()}`);
             state.allFiles = data.files || [];
             state.fileTree = buildFileTree(state.allFiles);
         } catch (error) {
-            logout();
+            logout(); // Se falhar, desloga o usuário
             return;
         }
     }
 
-    switch (route) {
-        case 'login':
-            renderLoginPage();
-            break;
-        case 'register':
-            renderRegisterPage();
-            break;
-        case 'admin':
-            renderAdminPage(path[1]);
-            break;
-        case 'profile':
-            renderProfilePage();
-            break;
-        default:
-            if (state.token) {
-                if (hasPermission('can_view_files')) {
-                    renderFilesPage(path);
-                } else {
-                    mainContent.innerHTML = "<h2>Acesso Negado</h2><p>Você não tem permissão para visualizar arquivos.</p>";
-                }
-            } else {
-                renderLoginPage();
-            }
-            break;
-    }
+    // Finalmente, renderiza a página de arquivos com o caminho correto
+    // Se a rota for 'home', o caminho é vazio (raiz)
+    const currentPath = primaryRoute === 'home' ? [] : path;
+    renderFilesPage(currentPath);
 }
 
 // --- 10. INICIALIZAÇÃO E LISTENERS DE EVENTOS ---
@@ -811,12 +834,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Enter') confirmRename();
     });
     document.getElementById('folder-navigation').addEventListener('click', e => {
-        const action = e.target.closest('li')?.dataset.action;
-        if (!action) return;
+        const li = e.target.closest('li');
+        if (!li) return;
+        const action = li.dataset.action;
         if (action === 'up') {
             moveState.currentPath.pop();
         } else if (action === 'down') {
-            moveState.currentPath.push(e.target.closest('li').dataset.folder);
+            moveState.currentPath.push(li.dataset.folder);
         }
         renderFolderNavigator();
     });
@@ -838,7 +862,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const key = target.dataset.key;
             deleteItems([key], isFolder, isFolder ? key.split('/').pop() : '');
         }
-        if (target.id === 'create-folder-btn') openCreateFolderModal(false);
+        
         if (target.classList.contains('sortable-header')) {
             const sortKey = target.dataset.sort;
             if (state.sort.key === sortKey) {
@@ -893,6 +917,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const selected = Array.from(document.querySelectorAll('#file-list-body .file-checkbox:checked'));
             if (selected.length === 0) {
                 bulkActionsContainer.style.display = 'none';
+                bulkActionsContainer.innerHTML = '';
                 document.getElementById('select-all-checkbox').checked = false;
                 return;
             }
