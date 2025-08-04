@@ -36,22 +36,28 @@ export async function onRequestPost(context) {
             return new Response(JSON.stringify({ message: 'Dados inválidos.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
 
-        // 1. Nível de hierarquia: não pode criar cargo com nível igual ou superior (menor número)
         if (loggedInUser.level >= level) {
             return new Response(JSON.stringify({ message: 'Não é possível criar um cargo com nível hierárquico igual ou superior ao seu.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
+        
+        // CORREÇÃO: Se o usuário for Dono (nível 0), ele tem todas as permissões e não precisa de verificação.
+        if (loggedInUser.level > 0) {
+            // Esta verificação só roda para admins que não são o Dono.
+            if (typeof loggedInUser.roleId === 'undefined') {
+                return new Response(JSON.stringify({ message: 'Seu token de acesso é antigo ou inválido. Por favor, faça login novamente.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+            }
 
-        // 2. Permissões: não pode conceder permissões que não possui
-        const userPermissionsStmt = db.prepare(`SELECT p.id FROM permissions p JOIN role_permissions rp ON p.id = rp.permission_id WHERE rp.role_id = ?`).bind(loggedInUser.roleId);
-        const { results: userPermissionResults } = await userPermissionsStmt.all();
-        const userPermissionIds = userPermissionResults.map(p => p.id);
+            const userPermissionsStmt = db.prepare(`SELECT p.id FROM permissions p JOIN role_permissions rp ON p.id = rp.permission_id WHERE rp.role_id = ?`).bind(loggedInUser.roleId);
+            const { results: userPermissionResults } = await userPermissionsStmt.all();
+            const userPermissionIds = userPermissionResults.map(p => p.id);
 
-        for (const permId of requestedPermissionIds) {
-            if (!userPermissionIds.includes(permId)) {
-                return new Response(JSON.stringify({ message: `Você não pode conceder a permissão ID ${permId}, pois você não a possui.` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+            for (const permId of requestedPermissionIds) {
+                if (!userPermissionIds.includes(permId)) {
+                    return new Response(JSON.stringify({ message: `Você não pode conceder a permissão ID ${permId}, pois você não a possui.` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+                }
             }
         }
-
+        
         const roleInsertStmt = db.prepare('INSERT INTO roles (name, level) VALUES (?, ?)').bind(name, level);
         const { meta } = await roleInsertStmt.run();
         const newRoleId = meta.last_row_id;
@@ -64,12 +70,13 @@ export async function onRequestPost(context) {
         }
         
         return new Response(JSON.stringify({ success: true, id: newRoleId }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+
     } catch (error) {
-        if (error.message.includes('UNIQUE constraint failed')) {
+        if (error.message && error.message.includes('UNIQUE constraint failed')) {
             return new Response(JSON.stringify({ message: 'Um cargo com este nome ou nível de hierarquia já existe.' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
         }
         console.error("Erro ao criar cargo:", error);
-        return new Response(JSON.stringify({ message: error.message || 'Erro interno' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ message: error ? error.message : 'Erro interno' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
     }
 }
 
@@ -86,7 +93,6 @@ export async function onRequestPut(context) {
              return new Response(JSON.stringify({ message: 'ID de cargo inválido.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
         
-        // Proteção do cargo Membro (nível 1000) e do próprio cargo
         const targetRole = await db.prepare('SELECT level FROM roles WHERE id = ?').bind(roleIdToEdit).first();
         if (!targetRole) {
             return new Response(JSON.stringify({ message: 'Cargo não encontrado.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
@@ -104,7 +110,6 @@ export async function onRequestPut(context) {
              return new Response(JSON.stringify({ message: 'Não é possível editar para um cargo com nível hierárquico igual ou superior ao seu.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
 
-        // Lógica de verificação de permissões (igual à de criação)
         const userPermissionsStmt = db.prepare(`SELECT p.id FROM permissions p JOIN role_permissions rp ON p.id = rp.permission_id WHERE rp.role_id = ?`).bind(loggedInUser.roleId);
         const { results: userPermissionResults } = await userPermissionsStmt.all();
         const userPermissionIds = userPermissionResults.map(p => p.id);
@@ -128,7 +133,7 @@ export async function onRequestPut(context) {
 
         return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     } catch (error) {
-         if (error.message.includes('UNIQUE constraint failed')) {
+         if (error.message && error.message.includes('UNIQUE constraint failed')) {
             return new Response(JSON.stringify({ message: 'Um cargo com este nome ou nível de hierarquia já existe.' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
         }
         console.error("Erro ao atualizar cargo:", error);
@@ -176,23 +181,30 @@ export async function onRequestDelete(context) {
     }
 }
 
-// Para que PUT e DELETE funcionem, o Cloudflare Pages precisa de uma rota catch-all.
-// O arquivo deve se chamar [[id]].js se você quiser usar params.id.
-// Se seu arquivo se chama apenas roles.js, você precisa criar handlers separados para cada método.
-// A forma mais fácil é ter um único onRequest que verifica context.request.method.
 export async function onRequest(context) {
-    switch (context.request.method) {
-        case 'GET':
-            return onRequestGet(context);
-        case 'POST':
-            return onRequestPost(context);
-        case 'PUT':
-            // Isso assume que a rota é /api/admin/roles/:id e o arquivo é [[id]].js
-            // Se o arquivo for apenas roles.js, você precisará de uma rota separada.
+    // Para que o PUT/DELETE funcione corretamente com IDs dinâmicos, 
+    // o arquivo deve ser nomeado /functions/api/admin/roles/[[id]].js
+    // Esta função onRequest fará o roteamento do método.
+    const { request, params } = context;
+
+    // Se há um ID na URL, é uma operação de PUT ou DELETE
+    if (params && params.id) {
+        if (request.method === 'PUT') {
             return onRequestPut(context);
-        case 'DELETE':
+        }
+        if (request.method === 'DELETE') {
             return onRequestDelete(context);
-        default:
-            return new Response('Método não permitido', { status: 405 });
+        }
     }
+    // Se não há ID, é GET ou POST
+    else {
+        if (request.method === 'GET') {
+            return onRequestGet(context);
+        }
+        if (request.method === 'POST') {
+            return onRequestPost(context);
+        }
+    }
+
+    return new Response('Método não permitido para esta rota.', { status: 405 });
 }

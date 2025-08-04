@@ -559,8 +559,11 @@ function renderLoginPage() {
             });
             login(data.token);
             window.location.hash = '/';
+            // Chama o router explicitamente para garantir a atualização da UI após o login
+            await router(); 
         } catch (error) {
-            hideLoading(); // Esconde o loading em caso de erro no login
+            // Esconde o loading apenas se houver erro, pois o router já o esconde em caso de sucesso
+            hideLoading();
             showNotification(`Erro no login: ${error.message}`, 'error');
         }
     };
@@ -813,7 +816,7 @@ async function router(routeOverride) {
             mainContent.innerHTML = `<h2>Erro</h2><p style="color: #ff5555;">${error.message}</p>`;
         }
     } finally {
-        // Um pequeno delay para o loading não piscar rápido demais em conexões rápidas
+        // Garante que o loading sempre será escondido no final da navegação/renderização.
         setTimeout(hideLoading, 200);
     }
 }
