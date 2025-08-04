@@ -276,16 +276,20 @@ function openMoveModal(keysToMove, isFolder = false) {
     const displayName = moveState.oldKeys.length > 1 ? `${moveState.oldKeys.length} itens` : firstFileName;
     document.getElementById('move-file-name').textContent = displayName;
     
-    // CORREÇÃO: Botão "Criar Pasta Aqui" só aparece se tiver ambas as permissões.
+    // CORREÇÃO: Lógica para o botão "Criar Nova Pasta Aqui"
     const createFolderBtn = document.getElementById('create-folder-in-move-modal-btn');
-    if (hasPermission('can_move_items') && hasPermission('can_create_folders')) {
+    const canCreate = hasPermission('can_create_folders');
+    const canMoveSomething = hasPermission('can_move_items') || hasPermission('can_move_folders');
+
+    if (canCreate && canMoveSomething) {
         createFolderBtn.style.display = 'block';
     } else {
         createFolderBtn.style.display = 'none';
     }
 
     moveState.currentPath = [];
-    renderFolderNavigator();
+    // Passa o nome da pasta (se for uma pasta) para renderFolderNavigator
+    renderFolderNavigator(isFolder ? firstFileName : null);
     moveFileModal.classList.add('show');
 }
 
@@ -293,13 +297,15 @@ function closeMoveModal() {
     moveFileModal.classList.remove('show');
 }
 
-function renderFolderNavigator() {
+function renderFolderNavigator(folderToExclude = null) {
     const navContainer = document.getElementById('folder-navigation');
     const pathDisplay = document.getElementById('move-file-path');
     const confirmBtn = document.getElementById('move-file-confirm-btn');
     const currentFolderContent = getContentForPath(moveState.currentPath);
+    
+    // CORREÇÃO: Filtra a pasta que está sendo movida para fora da lista de destinos
     const subFolders = Object.entries(currentFolderContent)
-        .filter(([_, item]) => !item._isFile)
+        .filter(([name, item]) => !item._isFile && name !== folderToExclude)
         .map(([name, _]) => name);
 
     let html = '<ul>';
@@ -850,13 +856,19 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('rename-new-name').addEventListener('keyup', (e) => { if (e.key === 'Enter') confirmRename(); });
 
     document.getElementById('folder-navigation').addEventListener('click', e => {
-        const li = e.target.closest('li');
-        if (!li) return;
-        const action = li.dataset.action;
-        if (action === 'up') moveState.currentPath.pop();
-        else if (action === 'down') moveState.currentPath.push(li.dataset.folder);
-        renderFolderNavigator();
-    });
+		const li = e.target.closest('li');
+		if (!li) return;
+		const action = li.dataset.action;
+		if (action === 'up') {
+			moveState.currentPath.pop();
+		} else if (action === 'down') {
+			moveState.currentPath.push(li.dataset.folder);
+		}
+		
+		// CORREÇÃO: Garante que a pasta a ser movida continue sendo excluída da lista
+		const folderNameToExclude = moveState.isFolder ? moveState.oldKeys[0].split('/').pop() : null;
+		renderFolderNavigator(folderNameToExclude);
+	});
     document.getElementById('create-folder-in-move-modal-btn').onclick = () => {
         closeMoveModal();
         openCreateFolderModal(true);
