@@ -203,7 +203,7 @@ function buildFileTree(files) {
 function getContentForPath(path) {
     let currentLevel = state.fileTree;
     for (const folderName of path) {
-        if (!currentLevel || !currentLevel[folderName]) return {}; // Retorna objeto vazio se o caminho não existir
+        if (!currentLevel || !currentLevel[folderName]) return {};
         currentLevel = currentLevel[folderName];
     }
     return currentLevel;
@@ -353,7 +353,6 @@ async function confirmCreateFolder() {
     }
 }
 
-
 function openRenameModal(key, isFolder) {
     renameState.oldKey = key;
     renameState.isFolder = isFolder;
@@ -461,7 +460,7 @@ async function confirmSaveRole() {
         });
         showNotification("Cargo salvo com sucesso!", "success");
         closeRoleModal();
-        await router();
+        await router('admin/roles'); // Atualiza a página de cargos
     } catch (error) {
         showNotification(`Erro ao salvar cargo: ${error.message}`, "error");
     }
@@ -500,7 +499,6 @@ function renderLoginPage() {
             });
             login(data.token);
             window.location.hash = '/';
-            await router();
         } catch (error) {
             showNotification(`Erro no login: ${error.message}`, 'error');
         }
@@ -534,7 +532,8 @@ async function renderProfilePage() {
         } else {
             telegramSectionHTML = `<h3>Vincular Conta do Telegram</h3> <p>Clique no botão abaixo para autorizar o bot no Telegram.</p> <button id="link-telegram-btn">Vincular com o Telegram</button> <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>`;
         }
-        mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${userData.role_name}</strong></p><hr style="border-color: #6272a4; margin: 20px 0;">${telegramSectionHTML}<hr style="border-color: #6272a4; margin: 20px 0;"><h3>Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit">Salvar Nova Senha</button></form></div>`;
+        // SOLUÇÃO 2: Usando state.role em vez de userData.role_name
+        mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${state.role || 'N/A'}</strong></p><hr style="border-color: #6272a4; margin: 20px 0;">${telegramSectionHTML}<hr style="border-color: #6272a4; margin: 20px 0;"><h3>Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit">Salvar Nova Senha</button></form></div>`;
         if (userData.telegram_chat_id) {
             document.getElementById('unlink-btn').onclick = async () => {
                 if (confirm('Tem certeza?')) {
@@ -557,7 +556,8 @@ async function renderProfilePage() {
                 apiCall('user/prepare-link-code', 'POST', {
                     linkCode: linkCodeWithPrefix
                 }).then(async () => {
-                    window.open(`https://t.me/YourBotName?start=${linkCodeWithPrefix}`, '_blank');
+                    // SOLUÇÃO 3: Corrigido o nome do bot
+                    window.open(`https://t.me/ShiroyamaBot?start=${linkCodeWithPrefix}`, '_blank');
                     linkButton.textContent = 'Verifique o Telegram!';
                     showNotification('Conclua o vínculo no Telegram.', 'info');
                     startFaviconBlink();
@@ -582,10 +582,7 @@ async function renderProfilePage() {
                 return;
             }
             try {
-                const data = await apiCall('auth/change-password', 'POST', {
-                    currentPassword,
-                    newPassword
-                });
+                const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword });
                 showNotification(data.message, 'success');
                 logout();
             } catch (error) {
@@ -598,16 +595,18 @@ async function renderProfilePage() {
 }
 
 async function renderAdminPage(subpage) {
-    if (!subpage && hasPermission('can_manage_users')) subpage = 'users';
-    else if (!subpage && hasPermission('can_manage_roles')) subpage = 'roles';
+    if (!subpage) {
+        if (hasPermission('can_manage_users')) subpage = 'users';
+        else if (hasPermission('can_manage_roles')) subpage = 'roles';
+    }
 
     mainContent.innerHTML = `<h2>Painel de Administrador</h2><div class="admin-tabs">${hasPermission('can_manage_users') ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}">Gerenciar Usuários</button>` : ''}${hasPermission('can_manage_roles') ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}">Gerenciar Cargos</button>` : ''}</div><div id="admin-content">Carregando...</div>`;
 
     if (hasPermission('can_manage_users')) {
-        document.getElementById('admin-tab-users').onclick = async () => await router('admin/users');
+        document.getElementById('admin-tab-users').onclick = () => router('admin/users');
     }
     if (hasPermission('can_manage_roles')) {
-        document.getElementById('admin-tab-roles').onclick = async () => await router('admin/roles');
+        document.getElementById('admin-tab-roles').onclick = () => router('admin/roles');
     }
 
     const adminContent = document.getElementById('admin-content');
@@ -620,9 +619,7 @@ async function renderAdminPage(subpage) {
             const rolesData = await apiCall('admin/roles');
             adminContent.innerHTML = `<div style="text-align: right; margin-bottom: 10px;"><button id="create-new-role-btn">Criar Novo Cargo</button></div><div class="table-container"><table class="file-table"><thead><tr><th>Cargo</th><th>Nível</th><th>Permissões</th><th>Ações</th></tr></thead><tbody>${rolesData.map(role => `<tr><td>${role.name}</td><td>${role.level}</td><td>${role.permissions.join(', ') || 'Nenhuma'}</td><td><button class="edit-role-btn" data-role='${JSON.stringify(role)}'>Editar</button><button class="delete-role-btn btn-danger" data-id="${role.id}">Excluir</button></td></tr>`).join('')}</tbody></table></div>`;
         } else {
-            if (hasPermission('can_manage_users')) await router('admin/users');
-            else if (hasPermission('can_manage_roles')) await router('admin/roles');
-            else adminContent.innerHTML = `<p>Você não tem permissão para ver esta seção.</p>`;
+            adminContent.innerHTML = `<p>Você não tem permissão para ver esta seção.</p>`;
         }
     } catch (error) {
         adminContent.innerHTML = `<p style="color: #ff5555;">Erro ao carregar dados: ${error.message}</p>`;
@@ -636,6 +633,7 @@ function renderFilesPage(path) {
     }
     controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div>`;
     mainContent.innerHTML = `<div class="controls"><div id="breadcrumb"></div>${controlsHTML}</div><div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div>`;
+    
     document.getElementById('refresh-files-btn').onclick = refreshFiles;
     if (hasPermission('can_create_folders')) {
        document.getElementById('create-folder-btn').onclick = () => openCreateFolderModal(false);
@@ -673,9 +671,7 @@ function renderFilesPage(path) {
         if (!isFileA && isFileB) return -1;
         const sortOrder = state.sort.order === 'asc' ? 1 : -1;
         if (state.sort.key === 'name') {
-            return nameA.localeCompare(nameB, undefined, {
-                numeric: true
-            }) * sortOrder;
+            return nameA.localeCompare(nameB, undefined, { numeric: true }) * sortOrder;
         }
         if (state.sort.key === 'size' && itemA._isFile && itemB._isFile) {
             return (itemA.file_size || 0) - (itemB.file_size || 0) * sortOrder;
@@ -697,34 +693,21 @@ function renderFilesPage(path) {
         const itemPath = [...path, name].join('/');
         let actionsHTML = '<div class="file-actions">';
         if (item._isFile) {
-            if (hasPermission('can_rename_items')) {
-                actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear"><i class="fas fa-edit"></i></button>`;
-            }
-            if (hasPermission('can_move_items')) {
-                actionsHTML += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover"><i class="fas fa-folder-open"></i></button>`;
-            }
-            if (hasPermission('can_receive_files')) {
-                actionsHTML += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
-            }
-            if (hasPermission('can_delete_items')) {
-                actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`;
-            }
+            if (hasPermission('can_rename_items')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear"><i class="fas fa-edit"></i></button>`;
+            if (hasPermission('can_move_items')) actionsHTML += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover"><i class="fas fa-folder-open"></i></button>`;
+            if (hasPermission('can_receive_files')) actionsHTML += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
+            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`;
         } else {
-            if (hasPermission('can_rename_items')) {
-                actionsHTML += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear"><i class="fas fa-edit"></i></button>`;
-            }
-            if (hasPermission('can_move_items')) {
-                actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-open"></i></button>`;
-            }
-            if (hasPermission('can_delete_items')) {
-                actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir"><i class="fas fa-trash"></i></button>`;
-            }
+            if (hasPermission('can_rename_items')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear"><i class="fas fa-edit"></i></button>`;
+            if (hasPermission('can_move_items')) actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-open"></i></button>`;
+            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir"><i class="fas fa-trash"></i></button>`;
         }
         actionsHTML += '</div>';
         if (item._isFile) {
             div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}"><span class="file-icon">${getIconForFile(name)}</span><span class="file-name">${name}</span><span class="file-size">${formatFileSize(item.file_size)}</span>${actionsHTML}`;
         } else {
-            div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><a href="#/${encodeURI(itemPath)}" class="file-item-name"><span class="file-icon"><i class="fas fa-folder"></i></span><span>${name}</span></a>${actionsHTML}`;
+            // SOLUÇÃO 1: Estrutura da pasta agora imita a de um arquivo para alinhar corretamente
+            div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><span class="file-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(itemPath)}" class="file-name">${name}</a><span class="file-size"></span>${actionsHTML}`;
         }
         fileListBodyElement.appendChild(div);
     });
@@ -743,12 +726,10 @@ async function router() {
     await parseJwt();
     await renderNav();
 
-    // A CORREÇÃO ESTÁ AQUI: sempre pegamos o hash da window, ignorando argumentos de eventos.
     const pathString = window.location.hash.slice(1) || '/';
     const path = pathString.split('/').filter(p => p && p !== '#').map(decodeURIComponent);
     const primaryRoute = path[0] || 'home';
 
-    // Seção de rotas de "aplicação" (não relacionadas a arquivos)
     switch (primaryRoute) {
         case 'login':
             renderLoginPage();
@@ -818,16 +799,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('role-modal-cancel-btn').onclick = closeRoleModal;
     document.getElementById('role-modal-save-btn').onclick = confirmSaveRole;
 
-    // Fechar modal ao clicar fora
     [authModal, whyLinkModal, moveFileModal, createFolderModal, renameModal, roleModal].forEach(modal => {
         if (modal) modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('show'); };
     });
 
-    // Ações de Enter em inputs
     document.getElementById('new-folder-name').addEventListener('keyup', (e) => { if (e.key === 'Enter') confirmCreateFolder(); });
     document.getElementById('rename-new-name').addEventListener('keyup', (e) => { if (e.key === 'Enter') confirmRename(); });
 
-    // Navegação no Modal de Mover
     document.getElementById('folder-navigation').addEventListener('click', e => {
         const li = e.target.closest('li');
         if (!li) return;
@@ -841,7 +819,6 @@ document.addEventListener('DOMContentLoaded', () => {
         openCreateFolderModal(true);
     };
 
-    // Delegação de eventos no #main-content
     mainContent.addEventListener('click', async (e) => {
         const button = e.target.closest('button');
         const header = e.target.closest('.sortable-header');
@@ -849,7 +826,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!target) return;
 
-        // Ações de arquivo/pasta
         if (target.classList.contains('btn-single-forward')) await handleSingleForward(target.dataset.messageId);
         if (target.classList.contains('btn-move-file')) openMoveModal(target.dataset.key, false);
         if (target.classList.contains('btn-move-folder')) openMoveModal(target.dataset.key, true);
@@ -860,7 +836,6 @@ document.addEventListener('DOMContentLoaded', () => {
             await deleteItems([key], isFolder, isFolder ? key.split('/').pop() : '');
         }
 
-        // Ordenação da tabela
         if (target.classList.contains('sortable-header')) {
             const sortKey = target.dataset.sort;
             if (state.sort.key === sortKey) {
@@ -872,7 +847,6 @@ document.addEventListener('DOMContentLoaded', () => {
             await router();
         }
 
-        // Ações de Admin
         if (target.classList.contains('save-user-role-btn')) {
             const userId = target.dataset.id;
             const newRoleId = document.querySelector(`.role-select[data-id="${userId}"]`).value;
@@ -903,7 +877,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Delegação de eventos para checkboxes
     mainContent.addEventListener('change', (e) => {
         if (!e.target.classList.contains('file-checkbox')) return;
 
@@ -925,9 +898,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const keys = selected.map(cb => cb.dataset.key);
         const messageIds = selected.map(cb => cb.dataset.messageId);
         let buttonsHTML = `<span>${selected.length} item(ns) selecionado(s)</span>`;
-        if (hasPermission('can_receive_files')) { buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`; }
-        if (hasPermission('can_move_items')) { buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`; }
-        if (hasPermission('can_delete_items')) { buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`; }
+        if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
+        if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`;
+        if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`;
         bulkActionsContainer.innerHTML = buttonsHTML;
 
         if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
@@ -951,7 +924,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Listener principal da aplicação
     window.addEventListener('hashchange', router);
     router();
 });
