@@ -750,11 +750,11 @@ function renderFilesPage(path) {
 }
 
 // --- 9. ROTEADOR PRINCIPAL ---
-async function router(routeOverride) {
+async function router() {
     await parseJwt();
     await renderNav();
 
-    const pathString = routeOverride || window.location.hash.slice(1) || '/';
+    const pathString = window.location.hash.slice(1) || '/';
     const path = pathString.split('/').filter(p => p && p !== '#').map(decodeURIComponent);
     const primaryRoute = path[0] || 'home';
 
