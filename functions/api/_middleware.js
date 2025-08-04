@@ -1,6 +1,5 @@
 // /functions/api/_middleware.js
 
-// Função para decodificar o token JWT
 async function decodeJwt(token, secret) {
     try {
         const [header, payload, signature] = token.split('.');
@@ -22,7 +21,6 @@ async function decodeJwt(token, secret) {
 
         const decodedPayload = JSON.parse(atob(payload.replace(/_/g, '/').replace(/-/g, '+')));
         
-        // Verifica a expiração do token
         if (decodedPayload.exp && decodedPayload.exp < Math.floor(Date.now() / 1000)) {
             console.log("Token expirado.");
             return null;
@@ -35,13 +33,10 @@ async function decodeJwt(token, secret) {
     }
 }
 
-
-// Função de Middleware Principal
 async function authMiddleware(context) {
     const { request, env, next } = context;
     const url = new URL(request.url);
 
-    // Rotas públicas que não precisam de autenticação
     const publicRoutes = [
         '/api/auth/login',
         '/api/auth/register'
@@ -53,9 +48,8 @@ async function authMiddleware(context) {
 
     const authorization = request.headers.get('Authorization');
     if (!authorization || !authorization.startsWith('Bearer ')) {
-        // Se a rota não for pública e não houver token, negue o acesso (exceto para /api/files que tem sua própria lógica)
         if (url.pathname.startsWith('/api/admin/')) {
-            return new Response('Token de autenticação não fornecido.', { status: 401 });
+            return new Response(JSON.stringify({ message: 'Token de autenticação não fornecido.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
         }
         return next();
     }
@@ -64,19 +58,30 @@ async function authMiddleware(context) {
     const userData = await decodeJwt(token, env.JWT_SECRET);
 
     if (!userData) {
-        return new Response('Token inválido ou expirado.', { status: 401 });
+        return new Response(JSON.stringify({ message: 'Token inválido ou expirado.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
     }
 
-    // Anexa os dados do usuário ao contexto para que as próximas funções possam usá-los
-    // Assegura que context.data exista
     if (!context.data) {
         context.data = {};
     }
     context.data.user = userData;
 
-    // ----- Verificação de Permissões para Rotas -----
+    // Lógica especial para a rota /api/admin/rename que lida com arquivos e pastas
+    if (url.pathname.startsWith('/api/admin/rename')) {
+        try {
+            const body = await request.clone().json();
+            const permissionNeeded = body.isFolder ? 'can_move_folders' : 'can_rename_items';
+
+            if (!userData.permissions || !userData.permissions.includes(permissionNeeded)) {
+                return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+            }
+            return next();
+        } catch (e) {
+            return new Response(JSON.stringify({ message: 'Payload inválido para a requisição de renomear.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        }
+    }
+
     const requiredPermissions = {
-        // Rotas Admin
         '/api/admin/users': 'can_manage_users',
         '/api/admin/roles': 'can_manage_roles',
         '/api/admin/permissions': 'can_manage_roles',
@@ -84,28 +89,22 @@ async function authMiddleware(context) {
         '/api/admin/bulk-delete': 'can_delete_items',
         '/api/admin/bulk-move': 'can_move_items',
         '/api/admin/create-folder': 'can_create_folders',
-        '/api/admin/rename': 'can_rename_items',
         '/api/admin/move-file': 'can_move_items',
-        '/api/admin/delete': 'can_delete_items', // <-- ROTA ADICIONADA AQUI
-
-        // Outras rotas que requerem permissões específicas
+        '/api/admin/delete': 'can_delete_items',
         '/api/single-forward': 'can_receive_files',
         '/api/bulk-forward': 'can_receive_files'
     };
 
-    // Encontra a rota correspondente no mapa de permissões
     const matchingRoute = Object.keys(requiredPermissions).find(route => url.pathname.startsWith(route));
 
     if (matchingRoute) {
         const permissionNeeded = requiredPermissions[matchingRoute];
         if (!userData.permissions || !userData.permissions.includes(permissionNeeded)) {
-            return new Response(`Acesso negado. Requer permissão: ${permissionNeeded}`, { status: 403 });
+            return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
     }
     
-    // Se tudo estiver OK, prossiga para a rota solicitada
     return next();
 }
 
-// O manipulador on-demand para o Cloudflare Pages
 export const onRequest = [authMiddleware];
