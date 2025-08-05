@@ -66,6 +66,7 @@ async function authMiddleware(context) {
 
     // Mapa de permissões para outras rotas
     const requiredPermissions = {
+		'/api/admin/users/update-role': 'can_manage_roles',
         '/api/admin/users': 'can_manage_users',
         '/api/admin/roles': 'can_manage_roles',
         '/api/admin/permissions': 'can_manage_roles',

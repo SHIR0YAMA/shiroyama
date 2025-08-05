@@ -1,55 +1,55 @@
 // /functions/api/admin/users/update-role.js
 
-async function verifyJwtAndPermission(request, env, requiredPermission) {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Token não fornecido ou malformado.', status: 401 };
-    }
-    const token = authHeader.split(' ')[1];
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    if (!payload.permissions || !payload.permissions.includes(requiredPermission)) {
-        throw { message: 'Acesso negado: permissão necessária.', status: 403 };
-    }
-    const encoder = new TextEncoder();
-    const dataToSign = `${token.split('.')[0]}.${token.split('.')[1]}`;
-    const key = await crypto.subtle.importKey('raw', encoder.encode(env.JWT_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
-    const signature = new Uint8Array(atob(token.split('.')[2].replace(/_/g, '/').replace(/-/g, '+')).split('').map(c => c.charCodeAt(0)));
-    const isValid = await crypto.subtle.verify('HMAC', key, signature, encoder.encode(dataToSign));
-    if (!isValid || payload.exp < Math.floor(Date.now() / 1000)) {
-        throw { message: 'Token inválido ou expirado.', status: 401 };
-    }
-    return payload;
-}
-
 export async function onRequestPost(context) {
+    const { request, env, data } = context;
     try {
-        const payload = await verifyJwtAndPermission(context.request, context.env, 'can_manage_users');
-        const { userId, newRoleId } = await context.request.json();
-        const db = context.env.DB;
+        const loggedInUser = data.user;
+        const { userId: targetUserId, newRoleId } = await request.json();
+        const db = env.DB;
 
-        // Pega o nível de hierarquia tanto do admin quanto do usuário alvo
-        const targetUserStmt = db.prepare(`
-            SELECT r.level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?
-        `).bind(userId);
-        const targetUser = await targetUserStmt.first();
-
-        const newRoleStmt = db.prepare('SELECT level FROM roles WHERE id = ?').bind(newRoleId);
-        const newRole = await newRoleStmt.first();
-
-        if (!targetUser || !newRole) {
-            return new Response(JSON.stringify({ message: 'Usuário ou cargo não encontrado.' }), { status: 404 });
-        }
-
-        // Regra de segurança: Impede que um admin promova outro usuário para seu nível ou superior,
-        // ou rebaixe um usuário que já está em um nível superior.
-        if (payload.role_level >= targetUser.level || payload.role_level >= newRole.level) {
-            return new Response(JSON.stringify({ message: 'Hierarquia insuficiente para realizar esta alteração.' }), { status: 403 });
+        // 1. O admin deve ter a permissão de gerenciar cargos para fazer isso.
+        if (!loggedInUser.permissions.includes('can_manage_roles')) {
+            return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão para gerenciar cargos.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
         
-        await db.prepare('UPDATE users SET role_id = ? WHERE id = ?').bind(newRoleId, userId).run();
+        // 2. Buscar informações do usuário alvo e do novo cargo para verificar a hierarquia.
+        const targetUserStmt = db.prepare("SELECT r.level as role_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?").bind(targetUserId);
+        const newRoleStmt = db.prepare("SELECT level FROM roles WHERE id = ?").bind(newRoleId);
+        
+        const [targetUser, newRole] = await Promise.all([targetUserStmt.first(), newRoleStmt.first()]);
 
-        return new Response(JSON.stringify({ success: true, message: 'Cargo do usuário atualizado.' }));
+        if (!targetUser) {
+            return new Response(JSON.stringify({ message: 'Usuário alvo não encontrado.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (!newRole) {
+            return new Response(JSON.stringify({ message: 'Cargo de destino não encontrado.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // 3. Regras de Hierarquia
+        // - Não pode agir sobre alguém de nível igual ou superior.
+        // - Não pode promover alguém para um nível igual ou superior ao seu.
+        if (loggedInUser.level >= targetUser.role_level || loggedInUser.level >= newRole.level) {
+             return new Response(JSON.stringify({ message: 'Não é possível alterar o cargo para um nível hierárquico igual ou superior ao seu.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+        
+        // 4. Proteção do cargo Membro (nível 1000)
+        const MEMBER_ROLE_LEVEL = 1000;
+        if (targetUser.role_level === MEMBER_ROLE_LEVEL && loggedInUser.level !== 0) {
+            return new Response(JSON.stringify({ message: 'Apenas o Dono pode alterar o cargo de um Membro.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+        
+        // Se todas as verificações passaram, atualiza o cargo do usuário.
+        await db.prepare("UPDATE users SET role_id = ? WHERE id = ?").bind(newRoleId, targetUserId).run();
+
+        // Log da ação
+        await db.prepare("INSERT INTO admin_logs (admin_user_id, admin_username, action, target_info) VALUES (?, ?, ?, ?)")
+            .bind(loggedInUser.userId, loggedInUser.username, 'update_user_role', `Usuário ID: ${targetUserId}, Novo Cargo ID: ${newRoleId}`)
+            .run();
+            
+        return new Response(JSON.stringify({ success: true, message: 'Cargo do usuário atualizado.' }), { headers: { 'Content-Type': 'application/json' }});
+
     } catch (error) {
-        return new Response(JSON.stringify({ message: error.message || 'Erro interno' }), { status: error.status || 500 });
+        console.error("Erro ao atualizar cargo do usuário:", error);
+        return new Response(JSON.stringify({ message: "Erro interno ao atualizar cargo do usuário." }), { status: 500, headers: { 'Content-Type': 'application/json' }});
     }
 }

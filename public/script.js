@@ -604,7 +604,6 @@ async function renderProfilePage() {
 }
 
 async function renderAdminPage(subpage) {
-    // Define a subpágina padrão com base na primeira permissão encontrada
     if (!subpage) {
         if (hasPermission('can_manage_users')) subpage = 'users';
         else if (hasPermission('can_manage_roles')) subpage = 'roles';
@@ -642,7 +641,10 @@ async function renderAdminPage(subpage) {
                         <tbody>`;
 
             for (const user of usersData.users) {
-                const canActOnUser = state.level < user.role_level;
+                // Lógica de hierarquia explícita
+                const isSelf = state.username === user.username;
+                const isSuperiorOrEqual = state.level >= user.role_level;
+                const canActOnUser = !isSelf && !isSuperiorOrEqual;
 
                 tableHTML += `
                     <tr>
