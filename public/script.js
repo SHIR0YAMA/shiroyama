@@ -531,7 +531,7 @@ function renderLoginPage() {
             const data = await apiCall('auth/login', 'POST', { username: e.target.username.value, password: e.target.password.value });
             login(data.token);
             window.location.hash = '/';
-            await router(); 
+            await router();
         } catch (error) {
             hideLoading();
             showNotification(`Erro no login: ${error.message}`, 'error');
@@ -568,10 +568,34 @@ async function renderProfilePage() {
         if (userData.telegram_chat_id) {
             document.getElementById('unlink-btn').onclick = async () => { if (confirm('Tem certeza?')) { await apiCall('user/unlink-telegram', 'POST'); showNotification('Conta desvinculada com sucesso.', 'success'); await router(); } };
         } else {
-            document.getElementById('link-telegram-btn').onclick = (e) => { /* ...código existente... */ };
+            document.getElementById('link-telegram-btn').onclick = (e) => {
+                const linkButton = e.target;
+                linkButton.disabled = true;
+                linkButton.textContent = 'Gerando...';
+                const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+                const linkCodeWithPrefix = `link_${randomCode}`;
+                apiCall('user/prepare-link-code', 'POST', { linkCode: linkCodeWithPrefix })
+                    .then(async () => {
+                        window.open(`https://t.me/ShiroyamaBot?start=${linkCodeWithPrefix}`, '_blank');
+                        linkButton.textContent = 'Verifique o Telegram!';
+                        showNotification('Conclua o vínculo no Telegram.', 'info');
+                        startFaviconBlink();
+                        setTimeout(async () => await router(), 15000);
+                    }).catch(err => { showNotification(`Erro: ${err.message}`, 'error'); linkButton.disabled = false; linkButton.textContent = 'Vincular com o Telegram'; });
+            };
             document.getElementById('why-link-q').onclick = (e) => { e.preventDefault(); whyLinkModal.classList.add('show'); };
         }
-        document.getElementById('password-form').onsubmit = async (e) => { /* ...código existente... */ };
+        document.getElementById('password-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const currentPassword = e.target['current-password'].value;
+            const newPassword = e.target['new-password'].value;
+            if (newPassword !== e.target['confirm-password'].value) { showNotification("As senhas não coincidem.", 'error'); return; }
+            try {
+                const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword });
+                showNotification(data.message, 'success');
+                logout();
+            } catch (error) { showNotification(`Erro: ${error.message}`, 'error'); }
+        };
     } catch (error) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Erro ao carregar perfil</h2><p style="color: #ff5555;">${error.message}</p></div>`;
     } finally {
@@ -957,7 +981,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
         if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys, false);
         if (document.getElementById('bulk-receive-btn')) {
-            document.getElementById('bulk-receive-btn').onclick = async () => { /* ...código existente... */ };
+            document.getElementById('bulk-receive-btn').onclick = async () => {
+                if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
+                const btn = document.getElementById('bulk-receive-btn');
+                try {
+                    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+                    btn.disabled = true;
+                    await apiCall('bulk-forward', 'POST', { message_ids: messageIds.map(id => parseInt(id)) });
+                    showNotification("O bot começou a enviar os arquivos! Verifique seu Telegram.", 'success');
+                } catch (error) {
+                    showNotification(`Ocorreu um erro: ${error.message}`, 'error');
+                } finally {
+                    btn.innerHTML = `<i class="fas fa-paper-plane"></i>`;
+                    btn.disabled = false;
+                }
+            };
         }
     });
 
