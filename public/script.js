@@ -604,6 +604,7 @@ async function renderProfilePage() {
 }
 
 async function renderAdminPage(subpage) {
+    // Define a subpágina padrão com base na primeira permissão encontrada
     if (!subpage) {
         if (hasPermission('can_manage_users')) subpage = 'users';
         else if (hasPermission('can_manage_roles')) subpage = 'roles';
@@ -659,7 +660,7 @@ async function renderAdminPage(subpage) {
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
                         <td class="actions-cell">
                             ${canManageRoles ? `<button class="save-user-role-btn" data-id="${user.id}" ${!canActOnUser ? 'disabled' : ''}>Salvar</button>` : ''}
-                            ${hasPermission('can_manage_users') ? `<button class="reset-password-btn" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-key"></i></button>` : ''}
+                            <button class="reset-password-btn" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-key"></i></button>
                             <button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${!canActOnUser ? 'disabled' : ''}>Excluir</button>
                         </td>
                     </tr>`;
@@ -680,17 +681,19 @@ async function renderAdminPage(subpage) {
                     <table class="admin-table">
                         <thead><tr><th>Cargo</th><th>Nível</th><th>Permissões</th><th>Ações</th></tr></thead>
                         <tbody>
-                            ${rolesData.map(role => `
+                            ${rolesData.map(role => {
+                                const canEditRole = state.level < role.level && (role.level !== 1000 || state.level === 0);
+                                return `
                                 <tr>
                                     <td>${role.name}</td>
                                     <td>${role.level}</td>
                                     <td class="permissions-cell">${role.permissions.map(pName => permMap[pName] || pName).join(',<br>')}</td>
                                     <td class="actions-cell">
-                                        <button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${state.level >= role.level ? 'disabled' : ''}>Editar</button>
-                                        <button class="delete-role-btn btn-danger" data-id="${role.id}" ${state.level >= role.level ? 'disabled' : ''}>Excluir</button>
+                                        <button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${!canEditRole ? 'disabled' : ''}>Editar</button>
+                                        <button class="delete-role-btn btn-danger" data-id="${role.id}" ${!canEditRole ? 'disabled' : ''}>Excluir</button>
                                     </td>
-                                </tr>
-                            `).join('')}
+                                </tr>`;
+                            }).join('')}
                         </tbody>
                     </table>
                 </div>`;

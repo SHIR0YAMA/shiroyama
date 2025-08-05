@@ -36,14 +36,11 @@ export async function onRequestPost(context) {
             return new Response(JSON.stringify({ message: 'Dados inválidos.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
 
-        // 1. Nível de hierarquia: não pode criar cargo com nível igual ou superior (menor número)
         if (loggedInUser.level >= level) {
             return new Response(JSON.stringify({ message: 'Não é possível criar um cargo com nível hierárquico igual ou superior ao seu.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
         
-        // 2. Permissões: não pode conceder permissões que não possui
-        // Esta verificação só roda para admins que não são o Dono.
-        if (loggedInUser.level > 0) { // Se o nível é 0 (Dono), ele pode conceder qualquer permissão
+        if (loggedInUser.level > 0) {
             const userPermissionsStmt = db.prepare(`SELECT p.id FROM permissions p JOIN role_permissions rp ON p.id = rp.permission_id WHERE rp.role_id = ?`).bind(loggedInUser.roleId);
             const { results: userPermissionResults } = await userPermissionsStmt.all();
             const userPermissionIds = userPermissionResults.map(p => p.id);
@@ -82,7 +79,8 @@ export async function onRequestPut(context) {
     const { request, env, data, params } = context;
     try {
         const loggedInUser = data.user;
-        const roleIdToEdit = parseInt(params.id);
+        // Cloudflare Pages pode passar o parâmetro como um array. Pegamos o primeiro elemento.
+        const roleIdToEdit = parseInt(Array.isArray(params.id) ? params.id[0] : params.id);
         const { name, level, permissions: requestedPermissionIds } = await request.json();
         const db = env.DB;
 
@@ -96,28 +94,25 @@ export async function onRequestPut(context) {
         }
 
         const MEMBER_ROLE_LEVEL = 1000;
-        // Proteção do cargo Membro: só Dono (nível 0) pode editar
-        if (targetRole.level === MEMBER_ROLE_LEVEL && loggedInUser.level !== 0) { // Alterado para checkar level 0
+        // CORREÇÃO: Proteção do cargo Membro. Apenas o Dono (nível 0) pode editar.
+        if (targetRole.level === MEMBER_ROLE_LEVEL && loggedInUser.level !== 0) {
              return new Response(JSON.stringify({ message: 'O cargo Membro só pode ser editado pelo Dono.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
-        // Proteção: usuário não pode editar seu próprio cargo (por ID)
         if (roleIdToEdit === loggedInUser.roleId) {
              return new Response(JSON.stringify({ message: 'Você não pode editar seu próprio cargo.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
 
-        // Proteção de Hierarquia: não pode editar para um nível igual ou superior ao seu
-        // ou editar um cargo que já tem um nível igual ou superior ao seu
         if (loggedInUser.level >= level || loggedInUser.level >= targetRole.level) {
              return new Response(JSON.stringify({ message: 'Não é possível editar para um cargo com nível hierárquico igual ou superior ao seu, ou editar um cargo de nível igual ou superior ao seu.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
 
-        // Proteção de Permissões: não pode conceder permissões que não possui
-        if (loggedInUser.level > 0) { // Se o nível é 0 (Dono), ele pode conceder qualquer permissão
+        // CORREÇÃO: Verificação de permissões para garantir que o admin só conceda o que ele tem.
+        if (loggedInUser.level > 0) {
             const userPermissionsStmt = db.prepare(`SELECT p.id FROM permissions p JOIN role_permissions rp ON p.id = rp.permission_id WHERE rp.role_id = ?`).bind(loggedInUser.roleId);
             const { results: userPermissionResults } = await userPermissionsStmt.all();
             const userPermissionIds = userPermissionResults.map(p => p.id);
             for (const permId of requestedPermissionIds) {
-                if (!userPermissionIds.includes(permId)) {
+                if (!userPermissionIds.includes(parseInt(permId))) {
                     return new Response(JSON.stringify({ message: `Você não pode conceder a permissão ID ${permId}, pois você não a possui.` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
                 }
             }
@@ -150,7 +145,7 @@ export async function onRequestDelete(context) {
     const { env, data, params } = context;
     try {
         const loggedInUser = data.user;
-        const roleIdToDelete = parseInt(params.id);
+        const roleIdToDelete = parseInt(Array.isArray(params.id) ? params.id[0] : params.id);
         const db = env.DB;
         
         if (isNaN(roleIdToDelete)) {
@@ -163,12 +158,10 @@ export async function onRequestDelete(context) {
         }
 
         const MEMBER_ROLE_LEVEL = 1000;
-        // Proteção do cargo Membro: só Dono (nível 0) pode deletar
-        if (targetRole.level === MEMBER_ROLE_LEVEL && loggedInUser.level !== 0) { // Alterado para checkar level 0
+        if (targetRole.level === MEMBER_ROLE_LEVEL && loggedInUser.level !== 0) {
              return new Response(JSON.stringify({ message: 'O cargo Membro só pode ser excluído pelo Dono.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
 
-        // Proteção de Hierarquia: não pode excluir um cargo que tem nível igual ou superior ao seu
         if (loggedInUser.level >= targetRole.level) {
              return new Response(JSON.stringify({ message: 'Não é possível excluir um cargo com nível hierárquico igual ou superior ao seu.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
@@ -190,7 +183,9 @@ export async function onRequestDelete(context) {
 export async function onRequest(context) {
     const { request, params } = context;
 
-    if (params && params.id) { // Assume que a rota é /api/admin/roles/:id
+    // A estrutura de arquivos do Cloudflare Pages para rotas dinâmicas é /roles/[[id]].js
+    // 'params.id' será um array com o valor do ID.
+    if (params && params.id && params.id.length > 0) {
         switch (request.method) {
             case 'PUT':
                 return onRequestPut(context);
@@ -199,7 +194,7 @@ export async function onRequest(context) {
             default:
                 return new Response('Método não permitido para esta rota com ID.', { status: 405, headers: { 'Content-Type': 'application/json' } });
         }
-    } else { // Assume que a rota é /api/admin/roles (sem ID)
+    } else {
         switch (request.method) {
             case 'GET':
                 return onRequestGet(context);
