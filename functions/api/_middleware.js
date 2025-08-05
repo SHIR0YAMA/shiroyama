@@ -70,7 +70,8 @@ async function authMiddleware(context) {
     if (url.pathname.startsWith('/api/admin/rename')) {
         try {
             const body = await request.clone().json();
-            const permissionNeeded = body.isFolder ? 'can_move_folders' : 'can_rename_items';
+            // CORREÇÃO AQUI: Permissão para renomear pastas
+            const permissionNeeded = body.isFolder ? 'can_rename_folders' : 'can_rename_items';
 
             if (!userData.permissions || !userData.permissions.includes(permissionNeeded)) {
                 return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });

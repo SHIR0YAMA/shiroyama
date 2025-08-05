@@ -276,12 +276,13 @@ function openMoveModal(keysToMove, isFolder = false) {
     const displayName = moveState.oldKeys.length > 1 ? `${moveState.oldKeys.length} itens` : firstFileName;
     document.getElementById('move-file-name').textContent = displayName;
     
-    // CORREÇÃO: Lógica para o botão "Criar Nova Pasta Aqui"
+    // CORREÇÃO: Botão "Criar Nova Pasta Aqui" só aparece se tiver 'can_create_folders'
+    // E UMA DAS PERMISSÕES DE MOVER.
     const createFolderBtn = document.getElementById('create-folder-in-move-modal-btn');
-    const canCreate = hasPermission('can_create_folders');
-    const canMoveSomething = hasPermission('can_move_items') || hasPermission('can_move_folders');
+    const canCreateFolders = hasPermission('can_create_folders');
+    const canMoveAny = hasPermission('can_move_items') || hasPermission('can_move_folders');
 
-    if (canCreate && canMoveSomething) {
+    if (canCreateFolders && canMoveAny) {
         createFolderBtn.style.display = 'block';
     } else {
         createFolderBtn.style.display = 'none';
@@ -289,6 +290,7 @@ function openMoveModal(keysToMove, isFolder = false) {
 
     moveState.currentPath = [];
     // Passa o nome da pasta (se for uma pasta) para renderFolderNavigator
+    // para que ela não apareça como destino
     renderFolderNavigator(isFolder ? firstFileName : null);
     moveFileModal.classList.add('show');
 }
@@ -303,7 +305,7 @@ function renderFolderNavigator(folderToExclude = null) {
     const confirmBtn = document.getElementById('move-file-confirm-btn');
     const currentFolderContent = getContentForPath(moveState.currentPath);
     
-    // CORREÇÃO: Filtra a pasta que está sendo movida para fora da lista de destinos
+    // CORREÇÃO: Filtra a pasta que está sendo movida para fora da lista de destinos.
     const subFolders = Object.entries(currentFolderContent)
         .filter(([name, item]) => !item._isFile && name !== folderToExclude)
         .map(([name, _]) => name);
@@ -865,7 +867,7 @@ document.addEventListener('DOMContentLoaded', () => {
 			moveState.currentPath.push(li.dataset.folder);
 		}
 		
-		// CORREÇÃO: Garante que a pasta a ser movida continue sendo excluída da lista
+		// CORREÇÃO: Garante que a pasta a ser movida continue sendo excluída da lista de destinos
 		const folderNameToExclude = moveState.isFolder ? moveState.oldKeys[0].split('/').pop() : null;
 		renderFolderNavigator(folderNameToExclude);
 	});
