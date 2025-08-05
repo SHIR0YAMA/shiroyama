@@ -92,21 +92,30 @@ export async function onRequestPut(context) {
             return new Response(JSON.stringify({ message: 'Cargo não encontrado.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
         }
 
+        // --- REGRAS DE SEGURANÇA REESCRITAS E CORRIGIDAS ---
+
+        // REGRA 1: Proteção do cargo Membro. Apenas o Dono (nível 0) pode editar.
         const MEMBER_ROLE_LEVEL = 1000;
         if (targetRole.level === MEMBER_ROLE_LEVEL && loggedInUser.level !== 0) {
              return new Response(JSON.stringify({ message: 'O cargo Membro só pode ser editado pelo Dono.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
+
+        // REGRA 2: Ninguém pode editar o próprio cargo.
         if (roleIdToEdit === loggedInUser.roleId) {
              return new Response(JSON.stringify({ message: 'Você não pode editar seu próprio cargo.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
 
-        if (loggedInUser.level >= level || loggedInUser.level >= targetRole.level) {
-             return new Response(JSON.stringify({ message: 'Não é possível editar para um cargo com nível hierárquico igual ou superior ao seu, ou editar um cargo de nível igual ou superior ao seu.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        // REGRA 3: Hierarquia - O admin logado não pode editar um cargo que já está em um nível igual ou superior ao seu.
+        if (loggedInUser.level >= targetRole.level) {
+             return new Response(JSON.stringify({ message: 'Não é possível editar um cargo com hierarquia igual ou superior à sua.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+        
+        // REGRA 4: Hierarquia - O admin não pode promover um cargo para um nível igual ou superior ao seu.
+        if (loggedInUser.level >= level) {
+             return new Response(JSON.stringify({ message: 'Não é possível definir um nível de hierarquia igual ou superior ao seu.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
 
-        // --- CORREÇÃO APLICADA AQUI ---
-        // Proteção de Permissões: não pode conceder permissões que não possui.
-        // Se o nível é 0 (Dono), ele pode conceder qualquer permissão.
+        // REGRA 5: Permissões - Um admin não pode conceder permissões que ele mesmo não possui (exceto o Dono).
         if (loggedInUser.level > 0) {
             const userPermissionsStmt = db.prepare(`SELECT p.id FROM permissions p JOIN role_permissions rp ON p.id = rp.permission_id WHERE rp.role_id = ?`).bind(loggedInUser.roleId);
             const { results: userPermissionResults } = await userPermissionsStmt.all();
@@ -117,8 +126,8 @@ export async function onRequestPut(context) {
                 }
             }
         }
-        // --- FIM DA CORREÇÃO ---
-
+        
+        // Se todas as regras passaram, executa a atualização.
         await db.batch([
             db.prepare('UPDATE roles SET name = ?, level = ? WHERE id = ?').bind(name, level, roleIdToEdit),
             db.prepare('DELETE FROM role_permissions WHERE role_id = ?').bind(roleIdToEdit)
@@ -132,6 +141,7 @@ export async function onRequestPut(context) {
         }
 
         return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
     } catch (error) {
          if (error.message && error.message.includes('UNIQUE constraint failed')) {
             return new Response(JSON.stringify({ message: 'Um cargo com este nome ou nível de hierarquia já existe.' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
@@ -175,7 +185,6 @@ export async function onRequestDelete(context) {
         await db.prepare('DELETE FROM roles WHERE id = ?').bind(roleIdToDelete).run();
         await db.prepare('DELETE FROM role_permissions WHERE role_id = ?').bind(roleIdToDelete).run();
 
-
         return new Response(null, { status: 204 });
     } catch(e) {
         console.error("Erro ao deletar cargo:", e);
@@ -187,17 +196,13 @@ export async function onRequest(context) {
     const { request, params } = context;
     if (params && params.id && params.id.length > 0) {
         switch (request.method) {
-            case 'PUT':
-                return onRequestPut(context);
-            case 'DELETE':
-                return onRequestDelete(context);
+            case 'PUT': return onRequestPut(context);
+            case 'DELETE': return onRequestDelete(context);
         }
     } else {
         switch (request.method) {
-            case 'GET':
-                return onRequestGet(context);
-            case 'POST':
-                return onRequestPost(context);
+            case 'GET': return onRequestGet(context);
+            case 'POST': return onRequestPost(context);
         }
     }
     return new Response('Método não permitido.', { status: 405 });
