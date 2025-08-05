@@ -79,7 +79,6 @@ export async function onRequestPut(context) {
     const { request, env, data, params } = context;
     try {
         const loggedInUser = data.user;
-        // Cloudflare Pages pode passar o parâmetro como um array. Pegamos o primeiro elemento.
         const roleIdToEdit = parseInt(Array.isArray(params.id) ? params.id[0] : params.id);
         const { name, level, permissions: requestedPermissionIds } = await request.json();
         const db = env.DB;
@@ -94,7 +93,6 @@ export async function onRequestPut(context) {
         }
 
         const MEMBER_ROLE_LEVEL = 1000;
-        // CORREÇÃO: Proteção do cargo Membro. Apenas o Dono (nível 0) pode editar.
         if (targetRole.level === MEMBER_ROLE_LEVEL && loggedInUser.level !== 0) {
              return new Response(JSON.stringify({ message: 'O cargo Membro só pode ser editado pelo Dono.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
@@ -106,7 +104,9 @@ export async function onRequestPut(context) {
              return new Response(JSON.stringify({ message: 'Não é possível editar para um cargo com nível hierárquico igual ou superior ao seu, ou editar um cargo de nível igual ou superior ao seu.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
 
-        // CORREÇÃO: Verificação de permissões para garantir que o admin só conceda o que ele tem.
+        // --- CORREÇÃO APLICADA AQUI ---
+        // Proteção de Permissões: não pode conceder permissões que não possui.
+        // Se o nível é 0 (Dono), ele pode conceder qualquer permissão.
         if (loggedInUser.level > 0) {
             const userPermissionsStmt = db.prepare(`SELECT p.id FROM permissions p JOIN role_permissions rp ON p.id = rp.permission_id WHERE rp.role_id = ?`).bind(loggedInUser.roleId);
             const { results: userPermissionResults } = await userPermissionsStmt.all();
@@ -117,6 +117,7 @@ export async function onRequestPut(context) {
                 }
             }
         }
+        // --- FIM DA CORREÇÃO ---
 
         await db.batch([
             db.prepare('UPDATE roles SET name = ?, level = ? WHERE id = ?').bind(name, level, roleIdToEdit),
@@ -172,6 +173,8 @@ export async function onRequestDelete(context) {
         }
 
         await db.prepare('DELETE FROM roles WHERE id = ?').bind(roleIdToDelete).run();
+        await db.prepare('DELETE FROM role_permissions WHERE role_id = ?').bind(roleIdToDelete).run();
+
 
         return new Response(null, { status: 204 });
     } catch(e) {
@@ -182,17 +185,12 @@ export async function onRequestDelete(context) {
 
 export async function onRequest(context) {
     const { request, params } = context;
-
-    // A estrutura de arquivos do Cloudflare Pages para rotas dinâmicas é /roles/[[id]].js
-    // 'params.id' será um array com o valor do ID.
     if (params && params.id && params.id.length > 0) {
         switch (request.method) {
             case 'PUT':
                 return onRequestPut(context);
             case 'DELETE':
                 return onRequestDelete(context);
-            default:
-                return new Response('Método não permitido para esta rota com ID.', { status: 405, headers: { 'Content-Type': 'application/json' } });
         }
     } else {
         switch (request.method) {
@@ -200,8 +198,7 @@ export async function onRequest(context) {
                 return onRequestGet(context);
             case 'POST':
                 return onRequestPost(context);
-            default:
-                return new Response('Método não permitido para esta rota sem ID.', { status: 405, headers: { 'Content-Type': 'application/json' } });
         }
     }
+    return new Response('Método não permitido.', { status: 405 });
 }
