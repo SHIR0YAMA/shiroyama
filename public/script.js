@@ -655,6 +655,7 @@ async function renderAdminPage(subpage) {
         if (hasPermission('can_manage_users')) subpage = 'users';
         else if (hasPermission('can_manage_roles')) subpage = 'roles';
     }
+    
     mainContent.innerHTML = `<h2>Painel de Administrador</h2><div class="admin-tabs">${hasPermission('can_manage_users') ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}">Gerenciar Usuários</button>` : ''}${hasPermission('can_manage_roles') ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}">Gerenciar Cargos</button>` : ''}</div><div id="admin-content"></div>`;
     const adminContent = document.getElementById('admin-content');
     adminContent.innerHTML = ''; // Limpa para mostrar o loading
@@ -665,12 +666,67 @@ async function renderAdminPage(subpage) {
 
     try {
         if (subpage === 'users' && hasPermission('can_manage_users')) {
-            const [usersData, rolesData] = await Promise.all([apiCall('admin/users'), apiCall('admin/roles')]);
+            // Passo 1: Busca os dados dos usuários. Isso sempre deve funcionar se a permissão estiver correta.
+            const usersData = await apiCall('admin/users');
+
+            // Passo 2: Busca os dados dos cargos APENAS SE o usuário também tiver permissão para gerenciá-los.
+            // Se não tiver, usamos uma lista vazia, e o dropdown de cargos ficará desabilitado (mas a página carrega).
+            let rolesData = [];
+            if (hasPermission('can_manage_roles')) {
+                rolesData = await apiCall('admin/roles');
+            }
+            
             const rolesOptions = rolesData.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
-            adminContent.innerHTML = `<div class="table-container"><table class="file-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>ID do Chat</th><th>Criado em</th><th>Ações</th></tr></thead><tbody>${usersData.users.map(user => `<tr><td>${user.username}</td><td><select class="role-select" data-id="${user.id}">${rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`)}</select></td><td>${user.telegram_chat_id || 'N/A'}</td><td>${new Date(user.created_at).toLocaleDateString()}</td><td><button class="save-user-role-btn" data-id="${user.id}">Salvar</button><button class="delete-user-btn btn-danger" data-id="${user.id}">Excluir</button></td></tr>`).join('')}</tbody></table></div>`;
+            const canManageRoles = hasPermission('can_manage_roles');
+
+            adminContent.innerHTML = `
+                <div class="table-container">
+                    <table class="file-table">
+                        <thead><tr><th>Usuário</th><th>Cargo</th><th>ID do Chat</th><th>Criado em</th><th>Ações</th></tr></thead>
+                        <tbody>
+                            ${usersData.users.map(user => `
+                                <tr>
+                                    <td>${user.username}</td>
+                                    <td>
+                                        <select class="role-select" data-id="${user.id}" ${!canManageRoles ? 'disabled' : ''}>
+                                            ${rolesData.length > 0 ? rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`) : `<option>${user.role_name || 'N/A'}</option>`}
+                                        </select>
+                                    </td>
+                                    <td>${user.telegram_chat_id || 'N/A'}</td>
+                                    <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                                    <td>
+                                        <button class="save-user-role-btn" data-id="${user.id}" ${!canManageRoles ? 'disabled' : ''}>Salvar</button>
+                                        <button class="delete-user-btn btn-danger" data-id="${user.id}">Excluir</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>`;
         } else if (subpage === 'roles' && hasPermission('can_manage_roles')) {
             const rolesData = await apiCall('admin/roles');
-            adminContent.innerHTML = `<div style="text-align: right; margin-bottom: 10px;"><button id="create-new-role-btn">Criar Novo Cargo</button></div><div class="table-container"><table class="file-table"><thead><tr><th>Cargo</th><th>Nível</th><th>Permissões</th><th>Ações</th></tr></thead><tbody>${rolesData.map(role => `<tr><td>${role.name}</td><td>${role.level}</td><td>${role.permissions.join(', ') || 'Nenhuma'}</td><td><button class="edit-role-btn" data-role='${JSON.stringify(role)}'>Editar</button><button class="delete-role-btn btn-danger" data-id="${role.id}">Excluir</button></td></tr>`).join('')}</tbody></table></div>`;
+            adminContent.innerHTML = `
+                <div style="text-align: right; margin-bottom: 10px;">
+                    <button id="create-new-role-btn">Criar Novo Cargo</button>
+                </div>
+                <div class="table-container">
+                    <table class="file-table">
+                        <thead><tr><th>Cargo</th><th>Nível</th><th>Permissões</th><th>Ações</th></tr></thead>
+                        <tbody>
+                            ${rolesData.map(role => `
+                                <tr>
+                                    <td>${role.name}</td>
+                                    <td>${role.level}</td>
+                                    <td>${role.permissions.join(', ') || 'Nenhuma'}</td>
+                                    <td>
+                                        <button class="edit-role-btn" data-role='${JSON.stringify(role)}'>Editar</button>
+                                        <button class="delete-role-btn btn-danger" data-id="${role.id}">Excluir</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>`;
         } else {
             adminContent.innerHTML = `<p>Você não tem permissão para ver esta seção.</p>`;
         }
