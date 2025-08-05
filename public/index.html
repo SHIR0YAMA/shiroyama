@@ -87,49 +87,51 @@
         .admin-tabs button.active { border-bottom-color: #ff79c6; }
         .permission-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; text-align: left; }
         .table-container { overflow-x: auto; }
+        
+        /* --- ESTILOS ADICIONADOS PARA O PAINEL DE ADMIN --- */
+        .admin-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .admin-table th, .admin-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #3b3e50; }
+        .admin-table th { color: #50fa7b; font-size: 14px; text-transform: uppercase; }
+        .admin-table tr:hover { background-color: #3b3e50; }
+        .admin-table td { font-size: 15px; }
+        .admin-table td.permissions-cell {
+            white-space: normal;
+            word-break: break-word;
+            line-height: 1.5;
+        }
+        .admin-table td .role-select {
+            background-color: #282a36;
+            color: #f8f8f2;
+            border: 1px solid #6272a4;
+            border-radius: 5px;
+            padding: 8px;
+        }
+        .admin-table td .actions-cell {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .admin-table td .actions-cell button {
+            padding: 8px 12px;
+        }
+        .admin-table td.chat-id-cell {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .admin-table td.chat-id-cell button {
+             padding: 5px 8px;
+             font-size: 12px;
+        }
+
+        /* --- FIM DOS ESTILOS DO PAINEL DE ADMIN --- */
 
         /* --- ESTILOS PARA O ÍCONE DE CARREGAMENTO --- */
-        #loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.8);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.3s ease, visibility 0s 0.3s;
-        }
-        #loading-overlay.show {
-            opacity: 1;
-            visibility: visible;
-            transition-delay: 0s;
-        }
-        .spinner {
-            width: var(--spinner-size);
-            height: var(--spinner-size);
-            position: relative;
-        }
-        .spinner div {
-            width: 12%;
-            height: 26%;
-            background: #f8f8f2;
-            position: absolute;
-            left: 44.5%;
-            top: 37%;
-            opacity: 0;
-            border-radius: 50px;
-            box-shadow: 0 0 3px rgba(0,0,0,0.2);
-            animation: spinner-fade 1s linear infinite;
-        }
-        @keyframes spinner-fade {
-            from { opacity: 1; }
-            to { opacity: 0.25; }
-        }
+        #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); display: flex; justify-content: center; align-items: center; z-index: 9999; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0s 0.3s; }
+        #loading-overlay.show { opacity: 1; visibility: visible; transition-delay: 0s; }
+        .spinner { width: var(--spinner-size); height: var(--spinner-size); position: relative; }
+        .spinner div { width: 12%; height: 26%; background: #f8f8f2; position: absolute; left: 44.5%; top: 37%; opacity: 0; border-radius: 50px; box-shadow: 0 0 3px rgba(0,0,0,0.2); animation: spinner-fade 1s linear infinite; }
+        @keyframes spinner-fade { from { opacity: 1; } to { opacity: 0.25; } }
         .spinner div:nth-child(1) { transform: rotate(0deg) translate(0, -142%); animation-delay: 0s; }
         .spinner div:nth-child(2) { transform: rotate(30deg) translate(0, -142%); animation-delay: -0.9167s; }
         .spinner div:nth-child(3) { transform: rotate(60deg) translate(0, -142%); animation-delay: -0.8333s; }
@@ -147,7 +149,6 @@
     </style>
 </head>
 <body>
-    <!-- ELEMENTO DO ÍCONE DE CARREGAMENTO -->
     <div id="loading-overlay">
         <div class="spinner">
             <div></div><div></div><div></div><div></div><div></div><div></div>
@@ -163,8 +164,7 @@
         <main id="main-content"></main>
     </div>
     
-    <!-- ... O RESTO DO SEU HTML (MODAIS, ETC.) PERMANECE IGUAL ... -->
-    
+    <!-- Modais -->
     <div id="authModal" class="modal-overlay">
         <div class="modal-content">
             <span id="modal-close-btn" class="modal-close-btn">×</span>
@@ -248,6 +248,18 @@
             <div class="modal-footer">
                 <button id="role-modal-cancel-btn">Cancelar</button>
                 <button id="role-modal-save-btn">Salvar</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="password-reset-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 id="password-reset-title">Nova Senha Gerada</h2>
+            <p>A nova senha para o usuário <strong id="password-reset-username"></strong> é:</p>
+            <code id="new-password-display" style="background-color: #282a36; padding: 10px; border-radius: 5px; font-size: 1.2em; user-select: all; display: block; text-align: center; margin: 20px 0;"></code>
+            <p style="font-size: 14px; color: #f1fa8c;">Copie esta senha e envie para o usuário. Ela só será exibida esta vez.</p>
+            <div class="modal-footer">
+                <button id="password-reset-close-btn">Fechar</button>
             </div>
         </div>
     </div>
