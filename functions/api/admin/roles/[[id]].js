@@ -112,5 +112,5 @@ export function onRequest(context) {
     if (context.request.method === 'DELETE') {
         return onRequestDelete(context);
     }
-    return new Response('Método não permitido.', { status: 405 });
+    return new Response('Método não permitido para esta rota com ID.', { status: 405 });
 }
