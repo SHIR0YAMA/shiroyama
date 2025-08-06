@@ -1,7 +1,6 @@
-// /functions/api/admin/roles.js
+// /functions/api/admin/[[roles]].js
 
-// GET /api/admin/roles -> Lista todos os cargos e suas permissões
-export async function onRequestGet(context) {
+async function handleGet(context) {
     try {
         const stmt = context.env.DB.prepare(`
             SELECT r.id, r.name, r.level, GROUP_CONCAT(p.name) as permissions
@@ -22,9 +21,7 @@ export async function onRequestGet(context) {
     }
 }
 
-// POST /api/admin/roles -> Cria um novo cargo
-export async function onRequestPost(context) {
-    // ... (Esta função está funcionando, vamos mantê-la como está)
+async function handlePost(context) {
     const { request, env, data } = context;
     try {
         const loggedInUser = data.user;
@@ -67,22 +64,16 @@ export async function onRequestPost(context) {
     }
 }
 
-// PUT /api/admin/roles/[id] -> Atualiza um cargo
-export async function onRequestPut(context) {
+async function handlePut(context) {
     const { request, env, data, params } = context;
     try {
-        // FINGERPRINT: Se este log não aparecer, o deploy não funcionou.
-        console.log("--- EXECUTANDO ROLES.JS vDEBUG ---");
-
         const loggedInUser = data.user;
         const { name, level, permissions: requestedPermissionIds } = await request.json();
         const db = env.DB;
         
-        const roleIdToEdit = parseInt(Array.isArray(params.id) ? params.id[0] : params.id);
+        const roleIdToEdit = parseInt(params.id);
         const adminLevel = parseInt(loggedInUser.level);
         const newRoleLevel = parseInt(level);
-
-        console.log(`Dados Recebidos: adminLevel=${adminLevel} (tipo: ${typeof adminLevel}), newRoleLevel=${newRoleLevel} (tipo: ${typeof newRoleLevel})`);
 
         if (isNaN(roleIdToEdit) || isNaN(adminLevel) || isNaN(newRoleLevel)) {
              return new Response(JSON.stringify({ message: 'Dados inválidos (nível ou ID não é um número).' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
@@ -93,25 +84,30 @@ export async function onRequestPut(context) {
             return new Response(JSON.stringify({ message: 'Cargo não encontrado.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
         }
         const targetRoleLevel = parseInt(targetRole.level);
-        console.log(`Nível do Cargo Alvo: targetRoleLevel=${targetRoleLevel} (tipo: ${typeof targetRoleLevel})`);
 
-        // REGRA 3: Hierarquia - O admin logado não pode editar um cargo que já está em um nível igual ou superior ao seu.
-        console.log(`VERIFICANDO REGRA 3: adminLevel (${adminLevel}) >= targetRoleLevel (${targetRoleLevel}) ?`);
+        const MEMBER_ROLE_LEVEL = 1000;
+        if (targetRoleLevel === MEMBER_ROLE_LEVEL && adminLevel !== 0) {
+             return new Response(JSON.stringify({ message: 'O cargo Membro só pode ser editado pelo Dono.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (roleIdToEdit === loggedInUser.roleId) {
+             return new Response(JSON.stringify({ message: 'Você não pode editar seu próprio cargo.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
         if (adminLevel >= targetRoleLevel) {
-            console.log("!!! BLOQUEIO REGRA 3 ATIVADO !!!");
-            return new Response(JSON.stringify({ message: 'Não é possível editar um cargo com hierarquia igual ou superior à sua.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+             return new Response(JSON.stringify({ message: 'Não é possível editar um cargo com hierarquia igual ou superior à sua.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
-        
-        // REGRA 4: Hierarquia - O admin não pode promover um cargo para um nível igual ou superior ao seu.
-        console.log(`VERIFICANDO REGRA 4: adminLevel (${adminLevel}) >= newRoleLevel (${newRoleLevel}) ?`);
         if (adminLevel >= newRoleLevel) {
-            console.log("!!! BLOQUEIO REGRA 4 ATIVADO !!!");
-            return new Response(JSON.stringify({ message: 'Não é possível definir um nível de hierarquia igual ou superior ao seu.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+             return new Response(JSON.stringify({ message: 'Não é possível definir um nível de hierarquia igual ou superior ao seu.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
-
-        console.log("PASSOU NAS VERIFICAÇÕES DE HIERARQUIA. CONTINUANDO...");
-
-        // ... (O resto da função continua igual, mas com logs adicionais se necessário)
+        if (adminLevel > 0) {
+            const userPermissionsStmt = db.prepare(`SELECT p.id FROM permissions p JOIN role_permissions rp ON p.id = rp.permission_id WHERE rp.role_id = ?`).bind(loggedInUser.roleId);
+            const { results: userPermissionResults } = await userPermissionsStmt.all();
+            const userPermissionIds = userPermissionResults.map(p => p.id);
+            for (const permId of requestedPermissionIds) {
+                if (!userPermissionIds.includes(parseInt(permId))) {
+                    return new Response(JSON.stringify({ message: `Você não pode conceder a permissão ID ${permId}, pois você não a possui.` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+                }
+            }
+        }
         
         await db.batch([
             db.prepare('UPDATE roles SET name = ?, level = ? WHERE id = ?').bind(name, newRoleLevel, roleIdToEdit),
@@ -124,19 +120,20 @@ export async function onRequestPut(context) {
             await db.batch(permissionStmts);
         }
         return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-
     } catch (error) {
+         if (error.message && error.message.includes('UNIQUE constraint failed')) {
+            return new Response(JSON.stringify({ message: 'Um cargo com este nome ou nível de hierarquia já existe.' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+        }
         console.error("Erro ao atualizar cargo:", error);
         return new Response(JSON.stringify({ message: "Erro interno ao atualizar cargo." }), { status: 500, headers: { 'Content-Type': 'application/json' } });
     }
 }
 
-// DELETE /api/admin/roles/[id] -> Deleta um cargo
-export async function onRequestDelete(context) {
+async function handleDelete(context) {
     const { env, data, params } = context;
     try {
         const loggedInUser = data.user;
-        const roleIdToDelete = parseInt(Array.isArray(params.id) ? params.id[0] : params.id);
+        const roleIdToDelete = parseInt(params.id);
         const db = env.DB;
         
         if (isNaN(roleIdToDelete)) {
@@ -159,7 +156,6 @@ export async function onRequestDelete(context) {
         }
         await db.prepare('DELETE FROM roles WHERE id = ?').bind(roleIdToDelete).run();
         await db.prepare('DELETE FROM role_permissions WHERE role_id = ?').bind(roleIdToDelete).run();
-
         return new Response(null, { status: 204 });
     } catch(e) {
         console.error("Erro ao deletar cargo:", e);
@@ -169,16 +165,26 @@ export async function onRequestDelete(context) {
 
 export async function onRequest(context) {
     const { request, params } = context;
-    if (params && params.id && params.id.length > 0) {
+    const pathSegments = params.roles || [];
+
+    if (pathSegments[0] !== 'roles') {
+        return new Response('Rota não encontrada', { status: 404 });
+    }
+
+    const hasId = pathSegments.length > 1;
+
+    if (hasId) {
+        context.params.id = pathSegments[1];
         switch (request.method) {
-            case 'PUT': return onRequestPut(context);
-            case 'DELETE': return onRequestDelete(context);
+            case 'PUT': return handlePut(context);
+            case 'DELETE': return handleDelete(context);
+            default: return new Response('Método não permitido para rota com ID.', { status: 405 });
         }
     } else {
         switch (request.method) {
-            case 'GET': return onRequestGet(context);
-            case 'POST': return onRequestPost(context);
+            case 'GET': return handleGet(context);
+            case 'POST': return handlePost(context);
+            default: return new Response('Método não permitido para rota sem ID.', { status: 405 });
         }
     }
-    return new Response('Método não permitido.', { status: 405 });
 }
