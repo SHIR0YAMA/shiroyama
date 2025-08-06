@@ -68,6 +68,7 @@ export async function onRequest(context) {
     switch (context.request.method) {
         case 'GET': return handleGet(context);
         case 'POST': return handlePost(context);
-        default: return new Response('Método não permitido.', { status: 405 });
+        default: 
+            return new Response(JSON.stringify({ message: 'Método não permitido.' }), { status: 405, headers: { 'Content-Type': 'application/json' } });
     }
 }

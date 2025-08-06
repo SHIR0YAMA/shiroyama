@@ -65,7 +65,6 @@ async function handlePut(context) {
     }
 }
 
-// CORREÇÃO: Função handleDelete estava incompleta.
 async function handleDelete(context) {
     const { env, data, params } = context;
     try {
@@ -104,6 +103,7 @@ export async function onRequest(context) {
     switch (context.request.method) {
         case 'PUT': return handlePut(context);
         case 'DELETE': return handleDelete(context);
-        default: return new Response('Método não permitido.', { status: 405 });
+        default:
+            return new Response(JSON.stringify({ message: 'Método não permitido.' }), { status: 405, headers: { 'Content-Type': 'application/json' } });
     }
 }
