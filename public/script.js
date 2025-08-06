@@ -550,8 +550,11 @@ function renderNav() {
         greetingHTML += `<span class="role-tag">${state.role}</span>`;
     }
     greetingHTML += `</span>`;
+    
     let navLinksHTML = '';
+    // CORREÇÃO: Verifica se o array de permissões contém QUALQUER permissão que comece com 'users:' ou 'roles:'
     const canAccessAdmin = state.permissions.some(p => p.startsWith('users:') || p.startsWith('roles:'));
+    
     if (state.token) {
         if (canAccessAdmin) {
             navLinksHTML += `<button id="admin-btn" class="nav-button">Admin</button>`;
@@ -562,6 +565,7 @@ function renderNav() {
         navLinksHTML += `<button id="register-btn" class="nav-button">Registrar</button>`;
     }
     mainNav.innerHTML = `${greetingHTML}<span class="nav-links">${navLinksHTML}</span>`;
+
     if (state.token) {
         const adminBtn = document.getElementById('admin-btn');
         if (adminBtn) adminBtn.onclick = () => window.location.hash = '/admin';
@@ -865,10 +869,14 @@ async function router(routeOverride) {
                 if (!state.token) window.location.hash = '/login'; else await renderProfilePage();
                 break;
             case 'admin':
+                // CORREÇÃO: A mesma lógica de verificação aplicada aqui
                 const canAccessAdmin = state.permissions.some(p => p.startsWith('users:') || p.startsWith('roles:'));
                 if (!canAccessAdmin) {
-                    showNotification("Acesso negado.", "error"); window.location.hash = '/';
-                } else await renderAdminPage(path[1]);
+                    showNotification("Acesso negado.", "error"); 
+                    window.location.hash = '/';
+                } else {
+                    await renderAdminPage(path[1]);
+                }
                 break;
             default:
                 if (!state.token) { renderLoginPage(); break; }
