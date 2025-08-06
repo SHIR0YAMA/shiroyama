@@ -23,7 +23,7 @@ async function decodeJwt(token, secret) {
     }
 }
 
-async function authMiddleware(context) {
+export async function onRequest(context) {
     const { request, env, next } = context;
     const url = new URL(request.url);
 
@@ -50,29 +50,29 @@ async function authMiddleware(context) {
     if (!context.data) context.data = {};
     context.data.user = userData;
 
-    // Lógica especial para a rota /api/admin/rename
-    if (url.pathname.startsWith('/api/admin/rename')) {
+    // CORREÇÃO: Lógica especial AGORA SÓ se aplica à rota exata /api/admin/rename
+    if (url.pathname === '/api/admin/rename') {
         try {
             const body = await request.clone().json();
             const permissionNeeded = body.isFolder ? 'can_rename_folders' : 'can_rename_items';
             if (!userData.permissions || !userData.permissions.includes(permissionNeeded)) {
                 return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
             }
-            return next();
+            // Se a permissão estiver correta, permite que a requisição continue para o arquivo de rota.
+            return next(); 
         } catch (e) {
             return new Response(JSON.stringify({ message: 'Payload inválido para a requisição de renomear.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
     }
 
-    // Mapa de permissões para outras rotas
+    // Mapa de permissões para outras rotas (rename foi removido daqui)
     const requiredPermissions = {
-		'/api/admin/users/update-role': 'can_manage_roles',
         '/api/admin/users': 'can_manage_users',
-        '/api/admin/roles': 'can_manage_roles',
+        '/api/admin/roles': 'can_manage_roles', // Protege /api/admin/roles e /api/admin/roles/*
         '/api/admin/permissions': 'can_manage_roles',
         '/api/admin/delete-user': 'can_manage_users',
-        '/api/admin/unlink-user-telegram': 'can_manage_users', // Adicionado
-        '/api/admin/reset-password': 'can_manage_users', // Adicionado
+        '/api/admin/unlink-user-telegram': 'can_manage_users',
+        '/api/admin/reset-password': 'can_manage_users',
         '/api/admin/bulk-delete': 'can_delete_items',
         '/api/admin/bulk-move': 'can_move_items',
         '/api/admin/create-folder': 'can_create_folders',
@@ -92,5 +92,3 @@ async function authMiddleware(context) {
     
     return next();
 }
-
-export const onRequest = [authMiddleware];
