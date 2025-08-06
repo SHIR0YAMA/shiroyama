@@ -85,44 +85,28 @@
         .admin-tabs { display: flex; gap: 10px; border-bottom: 2px solid #6272a4; margin-bottom: 20px; }
         .admin-tabs button { background: none; border: none; border-bottom: 3px solid transparent; padding: 10px 15px; color: #f8f8f2; cursor: pointer; font-size: 16px; }
         .admin-tabs button.active { border-bottom-color: #ff79c6; }
-        .permission-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; text-align: left; }
         .table-container { overflow-x: auto; }
-        
+
         /* --- ESTILOS ADICIONADOS PARA O PAINEL DE ADMIN --- */
         .admin-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         .admin-table th, .admin-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #3b3e50; }
         .admin-table th { color: #50fa7b; font-size: 14px; text-transform: uppercase; }
         .admin-table tr:hover { background-color: #3b3e50; }
-        .admin-table td { font-size: 15px; }
-        .admin-table td.permissions-cell {
-            white-space: normal;
-            word-break: break-word;
-            line-height: 1.5;
-        }
-        .admin-table td .role-select {
-            background-color: #282a36;
-            color: #f8f8f2;
-            border: 1px solid #6272a4;
-            border-radius: 5px;
-            padding: 8px;
-        }
-        .admin-table td .actions-cell {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        .admin-table td .actions-cell button {
-            padding: 8px 12px;
-        }
-        .admin-table td.chat-id-cell {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .admin-table td.chat-id-cell button {
-             padding: 5px 8px;
-             font-size: 12px;
-        }
+        .admin-table td { font-size: 15px; vertical-align: middle; }
+        .admin-table td.permissions-cell { white-space: normal; word-break: break-word; line-height: 1.5; }
+        .admin-table td .role-select { background-color: #282a36; color: #f8f8f2; border: 1px solid #6272a4; border-radius: 5px; padding: 8px; font-size: 14px; }
+        .admin-table td .actions-cell { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; }
+        .admin-table td .actions-cell button { padding: 8px 12px; flex-shrink: 0; }
+        .admin-table td .actions-cell .btn-icon { font-size: 1em; padding: 8px; width: 36px; height: 36px; } /* Botões de ícone menores */
+        .admin-table td.chat-id-cell { display: flex; align-items: center; gap: 10px; }
+        .admin-table td.chat-id-cell .btn-icon { font-size: 0.9em; padding: 6px; width: 30px; height: 30px; }
+
+        /* Estilos para o modal de permissões com dropdowns */
+        #permissions-container { display: flex; flex-direction: column; gap: 15px; text-align: left; }
+        .permission-group summary { cursor: pointer; font-size: 1.1em; padding: 5px; border-radius: 4px; display: flex; align-items: center; gap: 10px; }
+        .permission-group summary:hover { background-color: #3b3e50; }
+        .permission-list { padding-left: 30px; margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+        .permission-item { display: flex; align-items: center; gap: 8px; }
 
         /* --- FIM DOS ESTILOS DO PAINEL DE ADMIN --- */
 
@@ -244,7 +228,8 @@
                 <input type="number" id="role-level" min="1">
             </div>
             <h3>Permissões</h3>
-            <div id="permissions-container" class="permission-grid"></div>
+            <!-- O container de permissões será preenchido pelo script.js -->
+            <div id="permissions-container"></div>
             <div class="modal-footer">
                 <button id="role-modal-cancel-btn">Cancelar</button>
                 <button id="role-modal-save-btn">Salvar</button>

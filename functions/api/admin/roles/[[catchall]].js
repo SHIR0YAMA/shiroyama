@@ -1,6 +1,7 @@
 // /functions/api/admin/roles/[[catchall]].js
 
 async function handleGet(context) {
+    // A verificação de permissão ('roles:view_list') já é feita pelo _middleware.js
     try {
         const stmt = context.env.DB.prepare(`
             SELECT r.id, r.name, r.level, GROUP_CONCAT(p.name) as permissions
@@ -24,6 +25,12 @@ async function handlePost(context) {
     const { request, env, data } = context;
     try {
         const loggedInUser = data.user;
+
+        // Verifica a permissão específica para criar
+        if (!loggedInUser.permissions.includes('roles:create')) {
+             return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão para criar cargos.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+        
         const { name, level, permissions: requestedPermissionIds } = await request.json();
         const db = env.DB;
         if (!name || typeof level !== 'number' || !Array.isArray(requestedPermissionIds)) {
@@ -65,6 +72,11 @@ async function handlePut(context) {
     const { request, env, data, params } = context;
     try {
         const loggedInUser = data.user;
+        
+        if (!loggedInUser.permissions.includes('roles:edit')) {
+             return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão para editar cargos.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+
         const roleIdToEdit = parseInt(params.catchall[0]);
         const { name, level, permissions: requestedPermissionIds } = await request.json();
         const db = env.DB;
@@ -98,6 +110,7 @@ async function handlePut(context) {
                 }
             }
         }
+        
         await db.batch([
             db.prepare('UPDATE roles SET name = ?, level = ? WHERE id = ?').bind(name, level, roleIdToEdit),
             db.prepare('DELETE FROM role_permissions WHERE role_id = ?').bind(roleIdToEdit)
@@ -108,9 +121,10 @@ async function handlePut(context) {
             );
             await db.batch(permissionStmts);
         }
+        
         return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     } catch (error) {
-        if (error.message && error.message.includes('UNIQUE constraint failed')) {
+         if (error.message && error.message.includes('UNIQUE constraint failed')) {
             return new Response(JSON.stringify({ message: 'Um cargo com este nome ou nível de hierarquia já existe.' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
         }
         console.error("Erro ao atualizar cargo:", error);
@@ -122,6 +136,11 @@ async function handleDelete(context) {
     const { env, data, params } = context;
     try {
         const loggedInUser = data.user;
+
+        if (!loggedInUser.permissions.includes('roles:delete')) {
+             return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão para excluir cargos.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+        
         const roleIdToDelete = parseInt(params.catchall[0]);
         const db = env.DB;
         if (isNaN(roleIdToDelete)) {
@@ -142,8 +161,10 @@ async function handleDelete(context) {
         if (usersWithRole > 0) {
             return new Response(JSON.stringify({ message: 'Não é possível excluir este cargo, pois existem usuários associados a ele.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
+        
         await db.prepare('DELETE FROM roles WHERE id = ?').bind(roleIdToDelete).run();
         await db.prepare('DELETE FROM role_permissions WHERE role_id = ?').bind(roleIdToDelete).run();
+        
         return new Response(null, { status: 204 });
     } catch(e) {
         console.error("Erro ao deletar cargo:", e);
@@ -153,29 +174,19 @@ async function handleDelete(context) {
 
 export function onRequest(context) {
     const { request, params } = context;
-
-    // Rota com ID: /api/admin/roles/30 -> params.catchall será ['30']
     if (params.catchall && params.catchall.length === 1 && !isNaN(params.catchall[0])) {
         switch (request.method) {
-            case 'PUT':
-                return handlePut(context);
-            case 'DELETE':
-                return handleDelete(context);
-            default:
-                return new Response(JSON.stringify({ message: `Método ${request.method} não permitido para a rota com ID.` }), { status: 405, headers: { 'Content-Type': 'application/json' } });
+            case 'PUT': return handlePut(context);
+            case 'DELETE': return handleDelete(context);
+            default: return new Response(JSON.stringify({ message: `Método ${request.method} não permitido para a rota com ID.` }), { status: 405, headers: { 'Content-Type': 'application/json' } });
         }
     }
-    // Rota base: /api/admin/roles -> params.catchall não existirá ou estará vazio
     else if (!params.catchall || params.catchall.length === 0) {
         switch (request.method) {
-            case 'GET':
-                return handleGet(context);
-            case 'POST':
-                return handlePost(context);
-            default:
-                return new Response(JSON.stringify({ message: `Método ${request.method} não permitido para a rota base.` }), { status: 405, headers: { 'Content-Type': 'application/json' } });
+            case 'GET': return handleGet(context);
+            case 'POST': return handlePost(context);
+            default: return new Response(JSON.stringify({ message: `Método ${request.method} não permitido para a rota base.` }), { status: 405, headers: { 'Content-Type': 'application/json' } });
         }
     }
-
     return new Response(JSON.stringify({ message: 'Rota não encontrada.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
 }

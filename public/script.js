@@ -458,13 +458,62 @@ async function openRoleModal(role = null) {
             showNotification("Erro ao carregar permissões.", "error"); return;
         }
     }
+
+    const groupedPermissions = roleState.allPermissions.reduce((acc, perm) => {
+        const group = perm.name.split(':')[0].split('_')[0];
+        const category = ['users', 'roles'].includes(group) ? group : 'arquivos';
+        if (!acc[category]) {
+            acc[category] = [];
+        }
+        acc[category].push(perm);
+        return acc;
+    }, {});
+
     let permsHTML = '';
-    roleState.allPermissions.forEach(perm => {
-        const isChecked = role ? role.permissions.includes(perm.name) : false;
-        const label = perm.description || perm.name;
-        permsHTML += `<div><input type="checkbox" id="perm-${perm.id}" value="${perm.id}" data-name="${perm.name}" ${isChecked ? 'checked' : ''}><label for="perm-${perm.id}"> ${label}</label></div>`;
+    const categoryNames = {
+        users: "Gerenciar Usuários",
+        roles: "Gerenciar Cargos",
+        arquivos: "Arquivos e Pastas"
+    };
+
+    const orderedCategories = ['users', 'roles', 'arquivos'];
+
+    orderedCategories.forEach(category => {
+        if (groupedPermissions[category]) {
+            permsHTML += `
+                <details class="permission-group" open>
+                    <summary>
+                        <input type="checkbox" class="group-checkbox" data-group="${category}">
+                        <strong>${categoryNames[category]}</strong>
+                    </summary>
+                    <div class="permission-list">
+            `;
+            groupedPermissions[category].forEach(perm => {
+                const isChecked = role ? role.permissions.includes(perm.name) : false;
+                const label = perm.description || perm.name;
+                permsHTML += `
+                    <div class="permission-item">
+                        <input type="checkbox" id="perm-${perm.id}" class="perm-checkbox" data-group="${category}" value="${perm.id}" data-name="${perm.name}" ${isChecked ? 'checked' : ''}>
+                        <label for="perm-${perm.id}">${label}</label>
+                    </div>
+                `;
+            });
+            permsHTML += `</div></details>`;
+        }
     });
+    
     permsContainer.innerHTML = permsHTML;
+    
+    permsContainer.querySelectorAll('.group-checkbox').forEach(groupCheckbox => {
+        groupCheckbox.onclick = (e) => {
+            const group = e.target.dataset.group;
+            const isChecked = e.target.checked;
+            permsContainer.querySelectorAll(`.perm-checkbox[data-group="${group}"]`).forEach(permCheckbox => {
+                permCheckbox.checked = isChecked;
+            });
+        };
+    });
+
     roleModal.classList.add('show');
 }
 
@@ -475,7 +524,7 @@ function closeRoleModal() {
 async function confirmSaveRole() {
     const name = document.getElementById('role-name').value;
     const level = parseInt(document.getElementById('role-level').value);
-    const selectedPerms = Array.from(document.querySelectorAll('#permissions-container input:checked')).map(el => parseInt(el.value));
+    const selectedPerms = Array.from(document.querySelectorAll('#permissions-container .perm-checkbox:checked')).map(el => parseInt(el.value));
     
     const endpoint = roleState.id ? `admin/roles/${roleState.id}` : 'admin/roles';
     const method = roleState.id ? 'PUT' : 'POST';
@@ -502,8 +551,9 @@ function renderNav() {
     }
     greetingHTML += `</span>`;
     let navLinksHTML = '';
+    const canAccessAdmin = state.permissions.some(p => p.startsWith('users:') || p.startsWith('roles:'));
     if (state.token) {
-        if (hasPermission('can_manage_users') || hasPermission('can_manage_roles')) {
+        if (canAccessAdmin) {
             navLinksHTML += `<button id="admin-btn" class="nav-button">Admin</button>`;
         }
         navLinksHTML += `<button id="logout-btn" class="nav-button">Sair</button>`;
@@ -531,7 +581,7 @@ function renderLoginPage() {
             const data = await apiCall('auth/login', 'POST', { username: e.target.username.value, password: e.target.password.value });
             login(data.token);
             window.location.hash = '/';
-            await router();
+            await router(); 
         } catch (error) {
             hideLoading();
             showNotification(`Erro no login: ${error.message}`, 'error');
@@ -604,66 +654,68 @@ async function renderProfilePage() {
 }
 
 async function renderAdminPage(subpage) {
+    const canViewUsers = state.permissions.some(p => p.startsWith('users:'));
+    const canViewRoles = state.permissions.some(p => p.startsWith('roles:'));
+
     if (!subpage) {
-        if (hasPermission('can_manage_users')) subpage = 'users';
-        else if (hasPermission('can_manage_roles')) subpage = 'roles';
+        if (canViewUsers) subpage = 'users';
+        else if (canViewRoles) subpage = 'roles';
     }
     
-    mainContent.innerHTML = `<h2>Painel de Administrador</h2><div class="admin-tabs">${hasPermission('can_manage_users') ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}">Gerenciar Usuários</button>` : ''}${hasPermission('can_manage_roles') ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}">Gerenciar Cargos</button>` : ''}</div><div id="admin-content"></div>`;
+    mainContent.innerHTML = `<h2>Painel de Administrador</h2><div class="admin-tabs">${canViewUsers ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}">Gerenciar Usuários</button>` : ''}${canViewRoles ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}">Gerenciar Cargos</button>` : ''}</div><div id="admin-content"></div>`;
     const adminContent = document.getElementById('admin-content');
     adminContent.innerHTML = '';
     showLoading();
 
-    if (hasPermission('can_manage_users')) document.getElementById('admin-tab-users').onclick = () => router('admin/users');
-    if (hasPermission('can_manage_roles')) document.getElementById('admin-tab-roles').onclick = () => router('admin/roles');
+    const usersTab = document.getElementById('admin-tab-users');
+    const rolesTab = document.getElementById('admin-tab-roles');
+    if (usersTab) usersTab.onclick = () => router('admin/users');
+    if (rolesTab) rolesTab.onclick = () => router('admin/roles');
 
     try {
-        if (subpage === 'users' && hasPermission('can_manage_users')) {
+        if (subpage === 'users' && canViewUsers) {
             const usersData = await apiCall('admin/users');
             let rolesData = [];
-            if (hasPermission('can_manage_roles')) {
+            if (hasPermission('roles:assign')) {
                 rolesData = await apiCall('admin/roles');
             }
             
             const rolesOptions = rolesData.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
-            const canManageRoles = hasPermission('can_manage_roles');
 
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
                         <thead><tr>
                             <th>Usuário</th>
-                            <th>Cargo</th>
-                            ${hasPermission('can_manage_users') ? '<th>ID do Chat</th>' : ''}
+                            ${hasPermission('roles:assign') ? '<th>Cargo</th>' : ''}
+                            ${hasPermission('users:view_chat_id') ? '<th>ID do Chat</th>' : ''}
                             <th>Criado em</th>
                             <th>Ações</th>
                         </tr></thead>
                         <tbody>`;
 
             for (const user of usersData.users) {
-                // Lógica de hierarquia explícita
-                const isSelf = state.username === user.username;
-                const isSuperiorOrEqual = state.level >= user.role_level;
-                const canActOnUser = !isSelf && !isSuperiorOrEqual;
+                const canActOnUser = state.level < user.role_level;
 
                 tableHTML += `
                     <tr>
                         <td>${user.username}</td>
+                        ${hasPermission('roles:assign') ? `
                         <td>
-                            <select class="role-select" data-id="${user.id}" ${(!canManageRoles || !canActOnUser) ? 'disabled' : ''}>
+                            <select class="role-select" data-id="${user.id}" ${!canActOnUser ? 'disabled' : ''}>
                                 ${rolesData.length > 0 ? rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`) : `<option>${user.role_name || 'N/A'}</option>`}
                             </select>
-                        </td>
-                        ${hasPermission('can_manage_users') ? `
+                        </td>` : ''}
+                        ${hasPermission('users:view_chat_id') ? `
                         <td class="chat-id-cell">
                             <span>${user.telegram_chat_id || 'N/A'}</span>
-                            ${user.telegram_chat_id ? `<button class="unlink-telegram-btn" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-unlink"></i></button>` : ''}
+                            ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-unlink"></i></button>` : ''}
                         </td>` : ''}
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
                         <td class="actions-cell">
-                            ${canManageRoles ? `<button class="save-user-role-btn" data-id="${user.id}" ${!canActOnUser ? 'disabled' : ''}>Salvar</button>` : ''}
-                            <button class="reset-password-btn" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-key"></i></button>
-                            <button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${!canActOnUser ? 'disabled' : ''}>Excluir</button>
+                            ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${!canActOnUser ? 'disabled' : ''}>Salvar</button>` : ''}
+                            ${hasPermission('users:reset_password') ? `<button class="reset-password-btn" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-key"></i></button>` : ''}
+                            ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${!canActOnUser ? 'disabled' : ''}>Excluir</button>` : ''}
                         </td>
                     </tr>`;
             }
@@ -671,28 +723,29 @@ async function renderAdminPage(subpage) {
             tableHTML += `</tbody></table></div>`;
             adminContent.innerHTML = tableHTML;
 
-        } else if (subpage === 'roles' && hasPermission('can_manage_roles')) {
+        } else if (subpage === 'roles' && canViewRoles) {
             const [rolesData, permissionsData] = await Promise.all([apiCall('admin/roles'), apiCall('admin/permissions')]);
             const permMap = Object.fromEntries(permissionsData.map(p => [p.name, p.description]));
             
             adminContent.innerHTML = `
                 <div style="text-align: right; margin-bottom: 10px;">
-                    <button id="create-new-role-btn">Criar Novo Cargo</button>
+                    ${hasPermission('roles:create') ? '<button id="create-new-role-btn">Criar Novo Cargo</button>' : ''}
                 </div>
                 <div class="table-container">
                     <table class="admin-table">
                         <thead><tr><th>Cargo</th><th>Nível</th><th>Permissões</th><th>Ações</th></tr></thead>
                         <tbody>
                             ${rolesData.map(role => {
-                                const canEditRole = state.level < role.level && (role.level !== 1000 || state.level === 0);
+                                const canEditRole = hasPermission('roles:edit') && state.level < role.level && (role.level !== 1000 || state.level === 0);
+                                const canDeleteRole = hasPermission('roles:delete') && state.level < role.level && (role.level !== 1000 || state.level === 0);
                                 return `
                                 <tr>
                                     <td>${role.name}</td>
                                     <td>${role.level}</td>
-                                    <td class="permissions-cell">${role.permissions.map(pName => permMap[pName] || pName).join(',<br>')}</td>
+                                    <td class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
                                     <td class="actions-cell">
                                         <button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${!canEditRole ? 'disabled' : ''}>Editar</button>
-                                        <button class="delete-role-btn btn-danger" data-id="${role.id}" ${!canEditRole ? 'disabled' : ''}>Excluir</button>
+                                        <button class="delete-role-btn btn-danger" data-id="${role.id}" ${!canDeleteRole ? 'disabled' : ''}>Excluir</button>
                                     </td>
                                 </tr>`;
                             }).join('')}
@@ -727,7 +780,7 @@ function renderFilesPage(path) {
 
     let cumulativePath = '';
     path.forEach((part, index) => {
-        breadcrumbElement.innerHTML += ' > ';
+        breadcrumbElement.innerHTML += ' &gt; ';
         cumulativePath += `/${encodeURIComponent(part)}`;
         if (index < path.length - 1) {
             const a = document.createElement('a');
@@ -812,7 +865,8 @@ async function router(routeOverride) {
                 if (!state.token) window.location.hash = '/login'; else await renderProfilePage();
                 break;
             case 'admin':
-                if (!hasPermission('can_manage_users') && !hasPermission('can_manage_roles')) {
+                const canAccessAdmin = state.permissions.some(p => p.startsWith('users:') || p.startsWith('roles:'));
+                if (!canAccessAdmin) {
                     showNotification("Acesso negado.", "error"); window.location.hash = '/';
                 } else await renderAdminPage(path[1]);
                 break;
@@ -880,7 +934,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const target = e.target.closest('button, .sortable-header');
         if (!target) return;
 
-        // Ações de arquivo/pasta
         if (target.classList.contains('btn-single-forward')) await handleSingleForward(target.dataset.messageId);
         if (target.classList.contains('btn-move-file')) openMoveModal(target.dataset.key, false);
         if (target.classList.contains('btn-move-folder')) openMoveModal(target.dataset.key, true);
@@ -891,7 +944,6 @@ document.addEventListener('DOMContentLoaded', () => {
             await deleteItems(key, isFolder, isFolder ? key.split('/').pop() : '');
         }
 
-        // Ações de ordenação
         if (target.classList.contains('sortable-header')) {
             const sortKey = target.dataset.sort;
             if (state.sort.key === sortKey) state.sort.order = state.sort.order === 'asc' ? 'desc' : 'asc';
@@ -899,7 +951,6 @@ document.addEventListener('DOMContentLoaded', () => {
             await router();
         }
 
-        // Ações do painel de admin
         if (target.classList.contains('save-user-role-btn')) {
             const userId = target.dataset.id;
             const newRoleId = document.querySelector(`.role-select[data-id="${userId}"]`).value;

@@ -65,20 +65,25 @@ export async function onRequest(context) {
     } else {
         // Mapa de permissões para outras rotas (rename foi removido daqui)
         const requiredPermissions = {
-            '/api/admin/users': 'can_manage_users',
-            '/api/admin/roles': 'can_manage_roles',
-            '/api/admin/permissions': 'can_manage_roles',
-            '/api/admin/delete-user': 'can_manage_users',
-            '/api/admin/unlink-user-telegram': 'can_manage_users',
-            '/api/admin/reset-password': 'can_manage_users',
-            '/api/admin/bulk-delete': 'can_delete_items',
-            '/api/admin/bulk-move': 'can_move_items',
-            '/api/admin/create-folder': 'can_create_folders',
-            '/api/admin/move-file': 'can_move_items',
-            '/api/admin/delete': 'can_delete_items',
-            '/api/single-forward': 'can_receive_files',
-            '/api/bulk-forward': 'can_receive_files'
-        };
+			'/api/admin/users/update-role': 'roles:assign', // MUDOU
+			'/api/admin/users': 'users:view_list',           // MUDOU
+			'/api/admin/roles': 'roles:view_list',           // MUDOU
+			'/api/admin/permissions': 'roles:view_list',     // MUDOU (ou roles:create/edit)
+			'/api/admin/delete-user': 'users:delete',        // MUDOU
+			'/api/admin/reset-password': 'users:reset_password', // MUDOU
+			'/api/admin/unlink-user-telegram': 'users:unlink_telegram', // MUDOU
+			
+			// Permissões de arquivos permanecem as mesmas
+			'/api/admin/bulk-delete': 'can_delete_items',
+			'/api/admin/bulk-move': 'can_move_items',
+			'/api/admin/create-folder': 'can_create_folders',
+			'/api/admin/move-file': 'can_move_items',
+			'/api/admin/delete': 'can_delete_items',
+			
+			// Permissões de recebimento
+			'/api/single-forward': 'can_receive_files',
+			'/api/bulk-forward': 'can_receive_files'
+		};
 
         const matchingRoute = Object.keys(requiredPermissions).find(route => url.pathname.startsWith(route));
         if (matchingRoute) {
