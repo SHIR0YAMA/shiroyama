@@ -1,0 +1,12 @@
+{
+  "name": "shiroyama-files",
+  "version": "1.0.1",
+  "description": "Frontend and serverless functions for Shiroyama Files.",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler pages deploy public"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
