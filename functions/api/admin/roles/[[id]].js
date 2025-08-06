@@ -65,6 +65,7 @@ async function handlePut(context) {
     }
 }
 
+// CORREÇÃO: Função handleDelete estava incompleta.
 async function handleDelete(context) {
     const { env, data, params } = context;
     try {
