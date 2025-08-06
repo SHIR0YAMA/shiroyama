@@ -155,24 +155,37 @@ export async function onRequest(context) {
     const { request } = context;
     const url = new URL(request.url);
     const pathParts = url.pathname.split('/').filter(p => p);
-    
-    // Rota /api/admin/roles/ID
-    const hasId = pathParts.length === 4 && pathParts[2] === 'roles' && !isNaN(parseInt(pathParts[3]));
 
-    if (hasId) {
-        context.params = { id: pathParts[3] };
+    // Verifica se a rota é /api/admin/roles/ seguido de um número (ID)
+    const isRouteWithId = pathParts.length === 4 && pathParts[2] === 'roles' && !isNaN(parseInt(pathParts[3]));
+    // Verifica se a rota é exatamente /api/admin/roles
+    const isRouteWithoutId = pathParts.length === 3 && pathParts[2] === 'roles';
+
+    if (isRouteWithId) {
+        // Adiciona o ID aos parâmetros do contexto para as funções handle usarem
+        context.params = { id: pathParts[3] }; 
+
         switch (request.method) {
-            case 'PUT': return handlePut(context);
-            case 'DELETE': return handleDelete(context);
+            case 'PUT':
+                return handlePut(context);
+            case 'DELETE':
+                return handleDelete(context);
+            default:
+                // Se o método for GET, POST, etc. para uma rota com ID, é um erro
+                return new Response(`Método ${request.method} não permitido para a rota com ID.`, { status: 405 });
         }
-    } 
-    // Rota /api/admin/roles
-    else if (pathParts.length === 3 && pathParts[2] === 'roles') {
+    } else if (isRouteWithoutId) {
         switch (request.method) {
-            case 'GET': return handleGet(context);
-            case 'POST': return handlePost(context);
+            case 'GET':
+                return handleGet(context);
+            case 'POST':
+                return handlePost(context);
+            default:
+                // Se o método for PUT, DELETE, etc. para uma rota sem ID, é um erro
+                return new Response(`Método ${request.method} não permitido para a rota sem ID.`, { status: 405 });
         }
     }
 
-    return new Response('Método ou Rota não permitida.', { status: 405 });
+    // Se a URL não corresponder a nenhum padrão conhecido
+    return new Response('Rota não encontrada.', { status: 404 });
 }
