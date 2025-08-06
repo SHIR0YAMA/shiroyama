@@ -1,7 +1,5 @@
 // /functions/api/admin/roles.js
 
-// --- INÍCIO DAS FUNÇÕES HANDLER ---
-
 async function handleGet(context) {
     try {
         const stmt = context.env.DB.prepare(`
@@ -69,8 +67,6 @@ async function handlePost(context) {
 async function handlePut(context) {
     const { request, env, data, params } = context;
     try {
-        console.log("--- EXECUTANDO handlePut EM ROLES.JS - vROTEADOR-INTERNO ---");
-
         const loggedInUser = data.user;
         const { name, level, permissions: requestedPermissionIds } = await request.json();
         const db = env.DB;
@@ -78,9 +74,6 @@ async function handlePut(context) {
         const roleIdToEdit = parseInt(params.id);
         const adminLevel = parseInt(loggedInUser.level);
         const newRoleLevel = parseInt(level);
-
-        console.log(`[DADOS] Admin Logado: ${JSON.stringify(loggedInUser)}`);
-        console.log(`[DADOS] Editando ID: ${roleIdToEdit}, Novo Nível: ${newRoleLevel}`);
 
         if (isNaN(roleIdToEdit) || isNaN(adminLevel) || isNaN(newRoleLevel)) {
              return new Response(JSON.stringify({ message: 'Dados inválidos (nível ou ID não é um número).' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
@@ -91,21 +84,20 @@ async function handlePut(context) {
             return new Response(JSON.stringify({ message: 'Cargo não encontrado.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
         }
         const targetRoleLevel = parseInt(targetRole.level);
-        console.log(`[DADOS] Nível do Cargo Alvo: ${targetRoleLevel}`);
 
-        console.log(`[VERIFICANDO REGRA 3] Hierarquia: adminLevel (${adminLevel}) >= targetRoleLevel (${targetRoleLevel})? Resultado: ${adminLevel >= targetRoleLevel}`);
+        const MEMBER_ROLE_LEVEL = 1000;
+        if (targetRoleLevel === MEMBER_ROLE_LEVEL && adminLevel !== 0) {
+             return new Response(JSON.stringify({ message: 'O cargo Membro só pode ser editado pelo Dono.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (roleIdToEdit === loggedInUser.roleId) {
+             return new Response(JSON.stringify({ message: 'Você não pode editar seu próprio cargo.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
         if (adminLevel >= targetRoleLevel) {
-            console.log("!!! BLOQUEIO: REGRA 3 ATIVADA (editar cargo superior) !!!");
-            return new Response(JSON.stringify({ message: 'Não é possível editar um cargo com hierarquia igual ou superior à sua.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+             return new Response(JSON.stringify({ message: 'Não é possível editar um cargo com hierarquia igual ou superior à sua.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
-        
-        console.log(`[VERIFICANDO REGRA 4] Promoção: adminLevel (${adminLevel}) >= newRoleLevel (${newRoleLevel})? Resultado: ${adminLevel >= newRoleLevel}`);
         if (adminLevel >= newRoleLevel) {
-            console.log("!!! BLOQUEIO: REGRA 4 ATIVADA (promover para nível superior) !!!");
-            return new Response(JSON.stringify({ message: 'Não é possível definir um nível de hierarquia igual ou superior ao seu.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+             return new Response(JSON.stringify({ message: 'Não é possível definir um nível de hierarquia igual ou superior ao seu.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
-        
-        // Regra de Permissões
         if (adminLevel > 0) {
             const userPermissionsStmt = db.prepare(`SELECT p.id FROM permissions p JOIN role_permissions rp ON p.id = rp.permission_id WHERE rp.role_id = ?`).bind(loggedInUser.roleId);
             const { results: userPermissionResults } = await userPermissionsStmt.all();
@@ -116,7 +108,7 @@ async function handlePut(context) {
                 }
             }
         }
-
+        
         await db.batch([
             db.prepare('UPDATE roles SET name = ?, level = ? WHERE id = ?').bind(name, newRoleLevel, roleIdToEdit),
             db.prepare('DELETE FROM role_permissions WHERE role_id = ?').bind(roleIdToEdit)
@@ -129,7 +121,7 @@ async function handlePut(context) {
         }
         return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     } catch (error) {
-        if (error.message && error.message.includes('UNIQUE constraint failed')) {
+         if (error.message && error.message.includes('UNIQUE constraint failed')) {
             return new Response(JSON.stringify({ message: 'Um cargo com este nome ou nível de hierarquia já existe.' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
         }
         console.error("Erro ao atualizar cargo:", error);
@@ -171,23 +163,18 @@ async function handleDelete(context) {
     }
 }
 
-// --- ROTEADOR PRINCIPAL ---
 export async function onRequest(context) {
     const { request } = context;
     const url = new URL(request.url);
     const basePath = '/api/admin/roles';
     const path = url.pathname;
-    
-    console.log(`[ROLES.JS ROTEADOR] Rota recebida: ${path}`);
-    
-    // Expressão regular para capturar o ID numérico no final da URL
+
     const idMatch = path.match(new RegExp(`^${basePath}/(\\d+)$`));
 
     if (idMatch) {
         const id = idMatch[1];
-        // Adiciona o ID aos parâmetros do contexto para as funções handler usarem
+        // CORREÇÃO AQUI: Adiciona o id ao objeto params existente, não o substitui.
         context.params = { ...context.params, id: id };
-        console.log(`[ROLES.JS ROTEADOR] ID detectado: ${id}. Método: ${request.method}`);
         
         switch (request.method) {
             case 'PUT':
@@ -198,7 +185,6 @@ export async function onRequest(context) {
                 return new Response('Método não permitido para rota com ID.', { status: 405 });
         }
     } else if (path === basePath) {
-        console.log(`[ROLES.JS ROTEADOR] Rota base detectada. Método: ${request.method}`);
         switch (request.method) {
             case 'GET':
                 return handleGet(context);
@@ -209,6 +195,5 @@ export async function onRequest(context) {
         }
     }
 
-    // Se a URL for algo como /api/admin/roles/alguma/outra/coisa, retorna 404
     return new Response('Rota de cargos não encontrada.', { status: 404 });
 }
