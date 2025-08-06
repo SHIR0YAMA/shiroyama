@@ -1,6 +1,5 @@
-// /functions/api/admin/roles.js
+// /functions/api/admin/roles/[[catchall]].js
 
-// GET /api/admin/roles
 async function handleGet(context) {
     try {
         const stmt = context.env.DB.prepare(`
@@ -21,7 +20,6 @@ async function handleGet(context) {
     }
 }
 
-// POST /api/admin/roles
 async function handlePost(context) {
     const { request, env, data } = context;
     try {
@@ -59,18 +57,20 @@ async function handlePost(context) {
             return new Response(JSON.stringify({ message: 'Um cargo com este nome ou nível de hierarquia já existe.' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
         }
         console.error("Erro ao criar cargo:", error);
-        return new Response(JSON.stringify({ message: error ? error.message : 'Erro interno' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ message: error.message || 'Erro interno' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
     }
 }
 
-// PUT /api/admin/roles/:id
-async function handlePut(context, roleIdToEdit) {
-    const { request, env, data } = context;
+async function handlePut(context) {
+    const { request, env, data, params } = context;
     try {
         const loggedInUser = data.user;
+        const roleIdToEdit = parseInt(params.catchall[0]);
         const { name, level, permissions: requestedPermissionIds } = await request.json();
         const db = env.DB;
-        
+        if (isNaN(roleIdToEdit)) {
+            return new Response(JSON.stringify({ message: 'ID de cargo inválido.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        }
         const targetRole = await db.prepare('SELECT level FROM roles WHERE id = ?').bind(roleIdToEdit).first();
         if (!targetRole) {
             return new Response(JSON.stringify({ message: 'Cargo não encontrado.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
@@ -98,7 +98,6 @@ async function handlePut(context, roleIdToEdit) {
                 }
             }
         }
-        
         await db.batch([
             db.prepare('UPDATE roles SET name = ?, level = ? WHERE id = ?').bind(name, level, roleIdToEdit),
             db.prepare('DELETE FROM role_permissions WHERE role_id = ?').bind(roleIdToEdit)
@@ -109,10 +108,9 @@ async function handlePut(context, roleIdToEdit) {
             );
             await db.batch(permissionStmts);
         }
-        
         return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     } catch (error) {
-         if (error.message && error.message.includes('UNIQUE constraint failed')) {
+        if (error.message && error.message.includes('UNIQUE constraint failed')) {
             return new Response(JSON.stringify({ message: 'Um cargo com este nome ou nível de hierarquia já existe.' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
         }
         console.error("Erro ao atualizar cargo:", error);
@@ -120,13 +118,15 @@ async function handlePut(context, roleIdToEdit) {
     }
 }
 
-// DELETE /api/admin/roles/:id
-async function handleDelete(context, roleIdToDelete) {
-    const { env, data } = context;
+async function handleDelete(context) {
+    const { env, data, params } = context;
     try {
         const loggedInUser = data.user;
+        const roleIdToDelete = parseInt(params.catchall[0]);
         const db = env.DB;
-        
+        if (isNaN(roleIdToDelete)) {
+            return new Response(JSON.stringify({ message: 'ID de cargo inválido.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        }
         const targetRole = await db.prepare('SELECT level FROM roles WHERE id = ?').bind(roleIdToDelete).first();
         if (!targetRole) {
             return new Response(JSON.stringify({ message: 'Cargo não encontrado.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
@@ -142,10 +142,8 @@ async function handleDelete(context, roleIdToDelete) {
         if (usersWithRole > 0) {
             return new Response(JSON.stringify({ message: 'Não é possível excluir este cargo, pois existem usuários associados a ele.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
-        
         await db.prepare('DELETE FROM roles WHERE id = ?').bind(roleIdToDelete).run();
         await db.prepare('DELETE FROM role_permissions WHERE role_id = ?').bind(roleIdToDelete).run();
-        
         return new Response(null, { status: 204 });
     } catch(e) {
         console.error("Erro ao deletar cargo:", e);
@@ -153,33 +151,29 @@ async function handleDelete(context, roleIdToDelete) {
     }
 }
 
-// Roteador principal para este arquivo
-export async function onRequest(context) {
-    const { request } = context;
-    const url = new URL(request.url);
-    const pathParts = url.pathname.split('/').filter(Boolean); // Ex: ['api', 'admin', 'roles', '30']
+export function onRequest(context) {
+    const { request, params } = context;
 
-    // Verifica se a rota é /api/admin/roles/ID
-    if (pathParts.length === 4 && pathParts[2] === 'roles' && !isNaN(pathParts[3])) {
-        const id = parseInt(pathParts[3]);
+    // Rota com ID: /api/admin/roles/30 -> params.catchall será ['30']
+    if (params.catchall && params.catchall.length === 1 && !isNaN(params.catchall[0])) {
         switch (request.method) {
             case 'PUT':
-                return handlePut(context, id);
+                return handlePut(context);
             case 'DELETE':
-                return handleDelete(context, id);
+                return handleDelete(context);
             default:
-                return new Response(JSON.stringify({ message: `Método ${request.method} não permitido para /api/admin/roles/:id` }), { status: 405, headers: { 'Content-Type': 'application/json' } });
+                return new Response(JSON.stringify({ message: `Método ${request.method} não permitido para a rota com ID.` }), { status: 405, headers: { 'Content-Type': 'application/json' } });
         }
-    } 
-    // Verifica se a rota é /api/admin/roles
-    else if (pathParts.length === 3 && pathParts[2] === 'roles') {
+    }
+    // Rota base: /api/admin/roles -> params.catchall não existirá ou estará vazio
+    else if (!params.catchall || params.catchall.length === 0) {
         switch (request.method) {
             case 'GET':
                 return handleGet(context);
             case 'POST':
                 return handlePost(context);
             default:
-                return new Response(JSON.stringify({ message: `Método ${request.method} não permitido para /api/admin/roles` }), { status: 405, headers: { 'Content-Type': 'application/json' } });
+                return new Response(JSON.stringify({ message: `Método ${request.method} não permitido para a rota base.` }), { status: 405, headers: { 'Content-Type': 'application/json' } });
         }
     }
 
