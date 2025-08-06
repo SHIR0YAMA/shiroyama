@@ -29,11 +29,12 @@ export async function onRequest(context) {
 
     const publicRoutes = ['/api/auth/login', '/api/auth/register'];
     if (publicRoutes.includes(url.pathname)) {
-        return next();
+        return next(); // 1. Deixa rotas públicas passarem
     }
 
     const authorization = request.headers.get('Authorization');
     if (!authorization || !authorization.startsWith('Bearer ')) {
+        // 2. Se não for rota pública e não tiver token, bloqueia se for rota admin, senão passa.
         if (url.pathname.startsWith('/api/admin/')) {
             return new Response(JSON.stringify({ message: 'Token de autenticação não fornecido.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
         }
@@ -50,7 +51,7 @@ export async function onRequest(context) {
     if (!context.data) context.data = {};
     context.data.user = userData;
 
-    // CORREÇÃO: Lógica especial AGORA SÓ se aplica à rota exata /api/admin/rename
+    // Lógica especial para a rota /api/admin/rename
     if (url.pathname === '/api/admin/rename') {
         try {
             const body = await request.clone().json();
@@ -58,37 +59,36 @@ export async function onRequest(context) {
             if (!userData.permissions || !userData.permissions.includes(permissionNeeded)) {
                 return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
             }
-            // Se a permissão estiver correta, permite que a requisição continue para o arquivo de rota.
-            return next(); 
         } catch (e) {
             return new Response(JSON.stringify({ message: 'Payload inválido para a requisição de renomear.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
-    }
+    } else {
+        // Mapa de permissões para outras rotas (rename foi removido daqui)
+        const requiredPermissions = {
+            '/api/admin/users': 'can_manage_users',
+            '/api/admin/roles': 'can_manage_roles',
+            '/api/admin/permissions': 'can_manage_roles',
+            '/api/admin/delete-user': 'can_manage_users',
+            '/api/admin/unlink-user-telegram': 'can_manage_users',
+            '/api/admin/reset-password': 'can_manage_users',
+            '/api/admin/bulk-delete': 'can_delete_items',
+            '/api/admin/bulk-move': 'can_move_items',
+            '/api/admin/create-folder': 'can_create_folders',
+            '/api/admin/move-file': 'can_move_items',
+            '/api/admin/delete': 'can_delete_items',
+            '/api/single-forward': 'can_receive_files',
+            '/api/bulk-forward': 'can_receive_files'
+        };
 
-    // Mapa de permissões para outras rotas (rename foi removido daqui)
-    const requiredPermissions = {
-        '/api/admin/users': 'can_manage_users',
-        '/api/admin/roles': 'can_manage_roles', // Protege /api/admin/roles e /api/admin/roles/*
-        '/api/admin/permissions': 'can_manage_roles',
-        '/api/admin/delete-user': 'can_manage_users',
-        '/api/admin/unlink-user-telegram': 'can_manage_users',
-        '/api/admin/reset-password': 'can_manage_users',
-        '/api/admin/bulk-delete': 'can_delete_items',
-        '/api/admin/bulk-move': 'can_move_items',
-        '/api/admin/create-folder': 'can_create_folders',
-        '/api/admin/move-file': 'can_move_items',
-        '/api/admin/delete': 'can_delete_items',
-        '/api/single-forward': 'can_receive_files',
-        '/api/bulk-forward': 'can_receive_files'
-    };
-
-    const matchingRoute = Object.keys(requiredPermissions).find(route => url.pathname.startsWith(route));
-    if (matchingRoute) {
-        const permissionNeeded = requiredPermissions[matchingRoute];
-        if (!userData.permissions || !userData.permissions.includes(permissionNeeded)) {
-            return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        const matchingRoute = Object.keys(requiredPermissions).find(route => url.pathname.startsWith(route));
+        if (matchingRoute) {
+            const permissionNeeded = requiredPermissions[matchingRoute];
+            if (!userData.permissions || !userData.permissions.includes(permissionNeeded)) {
+                return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+            }
         }
     }
     
+    // 3. Se chegou até aqui, a requisição é válida. DEIXA PASSAR.
     return next();
 }
