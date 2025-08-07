@@ -7,7 +7,7 @@ async function decodeJwt(token, secret) {
         
         const textToSign = `${header}.${payload}`;
         const decodedSignature = new Uint8Array(atob(signature.replace(/_/g, '/').replace(/-/g, '+')).split('').map(c => c.charCodeAt(0)));
-        const key = await crypto.subtle.importKey( 'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'] );
+        const key = await crypto.subtle.importKey( 'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-26' }, false, ['verify'] );
         const valid = await crypto.subtle.verify('HMAC', key, decodedSignature, new TextEncoder().encode(textToSign));
         if (!valid) return null;
 
@@ -23,18 +23,17 @@ async function decodeJwt(token, secret) {
     }
 }
 
-export async function onRequest(context) {
+async function authMiddleware(context) {
     const { request, env, next } = context;
     const url = new URL(request.url);
 
     const publicRoutes = ['/api/auth/login', '/api/auth/register'];
     if (publicRoutes.includes(url.pathname)) {
-        return next(); // 1. Deixa rotas públicas passarem
+        return next();
     }
 
     const authorization = request.headers.get('Authorization');
     if (!authorization || !authorization.startsWith('Bearer ')) {
-        // 2. Se não for rota pública e não tiver token, bloqueia se for rota admin, senão passa.
         if (url.pathname.startsWith('/api/admin/')) {
             return new Response(JSON.stringify({ message: 'Token de autenticação não fornecido.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
         }
@@ -52,48 +51,55 @@ export async function onRequest(context) {
     context.data.user = userData;
 
     // Lógica especial para a rota /api/admin/rename
-    if (url.pathname === '/api/admin/rename') {
+    if (url.pathname.startsWith('/api/admin/rename')) {
         try {
             const body = await request.clone().json();
             const permissionNeeded = body.isFolder ? 'can_rename_folders' : 'can_rename_items';
             if (!userData.permissions || !userData.permissions.includes(permissionNeeded)) {
                 return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
             }
+            return next();
         } catch (e) {
             return new Response(JSON.stringify({ message: 'Payload inválido para a requisição de renomear.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
-    } else {
-        // Mapa de permissões para outras rotas (rename foi removido daqui)
-        const requiredPermissions = {
-			'/api/admin/users/update-role': 'roles:assign', // MUDOU
-			'/api/admin/users': 'users:view_list',           // MUDOU
-			'/api/admin/roles': 'roles:view_list',           // MUDOU
-			'/api/admin/permissions': 'roles:view_list',     // MUDOU (ou roles:create/edit)
-			'/api/admin/delete-user': 'users:delete',        // MUDOU
-			'/api/admin/reset-password': 'users:reset_password', // MUDOU
-			'/api/admin/unlink-user-telegram': 'users:unlink_telegram', // MUDOU
-			
-			// Permissões de arquivos permanecem as mesmas
-			'/api/admin/bulk-delete': 'can_delete_items',
-			'/api/admin/bulk-move': 'can_move_items',
-			'/api/admin/create-folder': 'can_create_folders',
-			'/api/admin/move-file': 'can_move_items',
-			'/api/admin/delete': 'can_delete_items',
-			
-			// Permissões de recebimento
-			'/api/single-forward': 'can_receive_files',
-			'/api/bulk-forward': 'can_receive_files'
-		};
+    }
 
-        const matchingRoute = Object.keys(requiredPermissions).find(route => url.pathname.startsWith(route));
-        if (matchingRoute) {
-            const permissionNeeded = requiredPermissions[matchingRoute];
-            if (!userData.permissions || !userData.permissions.includes(permissionNeeded)) {
-                return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
-            }
+    // Mapa de permissões para outras rotas
+    const requiredPermissions = {
+        // Rotas mais específicas primeiro para garantir a correspondência correta
+        '/api/admin/users/update-role': 'roles:assign', 
+        
+        // Rotas mais genéricas
+        '/api/admin/users': 'users:view_list', 
+        '/api/admin/roles': 'roles:view_list',
+        
+        // Outras rotas de admin
+        '/api/admin/permissions': 'roles:view_list',
+        '/api/admin/delete-user': 'users:delete',
+        '/api/admin/reset-password': 'users:reset_password',
+        '/api/admin/unlink-user-telegram': 'users:unlink_telegram',
+        
+        // Rotas de arquivos
+        '/api/admin/bulk-delete': 'can_delete_items',
+        '/api/admin/bulk-move': 'can_move_items',
+        '/api/admin/create-folder': 'can_create_folders',
+        '/api/admin/move-file': 'can_move_items',
+        '/api/admin/delete': 'can_delete_items',
+        
+        // Rotas de recebimento
+        '/api/single-forward': 'can_receive_files',
+        '/api/bulk-forward': 'can_receive_files'
+    };
+
+    const matchingRoute = Object.keys(requiredPermissions).find(route => url.pathname.startsWith(route));
+    if (matchingRoute) {
+        const permissionNeeded = requiredPermissions[matchingRoute];
+        if (!userData.permissions || !userData.permissions.includes(permissionNeeded)) {
+            return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
     }
     
-    // 3. Se chegou até aqui, a requisição é válida. DEIXA PASSAR.
     return next();
 }
+
+export const onRequest = [authMiddleware];

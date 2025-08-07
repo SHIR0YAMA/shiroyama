@@ -7,22 +7,15 @@ export async function onRequestPost(context) {
         const { userId: targetUserId, newRoleId } = await request.json();
         const db = env.DB;
 
-        // --- CORREÇÃO AQUI ---
-        // A permissão correta para atribuir cargos é 'roles:assign'
-        if (!loggedInUser.permissions.includes('roles:assign')) {
-            return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão para atribuir cargos.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
-        }
+        // A verificação de permissão 'roles:assign' já foi feita pelo _middleware.js
         
         const targetUserStmt = db.prepare("SELECT u.username, r.level as role_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?").bind(targetUserId);
         const newRoleStmt = db.prepare("SELECT level FROM roles WHERE id = ?").bind(newRoleId);
         
         const [targetUser, newRole] = await Promise.all([targetUserStmt.first(), newRoleStmt.first()]);
 
-        if (!targetUser) {
-            return new Response(JSON.stringify({ message: 'Usuário alvo não encontrado.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
-        }
-        if (!newRole) {
-            return new Response(JSON.stringify({ message: 'Cargo de destino não encontrado.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+        if (!targetUser || !newRole) {
+            return new Response(JSON.stringify({ message: 'Usuário alvo ou cargo de destino não encontrado.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
         }
 
         // Regras de Hierarquia
