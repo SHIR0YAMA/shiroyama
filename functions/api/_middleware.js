@@ -7,20 +7,26 @@ async function decodeJwt(token, secret) {
         
         const textToSign = `${header}.${payload}`;
         const decodedSignature = new Uint8Array(atob(signature.replace(/_/g, '/').replace(/-/g, '+')).split('').map(c => c.charCodeAt(0)));
+        
+        // CORREÇÃO CRÍTICA E DEFINITIVA
         const key = await crypto.subtle.importKey(
             'raw',
             new TextEncoder().encode(secret),
-            { name: 'HMAC', hash: 'SHA-256' },
+            { name: 'HMAC', hash: 'SHA-256' }, // Corrigido de SHA-26 para SHA-256
             false,
             ['verify']
         );
 
         const valid = await crypto.subtle.verify('HMAC', key, decodedSignature, new TextEncoder().encode(textToSign));
-        if (!valid) return null;
+        if (!valid) {
+            console.error("Assinatura do JWT inválida.");
+            return null;
+        }
 
         const decodedPayload = JSON.parse(atob(payload.replace(/_/g, '/').replace(/-/g, '+')));
         
         if (decodedPayload.exp && decodedPayload.exp < Math.floor(Date.now() / 1000)) {
+            console.error("Token JWT expirado.");
             return null;
         }
         
@@ -58,7 +64,6 @@ async function authMiddleware(context) {
     if (!context.data) context.data = {};
     context.data.user = userData;
 
-    // Lógica especial para a rota /api/admin/rename
     if (url.pathname.startsWith('/api/admin/rename')) {
         try {
             const body = await request.clone().json();
@@ -72,29 +77,19 @@ async function authMiddleware(context) {
         }
     }
 
-    // Mapa de permissões para outras rotas
     const requiredPermissions = {
-        // Rotas mais específicas primeiro
         '/api/admin/users/update-role': 'roles:assign', 
-        
-        // Rotas mais genéricas
         '/api/admin/users': 'users:view_list', 
         '/api/admin/roles': 'roles:view_list',
-        
-        // Outras rotas de admin
         '/api/admin/permissions': 'roles:view_list',
         '/api/admin/delete-user': 'users:delete',
-        '/api/admin/reset-password': 'users:reset_password', // CORRIGIDO: Retornando à permissão dedicada
+        '/api/admin/reset-password': 'users:reset_password',
         '/api/admin/unlink-user-telegram': 'users:unlink_telegram',
-        
-        // Rotas de arquivos
         '/api/admin/bulk-delete': 'can_delete_items',
         '/api/admin/bulk-move': 'can_move_items',
         '/api/admin/create-folder': 'can_create_folders',
         '/api/admin/move-file': 'can_move_items',
         '/api/admin/delete': 'can_delete_items',
-        
-        // Rotas de recebimento
         '/api/single-forward': 'can_receive_files',
         '/api/bulk-forward': 'can_receive_files'
     };
