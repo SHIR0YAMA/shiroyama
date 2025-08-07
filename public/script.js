@@ -310,16 +310,24 @@ async function confirmMoveFile() {
     moveState.destinationPath = moveState.currentPath.join('/');
     showLoading();
     try {
-        const apiToCall = moveState.isFolder ? 'admin/rename' : 'admin/bulk-move';
-        const payload = moveState.isFolder ? {
-            oldKey: moveState.oldKeys[0],
-            newKey: `${moveState.destinationPath}/${moveState.oldKeys[0].split('/').pop()}`,
-            isFolder: true
-        } : {
-            oldKeys: moveState.oldKeys,
-            destinationPath: moveState.destinationPath
-        };
-        await apiCall(apiToCall, 'POST', payload);
+        // A lógica para arquivos permanece a mesma
+        if (!moveState.isFolder) {
+            await apiCall('admin/bulk-move', 'POST', {
+                oldKeys: moveState.oldKeys,
+                destinationPath: moveState.destinationPath
+            });
+        } 
+        // Lógica para mover PASTAS
+        else {
+            // CORREÇÃO: Adiciona o campo 'action: "move"' para o middleware diferenciar
+            await apiCall('admin/rename', 'POST', {
+                oldKey: moveState.oldKeys[0],
+                newKey: `${moveState.destinationPath}/${moveState.oldKeys[0].split('/').pop()}`,
+                isFolder: true,
+                action: 'move' // <--- A CHAVE DA SOLUÇÃO
+            });
+        }
+        
         showNotification("Item(ns) movido(s) com sucesso!", "success");
         closeMoveModal();
         await refreshFiles();

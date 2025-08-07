@@ -8,11 +8,10 @@ async function decodeJwt(token, secret) {
         const textToSign = `${header}.${payload}`;
         const decodedSignature = new Uint8Array(atob(signature.replace(/_/g, '/').replace(/-/g, '+')).split('').map(c => c.charCodeAt(0)));
         
-        // CORREÇÃO CRÍTICA E DEFINITIVA
         const key = await crypto.subtle.importKey(
             'raw',
             new TextEncoder().encode(secret),
-            { name: 'HMAC', hash: 'SHA-256' }, // Corrigido de SHA-26 para SHA-256
+            { name: 'HMAC', hash: 'SHA-256' },
             false,
             ['verify']
         );
@@ -64,10 +63,20 @@ async function authMiddleware(context) {
     if (!context.data) context.data = {};
     context.data.user = userData;
 
+    // Lógica especial para a rota /api/admin/rename, que lida com múltiplas ações
     if (url.pathname.startsWith('/api/admin/rename')) {
         try {
             const body = await request.clone().json();
-            const permissionNeeded = body.isFolder ? 'can_rename_folders' : 'can_rename_items';
+            let permissionNeeded;
+
+            if (body.isFolder) {
+                // Diferencia entre MOVER uma pasta e RENOMEAR uma pasta
+                permissionNeeded = body.action === 'move' ? 'can_move_folders' : 'can_rename_folders';
+            } else {
+                // Ação para arquivos é sempre renomear
+                permissionNeeded = 'can_rename_items';
+            }
+            
             if (!userData.permissions || !userData.permissions.includes(permissionNeeded)) {
                 return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
             }
@@ -77,6 +86,7 @@ async function authMiddleware(context) {
         }
     }
 
+    // Mapa de permissões para outras rotas
     const requiredPermissions = {
         '/api/admin/users/update-role': 'roles:assign', 
         '/api/admin/users': 'users:view_list', 
