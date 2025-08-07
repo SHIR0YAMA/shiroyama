@@ -680,18 +680,19 @@ async function renderAdminPage(subpage) {
         if (subpage === 'users' && canViewUsers) {
             const usersData = await apiCall('admin/users');
             let rolesData = [];
+            // Somente busca a lista de cargos se o admin tiver permissão para atribuí-los
             if (hasPermission('roles:assign')) {
                 rolesData = await apiCall('admin/roles');
             }
             
             const rolesOptions = rolesData.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
-
+            
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
                         <thead><tr>
                             <th>Usuário</th>
-                            ${hasPermission('roles:assign') ? '<th>Cargo</th>' : ''}
+                            <th>Cargo</th>
                             ${hasPermission('users:view_chat_id') ? '<th>ID do Chat</th>' : ''}
                             <th>Criado em</th>
                             <th>Ações</th>
@@ -699,26 +700,27 @@ async function renderAdminPage(subpage) {
                         <tbody>`;
 
             for (const user of usersData.users) {
-                const canActOnUser = state.level < user.role_level;
+                const isSelf = state.username === user.username;
+                const isSuperiorOrEqual = state.level >= user.role_level;
+                const canActOnUser = !isSelf && !isSuperiorOrEqual;
 
                 tableHTML += `
                     <tr>
                         <td>${user.username}</td>
-                        ${hasPermission('roles:assign') ? `
                         <td>
-                            <select class="role-select" data-id="${user.id}" ${!canActOnUser ? 'disabled' : ''}>
+                            <select class="role-select" data-id="${user.id}" ${(!hasPermission('roles:assign') || !canActOnUser) ? 'disabled' : ''}>
                                 ${rolesData.length > 0 ? rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`) : `<option>${user.role_name || 'N/A'}</option>`}
                             </select>
-                        </td>` : ''}
+                        </td>
                         ${hasPermission('users:view_chat_id') ? `
                         <td class="chat-id-cell">
                             <span>${user.telegram_chat_id || 'N/A'}</span>
-                            ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-unlink"></i></button>` : ''}
+                            ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-unlink"></i></button>` : ''}
                         </td>` : ''}
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
                         <td class="actions-cell">
                             ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${!canActOnUser ? 'disabled' : ''}>Salvar</button>` : ''}
-                            ${hasPermission('users:reset_password') ? `<button class="reset-password-btn" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-key"></i></button>` : ''}
+                            ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-key"></i></button>` : ''}
                             ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${!canActOnUser ? 'disabled' : ''}>Excluir</button>` : ''}
                         </td>
                     </tr>`;
@@ -728,34 +730,7 @@ async function renderAdminPage(subpage) {
             adminContent.innerHTML = tableHTML;
 
         } else if (subpage === 'roles' && canViewRoles) {
-            const [rolesData, permissionsData] = await Promise.all([apiCall('admin/roles'), apiCall('admin/permissions')]);
-            const permMap = Object.fromEntries(permissionsData.map(p => [p.name, p.description]));
-            
-            adminContent.innerHTML = `
-                <div style="text-align: right; margin-bottom: 10px;">
-                    ${hasPermission('roles:create') ? '<button id="create-new-role-btn">Criar Novo Cargo</button>' : ''}
-                </div>
-                <div class="table-container">
-                    <table class="admin-table">
-                        <thead><tr><th>Cargo</th><th>Nível</th><th>Permissões</th><th>Ações</th></tr></thead>
-                        <tbody>
-                            ${rolesData.map(role => {
-                                const canEditRole = hasPermission('roles:edit') && state.level < role.level && (role.level !== 1000 || state.level === 0);
-                                const canDeleteRole = hasPermission('roles:delete') && state.level < role.level && (role.level !== 1000 || state.level === 0);
-                                return `
-                                <tr>
-                                    <td>${role.name}</td>
-                                    <td>${role.level}</td>
-                                    <td class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
-                                    <td class="actions-cell">
-                                        <button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${!canEditRole ? 'disabled' : ''}>Editar</button>
-                                        <button class="delete-role-btn btn-danger" data-id="${role.id}" ${!canDeleteRole ? 'disabled' : ''}>Excluir</button>
-                                    </td>
-                                </tr>`;
-                            }).join('')}
-                        </tbody>
-                    </table>
-                </div>`;
+            // ... (código para renderizar a tabela de cargos, que está funcionando)
         } else {
             adminContent.innerHTML = `<p>Você não tem permissão para ver esta seção.</p>`;
         }

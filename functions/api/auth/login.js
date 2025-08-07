@@ -14,8 +14,8 @@ async function createJwt(user, secret) {
         userId: user.id,
         username: user.username,
         role: user.role_name,
-        roleId: user.role_id, // CORREÇÃO: Adicionado roleId
-        level: user.role_level, // CORREÇÃO: Adicionado level
+        roleId: user.role_id,
+        level: user.role_level,
         permissions: user.permissions,
         exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24) // Expira em 24 horas
     };
@@ -39,32 +39,31 @@ export async function onRequestPost(context) {
         const { username, password } = await request.json();
         const hashedPassword = await hashPassword(password);
 
-        // CORREÇÃO: Query SQL robusta que busca todos os dados necessários
-        const userQuery = `
-            SELECT 
-                u.id, 
-                u.username, 
-                u.password, 
-                r.id as role_id,
-                r.name as role_name, 
-                r.level as role_level, 
-                (SELECT GROUP_CONCAT(p.name) 
-                 FROM role_permissions rp 
-                 JOIN permissions p ON rp.permission_id = p.id 
-                 WHERE rp.role_id = u.role_id) as permissions
+        // Passo 1: Encontra o usuário e o cargo base.
+        const userStmt = env.DB.prepare(`
+            SELECT u.id, u.username, u.password, u.role_id, r.name as role_name, r.level as role_level
             FROM users u
             JOIN roles r ON u.role_id = r.id
             WHERE u.username = ?
-        `;
-        const userStmt = env.DB.prepare(userQuery).bind(username);
+        `).bind(username);
         const user = await userStmt.first();
 
         if (!user || user.password !== hashedPassword) {
             return new Response(JSON.stringify({ success: false, message: 'Nome de usuário ou senha incorretos.' }), { status: 401, headers: { 'Content-Type': 'application/json' }});
         }
         
-        user.permissions = user.permissions ? user.permissions.split(',') : [];
+        // Passo 2: Busca TODAS as permissões associadas àquele cargo.
+        const permsStmt = env.DB.prepare(`
+            SELECT p.name FROM permissions p
+            JOIN role_permissions rp ON p.id = rp.permission_id
+            WHERE rp.role_id = ?
+        `).bind(user.role_id);
+        const { results: perms } = await permsStmt.all();
+        
+        // Adiciona as permissões ao objeto do usuário
+        user.permissions = perms ? perms.map(p => p.name) : [];
 
+        // Passo 3: Cria o token com todos os dados.
         const token = await createJwt(user, env.JWT_SECRET);
 
         return new Response(JSON.stringify({ success: true, token }), { headers: { 'Content-Type': 'application/json' }});
