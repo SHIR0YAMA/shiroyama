@@ -17,7 +17,7 @@ async function createJwt(user, secret) {
         roleId: user.role_id,
         level: user.role_level,
         permissions: user.permissions,
-        exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24) // Expira em 24 horas
+        exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24 * 7) // Expira em 7 dias
     };
 
     const encodedHeader = btoa(JSON.stringify(header)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -39,7 +39,7 @@ export async function onRequestPost(context) {
         const { username, password } = await request.json();
         const hashedPassword = await hashPassword(password);
 
-        // Passo 1: Encontra o usuário e o cargo base.
+        // Passo 1: Encontra o usuário e os dados básicos do cargo.
         const userStmt = env.DB.prepare(`
             SELECT u.id, u.username, u.password, u.role_id, r.name as role_name, r.level as role_level
             FROM users u
@@ -52,7 +52,7 @@ export async function onRequestPost(context) {
             return new Response(JSON.stringify({ success: false, message: 'Nome de usuário ou senha incorretos.' }), { status: 401, headers: { 'Content-Type': 'application/json' }});
         }
         
-        // Passo 2: Busca TODAS as permissões associadas àquele cargo.
+        // Passo 2: Busca TODAS as permissões associadas ao role_id do usuário.
         const permsStmt = env.DB.prepare(`
             SELECT p.name FROM permissions p
             JOIN role_permissions rp ON p.id = rp.permission_id
@@ -60,10 +60,10 @@ export async function onRequestPost(context) {
         `).bind(user.role_id);
         const { results: perms } = await permsStmt.all();
         
-        // Adiciona as permissões ao objeto do usuário
+        // Adiciona o array de nomes de permissões ao objeto do usuário.
         user.permissions = perms ? perms.map(p => p.name) : [];
 
-        // Passo 3: Cria o token com todos os dados.
+        // Passo 3: Cria o token JWT com todos os dados, incluindo o array de permissões completo.
         const token = await createJwt(user, env.JWT_SECRET);
 
         return new Response(JSON.stringify({ success: true, token }), { headers: { 'Content-Type': 'application/json' }});
