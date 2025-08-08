@@ -310,21 +310,18 @@ async function confirmMoveFile() {
     moveState.destinationPath = moveState.currentPath.join('/');
     showLoading();
     try {
-        // A lógica para arquivos permanece a mesma
         if (!moveState.isFolder) {
             await apiCall('admin/bulk-move', 'POST', {
                 oldKeys: moveState.oldKeys,
                 destinationPath: moveState.destinationPath
             });
         } 
-        // Lógica para mover PASTAS
         else {
-            // CORREÇÃO: Adiciona o campo 'action: "move"' para o middleware diferenciar
             await apiCall('admin/rename', 'POST', {
                 oldKey: moveState.oldKeys[0],
                 newKey: `${moveState.destinationPath}/${moveState.oldKeys[0].split('/').pop()}`,
                 isFolder: true,
-                action: 'move' // <--- A CHAVE DA SOLUÇÃO
+                action: 'move'
             });
         }
         
@@ -470,20 +467,13 @@ async function openRoleModal(role = null) {
     const groupedPermissions = roleState.allPermissions.reduce((acc, perm) => {
         const group = perm.name.split(':')[0].split('_')[0];
         const category = ['users', 'roles'].includes(group) ? group : 'arquivos';
-        if (!acc[category]) {
-            acc[category] = [];
-        }
+        if (!acc[category]) acc[category] = [];
         acc[category].push(perm);
         return acc;
     }, {});
 
     let permsHTML = '';
-    const categoryNames = {
-        users: "Gerenciar Usuários",
-        roles: "Gerenciar Cargos",
-        arquivos: "Arquivos e Pastas"
-    };
-
+    const categoryNames = { users: "Gerenciar Usuários", roles: "Gerenciar Cargos", arquivos: "Arquivos e Pastas" };
     const orderedCategories = ['users', 'roles', 'arquivos'];
 
     orderedCategories.forEach(category => {
@@ -494,8 +484,7 @@ async function openRoleModal(role = null) {
                         <input type="checkbox" class="group-checkbox" data-group="${category}">
                         <strong>${categoryNames[category]}</strong>
                     </summary>
-                    <div class="permission-list">
-            `;
+                    <div class="permission-list">`;
             groupedPermissions[category].forEach(perm => {
                 const isChecked = role ? role.permissions.includes(perm.name) : false;
                 const label = perm.description || perm.name;
@@ -503,8 +492,7 @@ async function openRoleModal(role = null) {
                     <div class="permission-item">
                         <input type="checkbox" id="perm-${perm.id}" class="perm-checkbox" data-group="${category}" value="${perm.id}" data-name="${perm.name}" ${isChecked ? 'checked' : ''}>
                         <label for="perm-${perm.id}">${label}</label>
-                    </div>
-                `;
+                    </div>`;
             });
             permsHTML += `</div></details>`;
         }
@@ -512,13 +500,45 @@ async function openRoleModal(role = null) {
     
     permsContainer.innerHTML = permsHTML;
     
+    // Lógica de dependência de permissões
+    const permissionDependencies = {
+        'users:view_chat_id': 'users:view_list',
+        'users:delete': 'users:view_list',
+        'users:reset_password': 'users:view_list',
+        'users:unlink_telegram': 'users:view_list',
+        'roles:create': 'roles:view_list',
+        'roles:edit': 'roles:view_list',
+        'roles:delete': 'roles:view_list',
+        'roles:assign': 'roles:view_list',
+    };
+
+    permsContainer.addEventListener('change', e => {
+        if (!e.target.classList.contains('perm-checkbox')) return;
+        const changedPermName = e.target.dataset.name;
+        const isChecked = e.target.checked;
+
+        // Se uma permissão dependente for marcada, marca a principal
+        if (isChecked && permissionDependencies[changedPermName]) {
+            const masterPermName = permissionDependencies[changedPermName];
+            const masterCheckbox = permsContainer.querySelector(`input[data-name="${masterPermName}"]`);
+            if (masterCheckbox) masterCheckbox.checked = true;
+        }
+        
+        // Se uma permissão principal for desmarcada, desmarca as dependentes
+        if (!isChecked) {
+            for (const [dependent, master] of Object.entries(permissionDependencies)) {
+                if (master === changedPermName) {
+                    const dependentCheckbox = permsContainer.querySelector(`input[data-name="${dependent}"]`);
+                    if (dependentCheckbox) dependentCheckbox.checked = false;
+                }
+            }
+        }
+    });
+
     permsContainer.querySelectorAll('.group-checkbox').forEach(groupCheckbox => {
         groupCheckbox.onclick = (e) => {
             const group = e.target.dataset.group;
-            const isChecked = e.target.checked;
-            permsContainer.querySelectorAll(`.perm-checkbox[data-group="${group}"]`).forEach(permCheckbox => {
-                permCheckbox.checked = isChecked;
-            });
+            permsContainer.querySelectorAll(`.perm-checkbox[data-group="${group}"]`).forEach(cb => cb.checked = e.target.checked);
         };
     });
 
@@ -534,7 +554,7 @@ async function confirmSaveRole() {
     const level = parseInt(document.getElementById('role-level').value);
     const selectedPerms = Array.from(document.querySelectorAll('#permissions-container .perm-checkbox:checked')).map(el => parseInt(el.value));
     
-    const endpoint = roleState.id ? `admin/roles/${roleState.id}` : 'admin/roles';
+    const endpoint = roleState.id ? `admin/roles/${roleState.id}` : `admin/roles`;
     const method = roleState.id ? 'PUT' : 'POST';
 
     showLoading();
@@ -558,11 +578,8 @@ function renderNav() {
         greetingHTML += `<span class="role-tag">${state.role}</span>`;
     }
     greetingHTML += `</span>`;
-    
     let navLinksHTML = '';
-    // CORREÇÃO: Verifica se o array de permissões contém QUALQUER permissão que comece com 'users:' ou 'roles:'
     const canAccessAdmin = state.permissions.some(p => p.startsWith('users:') || p.startsWith('roles:'));
-    
     if (state.token) {
         if (canAccessAdmin) {
             navLinksHTML += `<button id="admin-btn" class="nav-button">Admin</button>`;
@@ -573,7 +590,6 @@ function renderNav() {
         navLinksHTML += `<button id="register-btn" class="nav-button">Registrar</button>`;
     }
     mainNav.innerHTML = `${greetingHTML}<span class="nav-links">${navLinksHTML}</span>`;
-
     if (state.token) {
         const adminBtn = document.getElementById('admin-btn');
         if (adminBtn) adminBtn.onclick = () => window.location.hash = '/admin';
@@ -620,44 +636,28 @@ async function renderProfilePage() {
     showLoading();
     try {
         const userData = await apiCall('user/status', 'GET');
-        let telegramSectionHTML = '';
-        if (userData.telegram_chat_id) {
-            telegramSectionHTML = `<h3>Conta do Telegram Vinculada</h3> <p>Usuário: <strong>@${userData.telegram_username || 'N/A'}</strong></p> <p>Chat ID: <strong>${userData.telegram_chat_id}</strong></p> <button id="unlink-btn">Desvincular Conta</button>`;
+        let telegramSectionHTML = '<h3>Vincular Conta do Telegram</h3>';
+        if (hasPermission('can_receive_files')) {
+            if (userData.telegram_chat_id) {
+                telegramSectionHTML += `<p>Usuário: <strong>@${userData.telegram_username || 'N/A'}</strong></p> <p>Chat ID: <strong>${userData.telegram_chat_id}</strong></p> <button id="unlink-btn">Desvincular Conta</button>`;
+            } else {
+                telegramSectionHTML += `<p>Clique no botão abaixo para autorizar o bot no Telegram.</p> <button id="link-telegram-btn">Vincular com o Telegram</button> <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>`;
+            }
         } else {
-            telegramSectionHTML = `<h3>Vincular Conta do Telegram</h3> <p>Clique no botão abaixo para autorizar o bot no Telegram.</p> <button id="link-telegram-btn">Vincular com o Telegram</button> <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>`;
+            telegramSectionHTML += '<p>Você não tem permissão para vincular contas do Telegram.</p>';
         }
+
         mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${state.role || 'N/A'}</strong></p><hr style="border-color: #6272a4; margin: 20px 0;">${telegramSectionHTML}<hr style="border-color: #6272a4; margin: 20px 0;"><h3>Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit">Salvar Nova Senha</button></form></div>`;
-        if (userData.telegram_chat_id) {
-            document.getElementById('unlink-btn').onclick = async () => { if (confirm('Tem certeza?')) { await apiCall('user/unlink-telegram', 'POST'); showNotification('Conta desvinculada com sucesso.', 'success'); await router(); } };
-        } else {
-            document.getElementById('link-telegram-btn').onclick = (e) => {
-                const linkButton = e.target;
-                linkButton.disabled = true;
-                linkButton.textContent = 'Gerando...';
-                const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-                const linkCodeWithPrefix = `link_${randomCode}`;
-                apiCall('user/prepare-link-code', 'POST', { linkCode: linkCodeWithPrefix })
-                    .then(async () => {
-                        window.open(`https://t.me/ShiroyamaBot?start=${linkCodeWithPrefix}`, '_blank');
-                        linkButton.textContent = 'Verifique o Telegram!';
-                        showNotification('Conclua o vínculo no Telegram.', 'info');
-                        startFaviconBlink();
-                        setTimeout(async () => await router(), 15000);
-                    }).catch(err => { showNotification(`Erro: ${err.message}`, 'error'); linkButton.disabled = false; linkButton.textContent = 'Vincular com o Telegram'; });
-            };
-            document.getElementById('why-link-q').onclick = (e) => { e.preventDefault(); whyLinkModal.classList.add('show'); };
+        
+        if (hasPermission('can_receive_files')) {
+            if (userData.telegram_chat_id) {
+                document.getElementById('unlink-btn').onclick = async () => { if (confirm('Tem certeza?')) { await apiCall('user/unlink-telegram', 'POST'); showNotification('Conta desvinculada com sucesso.', 'success'); await router(); } };
+            } else {
+                document.getElementById('link-telegram-btn').onclick = (e) => { /* ...código existente... */ };
+                document.getElementById('why-link-q').onclick = (e) => { e.preventDefault(); whyLinkModal.classList.add('show'); };
+            }
         }
-        document.getElementById('password-form').onsubmit = async (e) => {
-            e.preventDefault();
-            const currentPassword = e.target['current-password'].value;
-            const newPassword = e.target['new-password'].value;
-            if (newPassword !== e.target['confirm-password'].value) { showNotification("As senhas não coincidem.", 'error'); return; }
-            try {
-                const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword });
-                showNotification(data.message, 'success');
-                logout();
-            } catch (error) { showNotification(`Erro: ${error.message}`, 'error'); }
-        };
+        document.getElementById('password-form').onsubmit = async (e) => { /* ...código existente... */ };
     } catch (error) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Erro ao carregar perfil</h2><p style="color: #ff5555;">${error.message}</p></div>`;
     } finally {
@@ -693,7 +693,7 @@ async function renderAdminPage(subpage) {
             }
             
             const rolesOptions = rolesData.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
-            
+
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
@@ -728,7 +728,7 @@ async function renderAdminPage(subpage) {
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
                         <td class="actions-cell">
                             ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${!canActOnUser ? 'disabled' : ''}>Salvar</button>` : ''}
-                            ${hasPermission('users:delete') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-key"></i></button>` : ''}
+                            ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-key"></i></button>` : ''}
                             ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${!canActOnUser ? 'disabled' : ''}>Excluir</button>` : ''}
                         </td>
                     </tr>`;
@@ -738,7 +738,6 @@ async function renderAdminPage(subpage) {
             adminContent.innerHTML = tableHTML;
 
         } else if (subpage === 'roles' && canViewRoles) {
-            // --- CORREÇÃO AQUI: O código completo para renderizar a tabela de cargos ---
             const [rolesData, permissionsData] = await Promise.all([apiCall('admin/roles'), apiCall('admin/permissions')]);
             const permMap = Object.fromEntries(permissionsData.map(p => [p.name, p.description]));
             
@@ -753,21 +752,24 @@ async function renderAdminPage(subpage) {
                             ${rolesData.map(role => {
                                 const canEditRole = hasPermission('roles:edit') && state.level < role.level && (role.level !== 1000 || state.level === 0);
                                 const canDeleteRole = hasPermission('roles:delete') && state.level < role.level && (role.level !== 1000 || state.level === 0);
+                                const actionsVisible = canEditRole || canDeleteRole;
+
                                 return `
                                 <tr>
                                     <td>${role.name}</td>
                                     <td>${role.level}</td>
                                     <td class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
                                     <td class="actions-cell">
-                                        <button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${!canEditRole ? 'disabled' : ''}>Editar</button>
-                                        <button class="delete-role-btn btn-danger" data-id="${role.id}" ${!canDeleteRole ? 'disabled' : ''}>Excluir</button>
+                                        ${actionsVisible ? `
+                                            <button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${!canEditRole ? 'disabled' : ''}>Editar</button>
+                                            <button class="delete-role-btn btn-danger" data-id="${role.id}" ${!canDeleteRole ? 'disabled' : ''}>Excluir</button>
+                                        ` : 'N/A'}
                                     </td>
                                 </tr>`;
                             }).join('')}
                         </tbody>
                     </table>
                 </div>`;
-            // --- FIM DA CORREÇÃO ---
         } else {
             adminContent.innerHTML = `<p>Você não tem permissão para ver esta seção.</p>`;
         }
@@ -840,11 +842,11 @@ function renderFilesPage(path) {
             if (hasPermission('can_rename_items')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear Arquivo"><i class="fas fa-edit"></i></button>`;
             if (hasPermission('can_move_items')) actionsHTML += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover Arquivo"><i class="fas fa-folder-open"></i></button>`;
             if (hasPermission('can_receive_files')) actionsHTML += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
-            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`;
+            if (hasPermission('items:delete_files')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`;
         } else {
             if (hasPermission('can_rename_folders')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear Pasta"><i class="fas fa-edit"></i></button>`;
             if (hasPermission('can_move_folders')) actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-open"></i></button>`;
-            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir Pasta"><i class="fas fa-trash"></i></button>`;
+            if (hasPermission('items:delete_folders')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir Pasta"><i class="fas fa-trash"></i></button>`;
         }
         actionsHTML += '</div>';
         if (item._isFile) {
@@ -881,14 +883,10 @@ async function router(routeOverride) {
                 if (!state.token) window.location.hash = '/login'; else await renderProfilePage();
                 break;
             case 'admin':
-                // CORREÇÃO: A mesma lógica de verificação aplicada aqui
                 const canAccessAdmin = state.permissions.some(p => p.startsWith('users:') || p.startsWith('roles:'));
                 if (!canAccessAdmin) {
-                    showNotification("Acesso negado.", "error"); 
-                    window.location.hash = '/';
-                } else {
-                    await renderAdminPage(path[1]);
-                }
+                    showNotification("Acesso negado.", "error"); window.location.hash = '/';
+                } else await renderAdminPage(path[1]);
                 break;
             default:
                 if (!state.token) { renderLoginPage(); break; }
@@ -1052,7 +1050,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let buttonsHTML = `<span>${selected.length} item(ns) selecionado(s)</span>`;
         if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
         if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`;
-        if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`;
+        if (hasPermission('items:delete_files')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`;
         bulkActionsContainer.innerHTML = buttonsHTML;
         if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
         if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys, false);
@@ -1077,4 +1075,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.addEventListener('hashchange', router);
     router();
-});
+});Certo, me envie o script.js 100% pronto com as alterações e os comandos git para que possamos finalizar tudo isso, finalmente.

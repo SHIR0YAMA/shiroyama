@@ -63,20 +63,10 @@ async function authMiddleware(context) {
     if (!context.data) context.data = {};
     context.data.user = userData;
 
-    // Lógica especial para a rota /api/admin/rename, que lida com múltiplas ações
     if (url.pathname.startsWith('/api/admin/rename')) {
         try {
             const body = await request.clone().json();
-            let permissionNeeded;
-
-            if (body.isFolder) {
-                // Diferencia entre MOVER uma pasta e RENOMEAR uma pasta
-                permissionNeeded = body.action === 'move' ? 'can_move_folders' : 'can_rename_folders';
-            } else {
-                // Ação para arquivos é sempre renomear
-                permissionNeeded = 'can_rename_items';
-            }
-            
+            const permissionNeeded = body.isFolder ? 'can_rename_folders' : 'can_rename_items';
             if (!userData.permissions || !userData.permissions.includes(permissionNeeded)) {
                 return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
             }
@@ -85,8 +75,21 @@ async function authMiddleware(context) {
             return new Response(JSON.stringify({ message: 'Payload inválido para a requisição de renomear.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
     }
+    
+    // Lógica especial para bulk-delete para diferenciar arquivos de pastas
+    if (url.pathname.startsWith('/api/admin/bulk-delete')) {
+        try {
+            const body = await request.clone().json();
+            const permissionNeeded = body.prefix ? 'items:delete_folders' : 'items:delete_files';
+            if (!userData.permissions || !userData.permissions.includes(permissionNeeded)) {
+                return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+            }
+            return next();
+        } catch (e) {
+             return new Response(JSON.stringify({ message: 'Payload inválido para a requisição de exclusão.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        }
+    }
 
-    // Mapa de permissões para outras rotas
     const requiredPermissions = {
         '/api/admin/users/update-role': 'roles:assign', 
         '/api/admin/users': 'users:view_list', 
@@ -95,11 +98,8 @@ async function authMiddleware(context) {
         '/api/admin/delete-user': 'users:delete',
         '/api/admin/reset-password': 'users:reset_password',
         '/api/admin/unlink-user-telegram': 'users:unlink_telegram',
-        '/api/admin/bulk-delete': 'can_delete_items',
-        '/api/admin/bulk-move': 'can_move_items',
         '/api/admin/create-folder': 'can_create_folders',
         '/api/admin/move-file': 'can_move_items',
-        '/api/admin/delete': 'can_delete_items',
         '/api/single-forward': 'can_receive_files',
         '/api/bulk-forward': 'can_receive_files'
     };
