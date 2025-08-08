@@ -500,7 +500,6 @@ async function openRoleModal(role = null) {
     
     permsContainer.innerHTML = permsHTML;
     
-    // Lógica de dependência de permissões
     const permissionDependencies = {
         'users:view_chat_id': 'users:view_list',
         'users:delete': 'users:view_list',
@@ -509,7 +508,7 @@ async function openRoleModal(role = null) {
         'roles:create': 'roles:view_list',
         'roles:edit': 'roles:view_list',
         'roles:delete': 'roles:view_list',
-        'roles:assign': 'roles:view_list',
+        'roles:assign': 'users:view_list', // Atribuir cargos depende de ver a lista de usuários
     };
 
     permsContainer.addEventListener('change', e => {
@@ -517,14 +516,12 @@ async function openRoleModal(role = null) {
         const changedPermName = e.target.dataset.name;
         const isChecked = e.target.checked;
 
-        // Se uma permissão dependente for marcada, marca a principal
         if (isChecked && permissionDependencies[changedPermName]) {
             const masterPermName = permissionDependencies[changedPermName];
             const masterCheckbox = permsContainer.querySelector(`input[data-name="${masterPermName}"]`);
             if (masterCheckbox) masterCheckbox.checked = true;
         }
         
-        // Se uma permissão principal for desmarcada, desmarca as dependentes
         if (!isChecked) {
             for (const [dependent, master] of Object.entries(permissionDependencies)) {
                 if (master === changedPermName) {
@@ -578,8 +575,10 @@ function renderNav() {
         greetingHTML += `<span class="role-tag">${state.role}</span>`;
     }
     greetingHTML += `</span>`;
+    
     let navLinksHTML = '';
     const canAccessAdmin = state.permissions.some(p => p.startsWith('users:') || p.startsWith('roles:'));
+    
     if (state.token) {
         if (canAccessAdmin) {
             navLinksHTML += `<button id="admin-btn" class="nav-button">Admin</button>`;
@@ -590,6 +589,7 @@ function renderNav() {
         navLinksHTML += `<button id="register-btn" class="nav-button">Registrar</button>`;
     }
     mainNav.innerHTML = `${greetingHTML}<span class="nav-links">${navLinksHTML}</span>`;
+
     if (state.token) {
         const adminBtn = document.getElementById('admin-btn');
         if (adminBtn) adminBtn.onclick = () => window.location.hash = '/admin';
@@ -644,7 +644,7 @@ async function renderProfilePage() {
                 telegramSectionHTML += `<p>Clique no botão abaixo para autorizar o bot no Telegram.</p> <button id="link-telegram-btn">Vincular com o Telegram</button> <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>`;
             }
         } else {
-            telegramSectionHTML += '<p>Você não tem permissão para vincular contas do Telegram.</p>';
+            telegramSectionHTML += '<p>Você não tem permissão para vincular ou receber arquivos via Telegram.</p>';
         }
 
         mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${state.role || 'N/A'}</strong></p><hr style="border-color: #6272a4; margin: 20px 0;">${telegramSectionHTML}<hr style="border-color: #6272a4; margin: 20px 0;"><h3>Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit">Salvar Nova Senha</button></form></div>`;
@@ -653,11 +653,34 @@ async function renderProfilePage() {
             if (userData.telegram_chat_id) {
                 document.getElementById('unlink-btn').onclick = async () => { if (confirm('Tem certeza?')) { await apiCall('user/unlink-telegram', 'POST'); showNotification('Conta desvinculada com sucesso.', 'success'); await router(); } };
             } else {
-                document.getElementById('link-telegram-btn').onclick = (e) => { /* ...código existente... */ };
+                document.getElementById('link-telegram-btn').onclick = (e) => {
+                    const linkButton = e.target;
+                    linkButton.disabled = true; linkButton.textContent = 'Gerando...';
+                    const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+                    const linkCodeWithPrefix = `link_${randomCode}`;
+                    apiCall('user/prepare-link-code', 'POST', { linkCode: linkCodeWithPrefix })
+                        .then(async () => {
+                            window.open(`https://t.me/ShiroyamaBot?start=${linkCodeWithPrefix}`, '_blank');
+                            linkButton.textContent = 'Verifique o Telegram!';
+                            showNotification('Conclua o vínculo no Telegram.', 'info');
+                            startFaviconBlink();
+                            setTimeout(async () => await router(), 15000);
+                        }).catch(err => { showNotification(`Erro: ${err.message}`, 'error'); linkButton.disabled = false; linkButton.textContent = 'Vincular com o Telegram'; });
+                };
                 document.getElementById('why-link-q').onclick = (e) => { e.preventDefault(); whyLinkModal.classList.add('show'); };
             }
         }
-        document.getElementById('password-form').onsubmit = async (e) => { /* ...código existente... */ };
+        document.getElementById('password-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const currentPassword = e.target['current-password'].value;
+            const newPassword = e.target['new-password'].value;
+            if (newPassword !== e.target['confirm-password'].value) { showNotification("As senhas não coincidem.", 'error'); return; }
+            try {
+                const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword });
+                showNotification(data.message, 'success');
+                logout();
+            } catch (error) { showNotification(`Erro: ${error.message}`, 'error'); }
+        };
     } catch (error) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Erro ao carregar perfil</h2><p style="color: #ff5555;">${error.message}</p></div>`;
     } finally {
@@ -761,8 +784,8 @@ async function renderAdminPage(subpage) {
                                     <td class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
                                     <td class="actions-cell">
                                         ${actionsVisible ? `
-                                            <button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${!canEditRole ? 'disabled' : ''}>Editar</button>
-                                            <button class="delete-role-btn btn-danger" data-id="${role.id}" ${!canDeleteRole ? 'disabled' : ''}>Excluir</button>
+                                            <button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${!canEditRole ? 'style="visibility:hidden;"' : ''}>Editar</button>
+                                            <button class="delete-role-btn btn-danger" data-id="${role.id}" ${!canDeleteRole ? 'style="visibility:hidden;"' : ''}>Excluir</button>
                                         ` : 'N/A'}
                                     </td>
                                 </tr>`;
@@ -1075,4 +1098,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.addEventListener('hashchange', router);
     router();
-});Certo, me envie o script.js 100% pronto com as alterações e os comandos git para que possamos finalizar tudo isso, finalmente.
+});
