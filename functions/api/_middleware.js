@@ -97,9 +97,12 @@ async function authMiddleware(context) {
         '/api/admin/permissions': 'roles:view_list',
         '/api/admin/delete-user': 'users:delete',
         '/api/admin/reset-password': 'users:reset_password',
+        // CORREÇÃO: Nome da rota corrigido (users -> user)
         '/api/admin/unlink-user-telegram': 'users:unlink_telegram',
+        
         '/api/admin/create-folder': 'can_create_folders',
         '/api/admin/move-file': 'can_move_items',
+        
         '/api/single-forward': 'can_receive_files',
         '/api/bulk-forward': 'can_receive_files'
     };

@@ -466,15 +466,15 @@ async function openRoleModal(role = null) {
 
     const groupedPermissions = roleState.allPermissions.reduce((acc, perm) => {
         const group = perm.name.split(':')[0].split('_')[0];
-        const category = ['users', 'roles'].includes(group) ? group : 'arquivos';
+        const category = ['users', 'roles', 'items'].includes(group) ? group : 'arquivos';
         if (!acc[category]) acc[category] = [];
         acc[category].push(perm);
         return acc;
     }, {});
 
     let permsHTML = '';
-    const categoryNames = { users: "Gerenciar Usuários", roles: "Gerenciar Cargos", arquivos: "Arquivos e Pastas" };
-    const orderedCategories = ['users', 'roles', 'arquivos'];
+    const categoryNames = { users: "Gerenciar Usuários", roles: "Gerenciar Cargos", items: "Excluir Itens", arquivos: "Arquivos e Pastas" };
+    const orderedCategories = ['users', 'roles', 'items', 'arquivos'];
 
     orderedCategories.forEach(category => {
         if (groupedPermissions[category]) {
@@ -504,11 +504,11 @@ async function openRoleModal(role = null) {
         'users:view_chat_id': 'users:view_list',
         'users:delete': 'users:view_list',
         'users:reset_password': 'users:view_list',
-        'users:unlink_telegram': 'users:view_list',
+        'users:unlink_telegram': ['users:view_list', 'users:view_chat_id'],
         'roles:create': 'roles:view_list',
         'roles:edit': 'roles:view_list',
         'roles:delete': 'roles:view_list',
-        'roles:assign': 'users:view_list', // Atribuir cargos depende de ver a lista de usuários
+        'roles:assign': 'users:view_list',
     };
 
     permsContainer.addEventListener('change', e => {
@@ -517,14 +517,16 @@ async function openRoleModal(role = null) {
         const isChecked = e.target.checked;
 
         if (isChecked && permissionDependencies[changedPermName]) {
-            const masterPermName = permissionDependencies[changedPermName];
-            const masterCheckbox = permsContainer.querySelector(`input[data-name="${masterPermName}"]`);
-            if (masterCheckbox) masterCheckbox.checked = true;
+            const masters = [].concat(permissionDependencies[changedPermName]);
+            masters.forEach(masterPermName => {
+                const masterCheckbox = permsContainer.querySelector(`input[data-name="${masterPermName}"]`);
+                if (masterCheckbox) masterCheckbox.checked = true;
+            });
         }
         
         if (!isChecked) {
-            for (const [dependent, master] of Object.entries(permissionDependencies)) {
-                if (master === changedPermName) {
+            for (const [dependent, masters] of Object.entries(permissionDependencies)) {
+                if ([].concat(masters).includes(changedPermName)) {
                     const dependentCheckbox = permsContainer.querySelector(`input[data-name="${dependent}"]`);
                     if (dependentCheckbox) dependentCheckbox.checked = false;
                 }
@@ -535,7 +537,10 @@ async function openRoleModal(role = null) {
     permsContainer.querySelectorAll('.group-checkbox').forEach(groupCheckbox => {
         groupCheckbox.onclick = (e) => {
             const group = e.target.dataset.group;
-            permsContainer.querySelectorAll(`.perm-checkbox[data-group="${group}"]`).forEach(cb => cb.checked = e.target.checked);
+            permsContainer.querySelectorAll(`.perm-checkbox[data-group="${group}"]`).forEach(cb => {
+                cb.checked = e.target.checked;
+                cb.dispatchEvent(new Event('change', { bubbles: true }));
+            });
         };
     });
 
@@ -575,10 +580,8 @@ function renderNav() {
         greetingHTML += `<span class="role-tag">${state.role}</span>`;
     }
     greetingHTML += `</span>`;
-    
     let navLinksHTML = '';
     const canAccessAdmin = state.permissions.some(p => p.startsWith('users:') || p.startsWith('roles:'));
-    
     if (state.token) {
         if (canAccessAdmin) {
             navLinksHTML += `<button id="admin-btn" class="nav-button">Admin</button>`;
@@ -589,7 +592,6 @@ function renderNav() {
         navLinksHTML += `<button id="register-btn" class="nav-button">Registrar</button>`;
     }
     mainNav.innerHTML = `${greetingHTML}<span class="nav-links">${navLinksHTML}</span>`;
-
     if (state.token) {
         const adminBtn = document.getElementById('admin-btn');
         if (adminBtn) adminBtn.onclick = () => window.location.hash = '/admin';
@@ -716,7 +718,7 @@ async function renderAdminPage(subpage) {
             }
             
             const rolesOptions = rolesData.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
-
+            
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
