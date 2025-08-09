@@ -63,10 +63,11 @@ async function authMiddleware(context) {
     if (!context.data) context.data = {};
     context.data.user = userData;
 
+    // Lógica especial para a rota /api/admin/rename
     if (url.pathname.startsWith('/api/admin/rename')) {
         try {
             const body = await request.clone().json();
-            const permissionNeeded = body.isFolder ? 'can_rename_folders' : 'can_rename_items';
+            const permissionNeeded = body.isFolder ? 'can_move_folders' : 'can_rename_items';
             if (!userData.permissions || !userData.permissions.includes(permissionNeeded)) {
                 return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
             }
@@ -76,7 +77,7 @@ async function authMiddleware(context) {
         }
     }
     
-    // Lógica especial para bulk-delete para diferenciar arquivos de pastas
+    // Lógica especial para bulk-delete
     if (url.pathname.startsWith('/api/admin/bulk-delete')) {
         try {
             const body = await request.clone().json();
@@ -90,19 +91,26 @@ async function authMiddleware(context) {
         }
     }
 
+    // Lógica especial para GET /api/admin/roles
+    if (url.pathname.startsWith('/api/admin/roles') && request.method === 'GET') {
+        if (!userData.permissions.includes('roles:view_list') && !userData.permissions.includes('roles:assign')) {
+            return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: roles:view_list ou roles:assign` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+        // Se a permissão for válida, a requisição continua para o arquivo da rota,
+        // pulando o mapa de permissões abaixo.
+        return next();
+    }
+
+    // Mapa de permissões para outras rotas (sem as que têm lógica especial acima)
     const requiredPermissions = {
         '/api/admin/users/update-role': 'roles:assign', 
-        '/api/admin/users': 'users:view_list', 
-        '/api/admin/roles': 'roles:view_list',
-        '/api/admin/permissions': 'roles:view_list',
+        '/api/admin/users': 'users:view_list',
+        '/api/admin/permissions': 'roles:view_list', // Depende da visualização de cargos
         '/api/admin/delete-user': 'users:delete',
         '/api/admin/reset-password': 'users:reset_password',
-        // CORREÇÃO: Nome da rota corrigido (users -> user)
         '/api/admin/unlink-user-telegram': 'users:unlink_telegram',
-        
         '/api/admin/create-folder': 'can_create_folders',
         '/api/admin/move-file': 'can_move_items',
-        
         '/api/single-forward': 'can_receive_files',
         '/api/bulk-forward': 'can_receive_files'
     };

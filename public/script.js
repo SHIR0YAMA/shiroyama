@@ -715,18 +715,15 @@ async function renderProfilePage() {
 }
 
 async function renderAdminPage(subpage) {
-    // CORREÇÃO: As condições para mostrar as abas agora são mais específicas.
     const canViewUsers = hasPermission('users:view_list');
     const canViewRoles = hasPermission('roles:view_list');
 
-    // Define a subpágina padrão com base na primeira permissão encontrada
     if (!subpage) {
         if (canViewUsers) subpage = 'users';
         else if (canViewRoles) subpage = 'roles';
     }
     
-    // O usuário com 'roles:assign' mas sem 'users:view_list' não deve ver o painel admin.
-    // Esta verificação já está no router, mas reforçamos aqui.
+    // A condição `canAccessAdmin` no router já previne o acesso, mas esta é uma segurança extra.
     if (!canViewUsers && !canViewRoles) {
         mainContent.innerHTML = "<p>Você não tem permissões suficientes para visualizar o painel de administração.</p>";
         return;
@@ -743,11 +740,9 @@ async function renderAdminPage(subpage) {
     if (rolesTab) rolesTab.onclick = () => router('admin/roles');
 
     try {
-        // CORREÇÃO: A condição agora é explícita: 'users:view_list' é necessária para ver esta página.
-        if (subpage === 'users' && hasPermission('users:view_list')) {
+        if (subpage === 'users' && canViewUsers) {
             const usersData = await apiCall('admin/users');
             let rolesData = [];
-            // A lista de cargos só é necessária se o admin puder atribuí-los.
             if (hasPermission('roles:assign')) {
                 rolesData = await apiCall('admin/roles');
             }
@@ -797,7 +792,7 @@ async function renderAdminPage(subpage) {
             tableHTML += `</tbody></table></div>`;
             adminContent.innerHTML = tableHTML;
 
-        } else if (subpage === 'roles' && hasPermission('roles:view_list')) {
+        } else if (subpage === 'roles' && canViewRoles) {
             const [rolesData, permissionsData] = await Promise.all([apiCall('admin/roles'), apiCall('admin/permissions')]);
             const permMap = Object.fromEntries(permissionsData.map(p => [p.name, p.description]));
             
@@ -831,7 +826,6 @@ async function renderAdminPage(subpage) {
                     </table>
                 </div>`;
         } else {
-            // Se a subpágina não corresponde a nenhuma permissão, mostra erro.
             adminContent.innerHTML = `<p>Você não tem permissão para ver esta seção.</p>`;
         }
     } catch (error) {
