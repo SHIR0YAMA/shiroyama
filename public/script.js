@@ -715,14 +715,23 @@ async function renderProfilePage() {
 }
 
 async function renderAdminPage(subpage) {
-    const canViewUsers = state.permissions.some(p => p.startsWith('users:'));
-    const canViewRoles = state.permissions.some(p => p.startsWith('roles:'));
+    // CORREÇÃO: As condições para mostrar as abas agora são mais específicas.
+    const canViewUsers = hasPermission('users:view_list');
+    const canViewRoles = hasPermission('roles:view_list');
 
+    // Define a subpágina padrão com base na primeira permissão encontrada
     if (!subpage) {
         if (canViewUsers) subpage = 'users';
         else if (canViewRoles) subpage = 'roles';
     }
     
+    // O usuário com 'roles:assign' mas sem 'users:view_list' não deve ver o painel admin.
+    // Esta verificação já está no router, mas reforçamos aqui.
+    if (!canViewUsers && !canViewRoles) {
+        mainContent.innerHTML = "<p>Você não tem permissões suficientes para visualizar o painel de administração.</p>";
+        return;
+    }
+
     mainContent.innerHTML = `<h2>Painel de Administrador</h2><div class="admin-tabs">${canViewUsers ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}">Gerenciar Usuários</button>` : ''}${canViewRoles ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}">Gerenciar Cargos</button>` : ''}</div><div id="admin-content"></div>`;
     const adminContent = document.getElementById('admin-content');
     adminContent.innerHTML = '';
@@ -734,9 +743,11 @@ async function renderAdminPage(subpage) {
     if (rolesTab) rolesTab.onclick = () => router('admin/roles');
 
     try {
-        if (subpage === 'users' && canViewUsers) {
+        // CORREÇÃO: A condição agora é explícita: 'users:view_list' é necessária para ver esta página.
+        if (subpage === 'users' && hasPermission('users:view_list')) {
             const usersData = await apiCall('admin/users');
             let rolesData = [];
+            // A lista de cargos só é necessária se o admin puder atribuí-los.
             if (hasPermission('roles:assign')) {
                 rolesData = await apiCall('admin/roles');
             }
@@ -756,7 +767,6 @@ async function renderAdminPage(subpage) {
                         <tbody>`;
 
             for (const user of usersData.users) {
-                // CORREÇÃO AQUI: A lógica para desabilitar ações precisa ser consistente.
                 const isSelf = state.username === user.username;
                 const isSuperiorOrEqual = state.level >= user.role_level;
                 const canActOnUser = !isSelf && !isSuperiorOrEqual;
@@ -787,9 +797,41 @@ async function renderAdminPage(subpage) {
             tableHTML += `</tbody></table></div>`;
             adminContent.innerHTML = tableHTML;
 
-        } else if (subpage === 'roles' && canViewRoles) {
-            // ... (código para renderizar a tabela de cargos)
+        } else if (subpage === 'roles' && hasPermission('roles:view_list')) {
+            const [rolesData, permissionsData] = await Promise.all([apiCall('admin/roles'), apiCall('admin/permissions')]);
+            const permMap = Object.fromEntries(permissionsData.map(p => [p.name, p.description]));
+            
+            adminContent.innerHTML = `
+                <div style="text-align: right; margin-bottom: 10px;">
+                    ${hasPermission('roles:create') ? '<button id="create-new-role-btn">Criar Novo Cargo</button>' : ''}
+                </div>
+                <div class="table-container">
+                    <table class="admin-table">
+                        <thead><tr><th>Cargo</th><th>Nível</th><th>Permissões</th><th>Ações</th></tr></thead>
+                        <tbody>
+                            ${rolesData.map(role => {
+                                const canEditRole = hasPermission('roles:edit') && state.level < role.level && (role.level !== 1000 || state.level === 0);
+                                const canDeleteRole = hasPermission('roles:delete') && state.level < role.level && (role.level !== 1000 || state.level === 0);
+                                const actionsVisible = canEditRole || canDeleteRole;
+
+                                return `
+                                <tr>
+                                    <td>${role.name}</td>
+                                    <td>${role.level}</td>
+                                    <td class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
+                                    <td class="actions-cell">
+                                        ${actionsVisible ? `
+                                            <button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${!canEditRole ? 'style="visibility:hidden;"' : ''}>Editar</button>
+                                            <button class="delete-role-btn btn-danger" data-id="${role.id}" ${!canDeleteRole ? 'style="visibility:hidden;"' : ''}>Excluir</button>
+                                        ` : 'N/A'}
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>`;
         } else {
+            // Se a subpágina não corresponde a nenhuma permissão, mostra erro.
             adminContent.innerHTML = `<p>Você não tem permissão para ver esta seção.</p>`;
         }
     } catch (error) {
