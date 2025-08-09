@@ -473,11 +473,18 @@ async function openRoleModal(role = null) {
     }, {});
 
     let permsHTML = '';
-    const categoryNames = { users: "Gerenciar Usuários", roles: "Gerenciar Cargos", items: "Excluir Itens", arquivos: "Arquivos e Pastas" };
-    const orderedCategories = ['users', 'roles', 'items', 'arquivos'];
+    const categoryNames = { users: "Gerenciar Usuários", roles: "Gerenciar Cargos", arquivos: "Arquivos e Pastas" };
+    const orderedCategories = ['users', 'roles', 'arquivos'];
 
     orderedCategories.forEach(category => {
         if (groupedPermissions[category]) {
+            let categoryPermissions = groupedPermissions[category];
+            if (category === 'arquivos') {
+                // Junta 'items' em 'arquivos'
+                if(groupedPermissions['items']) {
+                    categoryPermissions = [...categoryPermissions, ...groupedPermissions['items']];
+                }
+            }
             permsHTML += `
                 <details class="permission-group" open>
                     <summary>
@@ -485,7 +492,7 @@ async function openRoleModal(role = null) {
                         <strong>${categoryNames[category]}</strong>
                     </summary>
                     <div class="permission-list">`;
-            groupedPermissions[category].forEach(perm => {
+            categoryPermissions.forEach(perm => {
                 const isChecked = role ? role.permissions.includes(perm.name) : false;
                 const label = perm.description || perm.name;
                 permsHTML += `
