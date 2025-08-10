@@ -12,9 +12,7 @@ async function decodeJwt(token, secret) {
         const decodedPayload = JSON.parse(atob(payload.replace(/_/g, '/').replace(/-/g, '+')));
         if (decodedPayload.exp && decodedPayload.exp < Math.floor(Date.now() / 1000)) return null;
         return decodedPayload;
-    } catch (e) {
-        return null;
-    }
+    } catch (e) { return null; }
 }
 
 async function authMiddleware(context) {
@@ -22,9 +20,7 @@ async function authMiddleware(context) {
     const url = new URL(request.url);
 
     const publicRoutes = ['/api/auth/login', '/api/auth/register'];
-    if (publicRoutes.includes(url.pathname)) {
-        return next();
-    }
+    if (publicRoutes.includes(url.pathname)) return next();
 
     const authorization = request.headers.get('Authorization');
     if (!authorization || !authorization.startsWith('Bearer ')) {
@@ -43,31 +39,6 @@ async function authMiddleware(context) {
     if (!context.data) context.data = {};
     context.data.user = userData;
 
-    // Lógica especial para rotas que dependem do corpo da requisição
-    if (url.pathname.startsWith('/api/admin/rename')) {
-        try {
-            const body = await request.clone().json();
-            const permissionNeeded = body.isFolder ? (body.action === 'move' ? 'can_move_folders' : 'can_rename_folders') : 'can_rename_items';
-            if (!userData.permissions.includes(permissionNeeded)) {
-                return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
-            }
-        } catch (e) {
-            // Se o corpo da requisição não for um JSON válido, a rota de destino lidará com o erro.
-        }
-    }
-    
-    if (url.pathname.startsWith('/api/admin/bulk-delete')) {
-        try {
-            const body = await request.clone().json();
-            // Para bulk-delete, a permissão é sempre 'can_delete_items'
-            if (!userData.permissions.includes('can_delete_items')) {
-                return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: can_delete_items` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
-            }
-        } catch(e) {
-            // Se o corpo da requisição não for um JSON válido, a rota de destino lidará com o erro.
-        }
-    }
-    
     return next();
 }
 
