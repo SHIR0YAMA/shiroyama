@@ -76,22 +76,15 @@ async function authMiddleware(context) {
             return new Response(JSON.stringify({ message: 'Payload inválido para a requisição de renomear.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
     }
+    
+    // O bloco de lógica especial para bulk-delete foi REMOVIDO daqui.
 
-    // Lógica especial para GET /api/admin/roles
-    if (url.pathname.startsWith('/api/admin/roles') && request.method === 'GET') {
-        if (!userData.permissions.includes('roles:view_list') && !userData.permissions.includes('roles:assign')) {
-            return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: roles:view_list ou roles:assign` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
-        }
-        // Se a permissão for válida, a requisição continua para o arquivo da rota,
-        // pulando o mapa de permissões abaixo.
-        return next();
-    }
-
-    // Mapa de permissões para outras rotas (sem as que têm lógica especial acima)
+    // Mapa de permissões para outras rotas
     const requiredPermissions = {
         '/api/admin/users/update-role': 'roles:assign', 
-        '/api/admin/users': 'users:view_list',
-        '/api/admin/permissions': 'roles:view_list', // Depende da visualização de cargos
+        '/api/admin/users': 'users:view_list', 
+        '/api/admin/roles': 'roles:view_list',
+        '/api/admin/permissions': 'roles:view_list',
         '/api/admin/delete-user': 'users:delete',
         '/api/admin/reset-password': 'users:reset_password',
         '/api/admin/unlink-user-telegram': 'users:unlink_telegram',
