@@ -28,7 +28,6 @@ async function authMiddleware(context) {
 
     const authorization = request.headers.get('Authorization');
     if (!authorization || !authorization.startsWith('Bearer ')) {
-        // Se a rota não for pública e não houver token, negue o acesso para rotas protegidas.
         if (url.pathname.startsWith('/api/admin/') || url.pathname.startsWith('/api/user/')) {
             return new Response(JSON.stringify({ message: 'Token de autenticação não fornecido.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
         }
@@ -44,7 +43,31 @@ async function authMiddleware(context) {
     if (!context.data) context.data = {};
     context.data.user = userData;
 
-    // Apenas autentica e anexa os dados. Nenhuma verificação de permissão aqui.
+    // Lógica especial para rotas que dependem do corpo da requisição
+    if (url.pathname.startsWith('/api/admin/rename')) {
+        try {
+            const body = await request.clone().json();
+            const permissionNeeded = body.isFolder ? (body.action === 'move' ? 'can_move_folders' : 'can_rename_folders') : 'can_rename_items';
+            if (!userData.permissions.includes(permissionNeeded)) {
+                return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+            }
+        } catch (e) {
+            // Se o corpo da requisição não for um JSON válido, a rota de destino lidará com o erro.
+        }
+    }
+    
+    if (url.pathname.startsWith('/api/admin/bulk-delete')) {
+        try {
+            const body = await request.clone().json();
+            // Para bulk-delete, a permissão é sempre 'can_delete_items'
+            if (!userData.permissions.includes('can_delete_items')) {
+                return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: can_delete_items` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+            }
+        } catch(e) {
+            // Se o corpo da requisição não for um JSON válido, a rota de destino lidará com o erro.
+        }
+    }
+    
     return next();
 }
 
