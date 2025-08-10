@@ -435,27 +435,10 @@ async function deleteItems(keys, isFolder = false, folderName = '') {
 
     showLoading();
     try {
-        // Lógica para exclusão de arquivos individuais (mantém)
-        if (!isFolder) {
-            await Promise.all(itemsToDelete.map(key => apiCall('admin/bulk-delete', 'POST', {keys: [key]})));
-        }
-        // CORREÇÃO AQUI: Lógica para exclusão de pastas e SEU CONTEÚDO
-        else {
-            // Antes de tudo, lista todos os arquivos dentro da pasta
-            const list = await apiCall('files', 'GET'); //TODO: implementar um filtro.
-            const filesInFolder = list.files.filter(file => file.name.startsWith(`${keys[0]}/`));
-            
-            // Monta as chaves para excluir (incluindo os arquivos e o .placeholder)
-            const keysToDelete = filesInFolder.map(f => f.name);
-            keysToDelete.push(keys[0] + '/.placeholder');
-
-            // Deleta tudo de uma vez
-            await apiCall('admin/bulk-delete', 'POST', { keys: keysToDelete });
-        }
-
+        const payload = isFolder ? { prefix: itemsToDelete[0] + '/' } : { keys: itemsToDelete };
+        await apiCall('admin/bulk-delete', 'POST', payload);
         showNotification("Item(ns) excluído(s) com sucesso!", "success");
         await refreshFiles();
-
     } catch (error) {
         showNotification(`Erro ao excluir: ${error.message}`, "error");
     } finally {
@@ -483,7 +466,13 @@ async function openRoleModal(role = null) {
 
     const groupedPermissions = roleState.allPermissions.reduce((acc, perm) => {
         const group = perm.name.split(':')[0].split('_')[0];
-        const category = ['users', 'roles', 'items'].includes(group) ? group : 'arquivos';
+        const categoryMap = {
+            'users': 'users',
+            'roles': 'roles',
+            'items': 'arquivos',
+            'can': 'arquivos'
+        };
+        const category = categoryMap[group] || 'outros';
         if (!acc[category]) acc[category] = [];
         acc[category].push(perm);
         return acc;
@@ -495,13 +484,6 @@ async function openRoleModal(role = null) {
 
     orderedCategories.forEach(category => {
         if (groupedPermissions[category]) {
-            let categoryPermissions = groupedPermissions[category];
-            if (category === 'arquivos') {
-                // Junta 'items' em 'arquivos'
-                if(groupedPermissions['items']) {
-                    categoryPermissions = [...categoryPermissions, ...groupedPermissions['items']];
-                }
-            }
             permsHTML += `
                 <details class="permission-group" open>
                     <summary>
@@ -509,7 +491,7 @@ async function openRoleModal(role = null) {
                         <strong>${categoryNames[category]}</strong>
                     </summary>
                     <div class="permission-list">`;
-            categoryPermissions.forEach(perm => {
+            groupedPermissions[category].forEach(perm => {
                 const isChecked = role ? role.permissions.includes(perm.name) : false;
                 const label = perm.description || perm.name;
                 permsHTML += `
@@ -536,9 +518,11 @@ async function openRoleModal(role = null) {
     };
 
     permsContainer.addEventListener('change', e => {
-        if (!e.target.classList.contains('perm-checkbox')) return;
-        const changedPermName = e.target.dataset.name;
-        const isChecked = e.target.checked;
+        const checkbox = e.target;
+        if (!checkbox.classList.contains('perm-checkbox')) return;
+        
+        const changedPermName = checkbox.dataset.name;
+        const isChecked = checkbox.checked;
 
         if (isChecked && permissionDependencies[changedPermName]) {
             const masters = [].concat(permissionDependencies[changedPermName]);
@@ -561,9 +545,13 @@ async function openRoleModal(role = null) {
     permsContainer.querySelectorAll('.group-checkbox').forEach(groupCheckbox => {
         groupCheckbox.onclick = (e) => {
             const group = e.target.dataset.group;
+            const isChecked = e.target.checked;
+            const event = new Event('change', { bubbles: true });
             permsContainer.querySelectorAll(`.perm-checkbox[data-group="${group}"]`).forEach(cb => {
-                cb.checked = e.target.checked;
-                cb.dispatchEvent(new Event('change', { bubbles: true }));
+                if (cb.checked !== isChecked) {
+                    cb.checked = isChecked;
+                    cb.dispatchEvent(event);
+                }
             });
         };
     });
@@ -723,11 +711,7 @@ async function renderAdminPage(subpage) {
         else if (canViewRoles) subpage = 'roles';
     }
     
-    if (!canViewUsers && !canViewRoles) {
-        mainContent.innerHTML = "<p>Você não tem permissões suficientes para visualizar o painel de administração.</p>";
-        return;
-    }
-
+    // CORREÇÃO: Mostra as abas com base nas permissões de visualização
     mainContent.innerHTML = `<h2>Painel de Administrador</h2><div class="admin-tabs">${canViewUsers ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}">Gerenciar Usuários</button>` : ''}${canViewRoles ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}">Gerenciar Cargos</button>` : ''}</div><div id="admin-content"></div>`;
     const adminContent = document.getElementById('admin-content');
     adminContent.innerHTML = '';
@@ -761,30 +745,27 @@ async function renderAdminPage(subpage) {
                         <tbody>`;
 
             for (const user of usersData.users) {
-                const isSelf = state.username === user.username;
-                const isSuperiorOrEqual = state.level >= user.role_level;
-                const canActOnUser = !isSelf && !isSuperiorOrEqual;
-                const disabledAttribute = !canActOnUser ? 'disabled' : '';
+                const canActOnUser = state.level < user.role_level;
 
                 tableHTML += `
                     <tr>
                         <td>${user.username}</td>
                         ${hasPermission('roles:assign') ? `
                         <td>
-                            <select class="role-select" data-id="${user.id}" ${disabledAttribute}>
+                            <select class="role-select" data-id="${user.id}" ${!canActOnUser ? 'disabled' : ''}>
                                 ${rolesData.length > 0 ? rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`) : `<option>${user.role_name || 'N/A'}</option>`}
                             </select>
-                        </td>` : ''}
+                        </td>` : `<td>${user.role_name || 'N/A'}</td>`}
                         ${hasPermission('users:view_chat_id') ? `
                         <td class="chat-id-cell">
                             <span>${user.telegram_chat_id || 'N/A'}</span>
-                            ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>` : ''}
+                            ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-unlink"></i></button>` : ''}
                         </td>` : ''}
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
                         <td class="actions-cell">
-                            ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${disabledAttribute}>Salvar</button>` : ''}
-                            ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>` : ''}
-                            ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>` : ''}
+                            ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${!canActOnUser ? 'disabled' : ''}>Salvar</button>` : ''}
+                            ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-key"></i></button>` : ''}
+                            ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${!canActOnUser ? 'disabled' : ''}>Excluir</button>` : ''}
                         </td>
                     </tr>`;
             }
@@ -816,8 +797,8 @@ async function renderAdminPage(subpage) {
                                     <td class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
                                     <td class="actions-cell">
                                         ${actionsVisible ? `
-                                            <button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${!canEditRole ? 'style="visibility:hidden;"' : ''}>Editar</button>
-                                            <button class="delete-role-btn btn-danger" data-id="${role.id}" ${!canDeleteRole ? 'style="visibility:hidden;"' : ''}>Excluir</button>
+                                            ${hasPermission('roles:edit') ? `<button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${!canEditRole ? 'disabled' : ''}>Editar</button>` : ''}
+                                            ${hasPermission('roles:delete') ? `<button class="delete-role-btn btn-danger" data-id="${role.id}" ${!canDeleteRole ? 'disabled' : ''}>Excluir</button>` : ''}
                                         ` : 'N/A'}
                                     </td>
                                 </tr>`;
@@ -897,11 +878,11 @@ function renderFilesPage(path) {
             if (hasPermission('can_rename_items')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear Arquivo"><i class="fas fa-edit"></i></button>`;
             if (hasPermission('can_move_items')) actionsHTML += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover Arquivo"><i class="fas fa-folder-open"></i></button>`;
             if (hasPermission('can_receive_files')) actionsHTML += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
-            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`;
+            if (hasPermission('items:delete_files')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`;
         } else {
             if (hasPermission('can_rename_folders')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear Pasta"><i class="fas fa-edit"></i></button>`;
             if (hasPermission('can_move_folders')) actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-open"></i></button>`;
-            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir Pasta"><i class="fas fa-trash"></i></button>`;
+            if (hasPermission('items:delete_folders')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir Pasta"><i class="fas fa-trash"></i></button>`;
         }
         actionsHTML += '</div>';
         if (item._isFile) {
