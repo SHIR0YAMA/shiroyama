@@ -1,4 +1,4 @@
-// /functions/api/_middleware.js (SIMPLIFICADO)
+// /functions/api/_middleware.js
 
 async function decodeJwt(token, secret) {
     try {
@@ -28,6 +28,7 @@ async function authMiddleware(context) {
 
     const authorization = request.headers.get('Authorization');
     if (!authorization || !authorization.startsWith('Bearer ')) {
+        // Se a rota não for pública e não houver token, negue o acesso para rotas protegidas.
         if (url.pathname.startsWith('/api/admin/') || url.pathname.startsWith('/api/user/')) {
             return new Response(JSON.stringify({ message: 'Token de autenticação não fornecido.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
         }
@@ -43,7 +44,7 @@ async function authMiddleware(context) {
     if (!context.data) context.data = {};
     context.data.user = userData;
 
-    // NENHUMA VERIFICAÇÃO DE PERMISSÃO AQUI. Apenas continua.
+    // Apenas autentica e anexa os dados. Nenhuma verificação de permissão aqui.
     return next();
 }
 
