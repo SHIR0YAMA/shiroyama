@@ -357,7 +357,11 @@ async function confirmCreateFolder() {
 
     showLoading();
     const wasOpenedFromMoveModal = createFolderModal.dataset.fromMoveModal === 'true';
-    const basePath = wasOpenedFromMoveModal ? moveState.currentPath : (window.location.hash.slice(2) || '').split('/').filter(p => p);
+
+    // CORREÇÃO AQUI: Decodifica o caminho da URL antes de usá-lo
+    const currentPathString = decodeURIComponent(window.location.hash.slice(2) || '');
+    const basePath = wasOpenedFromMoveModal ? moveState.currentPath : currentPathString.split('/').filter(p => p);
+    
     const fullPath = [...basePath, newFolderName].join('/');
 
     try {
