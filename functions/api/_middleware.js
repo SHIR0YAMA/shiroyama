@@ -12,23 +12,17 @@ async function decodeJwt(token, secret) {
         const decodedPayload = JSON.parse(atob(payload.replace(/_/g, '/').replace(/-/g, '+')));
         if (decodedPayload.exp && decodedPayload.exp < Math.floor(Date.now() / 1000)) return null;
         return decodedPayload;
-    } catch (e) {
-        return null;
-    }
+    } catch (e) { return null; }
 }
 
 async function authMiddleware(context) {
     const { request, env, next } = context;
     const url = new URL(request.url);
-
     const publicRoutes = ['/api/auth/login', '/api/auth/register'];
-    if (publicRoutes.includes(url.pathname)) {
-        return next();
-    }
+    if (publicRoutes.includes(url.pathname)) return next();
 
     const authorization = request.headers.get('Authorization');
     if (!authorization || !authorization.startsWith('Bearer ')) {
-        // Se a rota não for pública e não houver token, negue o acesso para rotas protegidas.
         if (url.pathname.startsWith('/api/admin/') || url.pathname.startsWith('/api/user/')) {
             return new Response(JSON.stringify({ message: 'Token de autenticação não fornecido.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
         }
@@ -37,15 +31,12 @@ async function authMiddleware(context) {
 
     const token = authorization.substring(7);
     const userData = await decodeJwt(token, env.JWT_SECRET);
-
     if (!userData) {
         return new Response(JSON.stringify({ message: 'Token inválido ou expirado.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
     }
 
     if (!context.data) context.data = {};
     context.data.user = userData;
-
-    // Apenas autentica e anexa os dados. Nenhuma verificação de permissão aqui.
     return next();
 }
 
