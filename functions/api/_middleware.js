@@ -1,4 +1,4 @@
-// /functions/api/_middleware.js
+// /functions/api/_middleware.js (SIMPLIFICADO)
 
 async function decodeJwt(token, secret) {
     try {
@@ -12,14 +12,19 @@ async function decodeJwt(token, secret) {
         const decodedPayload = JSON.parse(atob(payload.replace(/_/g, '/').replace(/-/g, '+')));
         if (decodedPayload.exp && decodedPayload.exp < Math.floor(Date.now() / 1000)) return null;
         return decodedPayload;
-    } catch (e) { return null; }
+    } catch (e) {
+        return null;
+    }
 }
 
 async function authMiddleware(context) {
     const { request, env, next } = context;
     const url = new URL(request.url);
+
     const publicRoutes = ['/api/auth/login', '/api/auth/register'];
-    if (publicRoutes.includes(url.pathname)) return next();
+    if (publicRoutes.includes(url.pathname)) {
+        return next();
+    }
 
     const authorization = request.headers.get('Authorization');
     if (!authorization || !authorization.startsWith('Bearer ')) {
@@ -37,6 +42,8 @@ async function authMiddleware(context) {
 
     if (!context.data) context.data = {};
     context.data.user = userData;
+
+    // NENHUMA VERIFICAÇÃO DE PERMISSÃO AQUI. Apenas continua.
     return next();
 }
 
