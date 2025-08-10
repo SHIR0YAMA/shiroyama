@@ -1,10 +1,21 @@
 // /functions/api/admin/rename.js
 
 export async function onRequestPost(context) {
-    const { request, env } = context;
+    const { request, env, data } = context;
     try {
-        // O _middleware.js já verificou a permissão 'can_rename_items'.
-        const { oldKey, newKey, isFolder } = await request.json();
+        const loggedInUser = data.user;
+        const { oldKey, newKey, isFolder, action } = await request.json();
+        
+        let permissionNeeded;
+        if (isFolder) {
+            permissionNeeded = action === 'move' ? 'can_move_folders' : 'can_rename_folders';
+        } else {
+            permissionNeeded = 'can_rename_items';
+        }
+        
+        if (!loggedInUser.permissions.includes(permissionNeeded)) {
+            return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
 
         if (!oldKey || !newKey) {
             return new Response(JSON.stringify({ message: 'Nome antigo e novo são obrigatórios.' }), { status: 400 });
@@ -12,16 +23,15 @@ export async function onRequestPost(context) {
         
         if (isFolder) {
             const list = await env.ARQUIVOS_TELEGRAM.list({ prefix: oldKey + '/' });
-
+            
             if (list.keys.length === 0) {
                 const placeholderValue = await env.ARQUIVOS_TELEGRAM.get(oldKey + '/.placeholder');
                 if (placeholderValue) {
                     await env.ARQUIVOS_TELEGRAM.put(newKey + '/.placeholder', placeholderValue);
                     await env.ARQUIVOS_TELEGRAM.delete(oldKey + '/.placeholder');
                     return new Response(JSON.stringify({ success: true, message: 'Pasta vazia movida/renomeada com sucesso.' }));
-                } else {
-                    return new Response(JSON.stringify({ message: 'Pasta de origem não encontrada.' }), { status: 404 });
                 }
+                return new Response(JSON.stringify({ message: 'Pasta de origem não encontrada.' }), { status: 404 });
             }
 
             const operations = list.keys.map(async (key) => {
@@ -32,22 +42,17 @@ export async function onRequestPost(context) {
                     await env.ARQUIVOS_TELEGRAM.delete(key.name);
                 }
             });
-            
             await Promise.all(operations);
             return new Response(JSON.stringify({ success: true, message: 'Pasta e seu conteúdo renomeados com sucesso.' }));
-
-        } else { // é um arquivo
+        } else {
             const value = await env.ARQUIVOS_TELEGRAM.get(oldKey);
             if (value === null) {
                 return new Response(JSON.stringify({ message: 'Arquivo de origem não encontrado.' }), { status: 404 });
             }
-            
             await env.ARQUIVOS_TELEGRAM.put(newKey, value);
             await env.ARQUIVOS_TELEGRAM.delete(oldKey);
-
             return new Response(JSON.stringify({ success: true, message: 'Arquivo renomeado com sucesso.' }));
         }
-
     } catch (error) {
         console.error("Erro ao renomear:", error);
         return new Response(JSON.stringify({ message: "Erro interno ao renomear." }), { status: 500 });
