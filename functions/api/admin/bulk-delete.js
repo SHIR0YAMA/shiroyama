@@ -9,33 +9,34 @@ export async function onRequestPost(context) {
         if ((!keys || keys.length === 0) && !prefix) {
             return new Response(JSON.stringify({ message: 'É necessário fornecer "keys" ou "prefix".' }), { status: 400 });
         }
+        
+        // --- LÓGICA DE PERMISSÃO CORRIGIDA ---
+        const isFolderDelete = !!prefix;
+        if (isFolderDelete && !loggedInUser.permissions.includes('items:delete_folders')) {
+            return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: items:delete_folders` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (!isFolderDelete && !loggedInUser.permissions.includes('items:delete_files')) {
+            return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: items:delete_files` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+        // --- FIM DA CORREÇÃO ---
 
         let keysToDelete = [];
-        let isFolderDelete = !!prefix;
-
-        // Caso de exclusão de arquivos individuais
         if (keys && Array.isArray(keys)) {
             keysToDelete.push(...keys);
         }
 
-        // Caso de exclusão de pasta
         if (isFolderDelete && typeof prefix === 'string') {
             const list = await env.ARQUIVOS_TELEGRAM.list({ prefix: prefix });
             const folderKeys = list.keys.map(k => k.name);
-
-            // Adiciona o placeholder da própria pasta, caso esteja vazia
             keysToDelete.push(`${prefix.replace(/\/$/, '')}/.placeholder`);
             
-            // Se a pasta tiver conteúdo, verifica a permissão para excluir arquivos
             if (folderKeys.length > 0 && !loggedInUser.permissions.includes('items:delete_files')) {
                 return new Response(JSON.stringify({ message: 'A pasta contém arquivos. Você precisa da permissão "Excluir Arquivos" para apagar a pasta e seu conteúdo.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
             }
             keysToDelete.push(...folderKeys);
         }
         
-        // Remove duplicatas, caso haja sobreposição
         const uniqueKeysToDelete = [...new Set(keysToDelete)];
-
         if (uniqueKeysToDelete.length === 0) {
             return new Response(JSON.stringify({ success: true, message: 'Nenhum item para excluir.' }));
         }

@@ -76,20 +76,6 @@ async function authMiddleware(context) {
             return new Response(JSON.stringify({ message: 'Payload inválido para a requisição de renomear.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
     }
-    
-    // Lógica especial para bulk-delete
-    if (url.pathname.startsWith('/api/admin/bulk-delete')) {
-        try {
-            const body = await request.clone().json();
-            const permissionNeeded = body.prefix ? 'items:delete_folders' : 'items:delete_files';
-            if (!userData.permissions || !userData.permissions.includes(permissionNeeded)) {
-                return new Response(JSON.stringify({ message: `Acesso negado. Requer permissão: ${permissionNeeded}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
-            }
-            return next();
-        } catch (e) {
-             return new Response(JSON.stringify({ message: 'Payload inválido para a requisição de exclusão.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-        }
-    }
 
     // Lógica especial para GET /api/admin/roles
     if (url.pathname.startsWith('/api/admin/roles') && request.method === 'GET') {

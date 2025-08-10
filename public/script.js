@@ -723,7 +723,6 @@ async function renderAdminPage(subpage) {
         else if (canViewRoles) subpage = 'roles';
     }
     
-    // A condição `canAccessAdmin` no router já previne o acesso, mas esta é uma segurança extra.
     if (!canViewUsers && !canViewRoles) {
         mainContent.innerHTML = "<p>Você não tem permissões suficientes para visualizar o painel de administração.</p>";
         return;
@@ -765,26 +764,27 @@ async function renderAdminPage(subpage) {
                 const isSelf = state.username === user.username;
                 const isSuperiorOrEqual = state.level >= user.role_level;
                 const canActOnUser = !isSelf && !isSuperiorOrEqual;
+                const disabledAttribute = !canActOnUser ? 'disabled' : '';
 
                 tableHTML += `
                     <tr>
                         <td>${user.username}</td>
                         ${hasPermission('roles:assign') ? `
                         <td>
-                            <select class="role-select" data-id="${user.id}" ${!canActOnUser ? 'disabled' : ''}>
+                            <select class="role-select" data-id="${user.id}" ${disabledAttribute}>
                                 ${rolesData.length > 0 ? rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`) : `<option>${user.role_name || 'N/A'}</option>`}
                             </select>
                         </td>` : ''}
                         ${hasPermission('users:view_chat_id') ? `
                         <td class="chat-id-cell">
                             <span>${user.telegram_chat_id || 'N/A'}</span>
-                            ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-unlink"></i></button>` : ''}
+                            ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>` : ''}
                         </td>` : ''}
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
                         <td class="actions-cell">
-                            ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${!canActOnUser ? 'disabled' : ''}>Salvar</button>` : ''}
-                            ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-key"></i></button>` : ''}
-                            ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${!canActOnUser ? 'disabled' : ''}>Excluir</button>` : ''}
+                            ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${disabledAttribute}>Salvar</button>` : ''}
+                            ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>` : ''}
+                            ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>` : ''}
                         </td>
                     </tr>`;
             }
