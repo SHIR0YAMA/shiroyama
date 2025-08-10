@@ -10,45 +10,35 @@ export async function onRequestPost(context) {
             return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão para excluir itens.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
 
-        if ((!keys || keys.length === 0) && !prefix) {
-            return new Response(JSON.stringify({ message: 'É necessário fornecer "keys" ou "prefix".' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-        }
-
-        let keysToDelete = [];
-        let isFolderDelete = !!prefix;
-
-        if (keys && Array.isArray(keys)) {
-            keysToDelete.push(...keys);
-        }
-
-        if (isFolderDelete && typeof prefix === 'string') {
-            const normalizedPrefix = prefix.endsWith('/') ? prefix : prefix + '/';
+        if (prefix) {
+            // Lógica para Pastas
+            const list = await env.ARQUIVOS_TELEGRAM.list({ prefix: prefix });
+            let keysToDelete = list.keys.map(k => k.name);
             
-            const list = await env.ARQUIVOS_TELEGRAM.list({ prefix: normalizedPrefix });
-            const folderContentKeys = list.keys.map(k => k.name);
-            keysToDelete.push(...folderContentKeys);
+            // Adiciona o placeholder da pasta para garantir que ela suma
+            keysToDelete.push(`${prefix.replace(/\/$/, "")}/.placeholder`);
+            const uniqueKeys = [...new Set(keysToDelete)];
 
-            // Adiciona explicitamente o placeholder da pasta PAI à lista
-            const placeholderKey = `${normalizedPrefix.slice(0, -1)}/.placeholder`;
-            keysToDelete.push(placeholderKey);
-        }
-        
-        const uniqueKeysToDelete = [...new Set(keysToDelete.filter(Boolean))];
+            if (uniqueKeys.length > 0) {
+                // Para KV, precisamos deletar um por um.
+                const deletePromises = uniqueKeys.map(key => env.ARQUIVOS_TELEGRAM.delete(key));
+                await Promise.all(deletePromises);
+            }
 
-        if (uniqueKeysToDelete.length > 0) {
-            const deletePromises = uniqueKeysToDelete.map(key => env.ARQUIVOS_TELEGRAM.delete(key));
+            return new Response(JSON.stringify({ success: true, message: `Pasta e conteúdo excluídos.` }));
+
+        } else if (keys && keys.length > 0) {
+            // Lógica para Arquivos
+            const deletePromises = keys.map(key => env.ARQUIVOS_TELEGRAM.delete(key));
             await Promise.all(deletePromises);
-        }
-        
-        const logAction = isFolderDelete ? 'delete_folder' : 'delete_files';
-        const logTarget = isFolderDelete ? `Prefixo: ${prefix}` : `Chaves: uniqueKeysToDelete.length} itens`;
-        await env.DB.prepare("INSERT INTO admin_logs (admin_user_id, admin_username, action, target_info) VALUES (?, ?, ?, ?)")
-            .bind(loggedInUser.userId, loggedInUser.username, logAction, logTarget)
-            .run();
+            return new Response(JSON.stringify({ success: true, message: `${keys.length} arquivo(s) excluído(s).` }));
 
-        return new Response(JSON.stringify({ success: true, message: `Exclusão concluída com sucesso.` }), { headers: { 'Content-Type': 'application/json' } });
+        } else {
+            return new Response(JSON.stringify({ message: 'Nenhuma chave ou prefixo fornecido.' }), { status: 400 });
+        }
+
     } catch (error) {
-        console.error("Erro ao excluir itens:", error);
-        return new Response(JSON.stringify({ message: "Erro interno ao excluir itens." }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        console.error("Erro em bulk-delete:", error);
+        return new Response(JSON.stringify({ message: "Erro interno no servidor." }), { status: 500 });
     }
 }
