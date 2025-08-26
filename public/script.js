@@ -113,8 +113,15 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     if (state.token) {
         headers['Authorization'] = `Bearer ${state.token}`;
     }
+
+    // Adiciona um parâmetro aleatório para evitar cache em requisições GET
+    let finalEndpoint = endpoint;
+    if (method === 'GET') {
+        finalEndpoint += (endpoint.includes('?') ? '&' : '?') + `_=${new Date().getTime()}`;
+    }
+
     try {
-        const response = await fetch(`/api/${endpoint}`, { method, headers, body: body ? JSON.stringify(body) : null });
+        const response = await fetch(`/api/${finalEndpoint}`, { method, headers, body: body ? JSON.stringify(body) : null });
         if (response.status === 204) return null;
         const result = await response.json();
         if (!response.ok) {
