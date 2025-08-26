@@ -747,18 +747,15 @@ async function renderAdminPage(subpage) {
             
             const rolesOptions = rolesData.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
             
-            // Verifica se alguma ação é possível para decidir se a coluna 'Ações' deve ser renderizada
-            const hasUserActions = hasPermission('roles:assign') || hasPermission('users:reset_password') || hasPermission('users:delete');
-
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
                         <thead><tr>
                             <th>Usuário</th>
-                            <th>Cargo</th>
+                            ${hasPermission('roles:assign') ? '<th>Cargo</th>' : ''}
                             ${hasPermission('users:view_chat_id') ? '<th>ID do Chat</th>' : ''}
                             <th>Criado em</th>
-                            ${hasUserActions ? '<th>Ações</th>' : ''}
+                            <th>Ações</th>
                         </tr></thead>
                         <tbody>`;
 
@@ -766,13 +763,14 @@ async function renderAdminPage(subpage) {
                 const isSelf = state.username === user.username;
                 const isSuperiorOrEqual = state.level >= user.role_level;
                 const canActOnUser = !isSelf && !isSuperiorOrEqual;
+                const disabledAttribute = !canActOnUser ? 'disabled' : '';
 
                 tableHTML += `
                     <tr>
                         <td>${user.username}</td>
                         <td>
                             ${hasPermission('roles:assign') ? `
-                            <select class="role-select" data-id="${user.id}" ${!canActOnUser ? 'disabled' : ''}>
+                            <select class="role-select" data-id="${user.id}" ${disabledAttribute}>
                                 ${rolesData.length > 0 ? rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`) : `<option>${user.role_name || 'N/A'}</option>`}
                             </select>` : 
                             `<span>${user.role_name || 'N/A'}</span>`}
@@ -780,15 +778,14 @@ async function renderAdminPage(subpage) {
                         ${hasPermission('users:view_chat_id') ? `
                         <td class="chat-id-cell">
                             <span>${user.telegram_chat_id || 'N/A'}</span>
-                            ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-unlink"></i></button>` : ''}
+                            ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>` : ''}
                         </td>` : ''}
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
-                        ${hasUserActions ? `
                         <td class="actions-cell">
-                            ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${!canActOnUser ? 'disabled' : ''}>Salvar</button>` : ''}
-                            ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-key"></i></button>` : ''}
-                            ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${!canActOnUser ? 'disabled' : ''}>Excluir</button>` : ''}
-                        </td>` : ''}
+                            ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${disabledAttribute}>Salvar</button>` : ''}
+                            ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>` : ''}
+                            ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>` : ''}
+                        </td>
                     </tr>`;
             }
 
@@ -808,9 +805,9 @@ async function renderAdminPage(subpage) {
                         <thead><tr><th>Cargo</th><th>Nível</th><th>Permissões</th><th>Ações</th></tr></thead>
                         <tbody>
                             ${rolesData.map(role => {
-                                const canEditRole = hasPermission('roles:edit') && state.level < role.level && (role.level !== 1000 || state.level === 0);
-                                const canDeleteRole = hasPermission('roles:delete') && state.level < role.level && (role.level !== 1000 || state.level === 0);
-                                const actionsVisible = canEditRole || canDeleteRole;
+                                // CORREÇÃO AQUI: A lógica para desabilitar é simplificada
+                                const canActOnRole = state.level < role.level && (role.level !== 1000 || state.level === 0);
+                                const disabledAttribute = !canActOnRole ? 'disabled' : '';
 
                                 return `
                                 <tr>
@@ -818,10 +815,8 @@ async function renderAdminPage(subpage) {
                                     <td>${role.level}</td>
                                     <td class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
                                     <td class="actions-cell">
-                                        ${actionsVisible ? `
-                                            <button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${!canEditRole ? 'style="visibility:hidden;"' : ''}>Editar</button>
-                                            <button class="delete-role-btn btn-danger" data-id="${role.id}" ${!canDeleteRole ? 'style="visibility:hidden;"' : ''}>Excluir</button>
-                                        ` : 'N/A'}
+                                        ${hasPermission('roles:edit') ? `<button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${disabledAttribute}>Editar</button>` : ''}
+                                        ${hasPermission('roles:delete') ? `<button class="delete-role-btn btn-danger" data-id="${role.id}" ${disabledAttribute}>Excluir</button>` : ''}
                                     </td>
                                 </tr>`;
                             }).join('')}
