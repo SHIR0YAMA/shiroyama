@@ -4,7 +4,6 @@ export async function onRequestGet(context) {
     const { env, data } = context;
     const loggedInUser = data.user;
 
-    // A verificação de permissão está dentro do próprio arquivo para garantir.
     if (!loggedInUser || !loggedInUser.permissions.includes('can_view_files')) {
         return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão para visualizar arquivos.' }), {
             status: 403,
@@ -17,23 +16,40 @@ export async function onRequestGet(context) {
         let listComplete = false;
         let cursor = undefined;
 
-        // Loop com paginação para garantir que TODOS os arquivos sejam lidos do KV,
-        // sem depender de nenhum cache ou variável global.
+        // Loop para listar TODAS as chaves
         while(!listComplete) {
             const list = await env.ARQUIVOS_TELEGRAM.list({ cursor: cursor, limit: 1000 });
-            const files = list.keys.map(key => {
-                // Tenta extrair metadados se existirem, senão usa um valor padrão.
-                // A chave 'customMetadata' é usada pelo R2. Se for KV, pode ser diferente ou não existir.
-                const metadata = key.customMetadata || {};
-                return {
-                    name: key.name,
-                    file_size: metadata.file_size || 0,
-                    message_id: metadata.message_id || null,
-                    uploaded_at: key.uploaded
-                };
+            
+            // --- CORREÇÃO PRINCIPAL AQUI ---
+            // Para cada chave encontrada, precisamos buscar seu valor, que contém os metadados.
+            const filePromises = list.keys.map(async (key) => {
+                // Ignora chaves de placeholder de pastas
+                if (key.name.endsWith('/.placeholder')) {
+                    return { name: key.name, isPlaceholder: true };
+                }
+
+                try {
+                    // Busca o valor da chave no KV
+                    const value = await env.ARQUIVOS_TELEGRAM.get(key.name);
+                    if (value) {
+                        const metadata = JSON.parse(value);
+                        return {
+                            name: key.name,
+                            file_size: metadata.file_size || 0,
+                            message_id: metadata.message_id || null
+                        };
+                    }
+                } catch (e) {
+                    // Se o valor não for um JSON válido, retorna dados padrão
+                    console.error(`Chave '${key.name}' tem valor inválido:`, value);
+                    return { name: key.name, file_size: 0, message_id: null };
+                }
+                return null;
             });
             
-            allFiles.push(...files);
+            const filesBatch = (await Promise.all(filePromises)).filter(Boolean); // Executa todas as buscas em paralelo e remove nulos
+            allFiles.push(...filesBatch);
+            // --- FIM DA CORREÇÃO ---
             
             if (list.truncated) {
                 cursor = list.cursor;
