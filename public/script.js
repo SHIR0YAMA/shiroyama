@@ -722,7 +722,11 @@ async function renderAdminPage(subpage) {
         else if (canViewRoles) subpage = 'roles';
     }
     
-    // CORREÇÃO: Mostra as abas com base nas permissões de visualização
+    if (!canViewUsers && !canViewRoles) {
+        mainContent.innerHTML = "<p>Você não tem permissões suficientes para visualizar o painel de administração.</p>";
+        return;
+    }
+
     mainContent.innerHTML = `<h2>Painel de Administrador</h2><div class="admin-tabs">${canViewUsers ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}">Gerenciar Usuários</button>` : ''}${canViewRoles ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}">Gerenciar Cargos</button>` : ''}</div><div id="admin-content"></div>`;
     const adminContent = document.getElementById('admin-content');
     adminContent.innerHTML = '';
@@ -743,41 +747,48 @@ async function renderAdminPage(subpage) {
             
             const rolesOptions = rolesData.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
             
+            // Verifica se alguma ação é possível para decidir se a coluna 'Ações' deve ser renderizada
+            const hasUserActions = hasPermission('roles:assign') || hasPermission('users:reset_password') || hasPermission('users:delete');
+
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
                         <thead><tr>
                             <th>Usuário</th>
-                            ${hasPermission('roles:assign') ? '<th>Cargo</th>' : ''}
+                            <th>Cargo</th>
                             ${hasPermission('users:view_chat_id') ? '<th>ID do Chat</th>' : ''}
                             <th>Criado em</th>
-                            <th>Ações</th>
+                            ${hasUserActions ? '<th>Ações</th>' : ''}
                         </tr></thead>
                         <tbody>`;
 
             for (const user of usersData.users) {
-                const canActOnUser = state.level < user.role_level;
+                const isSelf = state.username === user.username;
+                const isSuperiorOrEqual = state.level >= user.role_level;
+                const canActOnUser = !isSelf && !isSuperiorOrEqual;
 
                 tableHTML += `
                     <tr>
                         <td>${user.username}</td>
-                        ${hasPermission('roles:assign') ? `
                         <td>
+                            ${hasPermission('roles:assign') ? `
                             <select class="role-select" data-id="${user.id}" ${!canActOnUser ? 'disabled' : ''}>
                                 ${rolesData.length > 0 ? rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`) : `<option>${user.role_name || 'N/A'}</option>`}
-                            </select>
-                        </td>` : `<td>${user.role_name || 'N/A'}</td>`}
+                            </select>` : 
+                            `<span>${user.role_name || 'N/A'}</span>`}
+                        </td>
                         ${hasPermission('users:view_chat_id') ? `
                         <td class="chat-id-cell">
                             <span>${user.telegram_chat_id || 'N/A'}</span>
                             ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-unlink"></i></button>` : ''}
                         </td>` : ''}
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                        ${hasUserActions ? `
                         <td class="actions-cell">
                             ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${!canActOnUser ? 'disabled' : ''}>Salvar</button>` : ''}
                             ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${!canActOnUser ? 'disabled' : ''}><i class="fas fa-key"></i></button>` : ''}
                             ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${!canActOnUser ? 'disabled' : ''}>Excluir</button>` : ''}
-                        </td>
+                        </td>` : ''}
                     </tr>`;
             }
 
@@ -808,8 +819,8 @@ async function renderAdminPage(subpage) {
                                     <td class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
                                     <td class="actions-cell">
                                         ${actionsVisible ? `
-                                            ${hasPermission('roles:edit') ? `<button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${!canEditRole ? 'disabled' : ''}>Editar</button>` : ''}
-                                            ${hasPermission('roles:delete') ? `<button class="delete-role-btn btn-danger" data-id="${role.id}" ${!canDeleteRole ? 'disabled' : ''}>Excluir</button>` : ''}
+                                            <button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${!canEditRole ? 'style="visibility:hidden;"' : ''}>Editar</button>
+                                            <button class="delete-role-btn btn-danger" data-id="${role.id}" ${!canDeleteRole ? 'style="visibility:hidden;"' : ''}>Excluir</button>
                                         ` : 'N/A'}
                                     </td>
                                 </tr>`;
@@ -866,9 +877,19 @@ function renderFilesPage(path) {
         const isFileB = itemB._isFile;
         if (isFileA && !isFileB) return 1;
         if (!isFileA && isFileB) return -1;
+        
         const sortOrder = state.sort.order === 'asc' ? 1 : -1;
-        if (state.sort.key === 'name') return nameA.localeCompare(nameB, undefined, { numeric: true }) * sortOrder;
-        if (state.sort.key === 'size') return (itemA.file_size || 0) - (itemB.file_size || 0) * sortOrder;
+        
+        if (state.sort.key === 'name') {
+            return nameA.localeCompare(nameB, undefined, { numeric: true }) * sortOrder;
+        }
+        
+        if (state.sort.key === 'size') {
+            const sizeA = itemA.file_size || 0;
+            const sizeB = itemB.file_size || 0;
+            // CORREÇÃO: Garante que a subtração ocorra antes da multiplicação
+            return (sizeA - sizeB) * sortOrder;
+        }
         return 0;
     });
 
@@ -885,8 +906,6 @@ function renderFilesPage(path) {
         div.className = 'file-item';
         const itemPath = [...path, name].join('/');
         let actionsHTML = '<div class="file-actions">';
-        
-        // CORREÇÃO: Usa a permissão unificada 'can_delete_items' para ambos os casos.
         if (item._isFile) {
             if (hasPermission('can_rename_items')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear Arquivo"><i class="fas fa-edit"></i></button>`;
             if (hasPermission('can_move_items')) actionsHTML += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover Arquivo"><i class="fas fa-folder-open"></i></button>`;
@@ -897,7 +916,6 @@ function renderFilesPage(path) {
             if (hasPermission('can_move_folders')) actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-open"></i></button>`;
             if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir Pasta"><i class="fas fa-trash"></i></button>`;
         }
-
         actionsHTML += '</div>';
         if (item._isFile) {
             div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}"><span class="file-icon">${getIconForFile(name)}</span><span class="file-name">${name}</span><span class="file-size">${formatFileSize(item.file_size)}</span>${actionsHTML}`;
