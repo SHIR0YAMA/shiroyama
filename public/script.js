@@ -724,6 +724,7 @@ async function renderAdminPage(subpage) {
     
     if (!canViewUsers && !canViewRoles) {
         mainContent.innerHTML = "<p>Você não tem permissões suficientes para visualizar o painel de administração.</p>";
+        hideLoading();
         return;
     }
 
