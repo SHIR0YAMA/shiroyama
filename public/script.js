@@ -752,7 +752,7 @@ async function renderAdminPage(subpage) {
                     <table class="admin-table">
                         <thead><tr>
                             <th>Usuário</th>
-                            ${hasPermission('roles:assign') ? '<th>Cargo</th>' : ''}
+                            <th>Cargo</th>
                             ${hasPermission('users:view_chat_id') ? '<th>ID do Chat</th>' : ''}
                             <th>Criado em</th>
                             <th>Ações</th>
@@ -805,7 +805,6 @@ async function renderAdminPage(subpage) {
                         <thead><tr><th>Cargo</th><th>Nível</th><th>Permissões</th><th>Ações</th></tr></thead>
                         <tbody>
                             ${rolesData.map(role => {
-                                // CORREÇÃO AQUI: A lógica para desabilitar é simplificada
                                 const canActOnRole = state.level < role.level && (role.level !== 1000 || state.level === 0);
                                 const disabledAttribute = !canActOnRole ? 'disabled' : '';
 
