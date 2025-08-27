@@ -748,6 +748,7 @@ async function renderAdminPage(subpage) {
             
             const rolesOptions = rolesData.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
             
+            // A estrutura do cabeçalho agora é FIXA
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
