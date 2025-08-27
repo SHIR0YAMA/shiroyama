@@ -748,7 +748,7 @@ async function renderAdminPage(subpage) {
             
             const rolesOptions = rolesData.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
             
-            // A estrutura do cabeçalho agora é FIXA
+            // CORREÇÃO DEFINITIVA: Cabeçalho da tabela é FIXO e SEMPRE tem 5 colunas.
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
@@ -767,6 +767,7 @@ async function renderAdminPage(subpage) {
                 const canActOnUser = !isSelf && !isSuperiorOrEqual;
                 const disabledAttribute = !canActOnUser ? 'disabled' : '';
 
+                // CORREÇÃO DEFINITIVA: Cada linha <tr> SEMPRE terá 5 células <td>.
                 tableHTML += `
                     <tr>
                         <td>${user.username}</td>
