@@ -678,16 +678,14 @@ async function renderAdminPage(subpage) {
     if (rolesTab) rolesTab.onclick = () => router('admin/roles');
 
     try {
-        if (subpage === 'users' && (canViewUsers || hasPermission('roles:assign'))) {
+        if (subpage === 'users' && canViewUsers) {
             const data = await apiCall('admin/users');
             const usersList = data.users;
             const rolesList = data.roles;
             
             const rolesOptions = rolesList.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
             
-            // Verifica se as colunas opcionais devem ser exibidas
-            const showChatIdColumn = hasPermission('users:view_chat_id');
-            const showActionsColumn = hasPermission('roles:assign') || hasPermission('users:reset_password') || hasPermission('users:delete');
+            const hasUserActions = hasPermission('roles:assign') || hasPermission('users:reset_password') || hasPermission('users:delete');
 
             let tableHTML = `
                 <div class="table-container">
@@ -695,9 +693,9 @@ async function renderAdminPage(subpage) {
                         <thead><tr>
                             <th>Usuário</th>
                             <th>Cargo</th>
-                            ${showChatIdColumn ? '<th>ID do Chat</th>' : ''}
+                            ${hasPermission('users:view_chat_id') ? '<th>ID do Chat</th>' : ''}
                             <th>Criado em</th>
-                            ${showActionsColumn ? '<th>Ações</th>' : ''}
+                            ${hasUserActions ? '<th>Ações</th>' : ''}
                         </tr></thead>
                         <tbody>`;
 
@@ -717,7 +715,7 @@ async function renderAdminPage(subpage) {
                             </select>` : 
                             `<span>${user.role_name || 'N/A'}</span>`}
                         </td>
-                        ${showChatIdColumn ? `
+                        ${hasPermission('users:view_chat_id') ? `
                         <td class="chat-id-cell">
                             <div class="chat-id-cell-content">
                                 <span>${user.telegram_chat_id || 'N/A'}</span>
@@ -725,7 +723,7 @@ async function renderAdminPage(subpage) {
                             </div>
                         </td>` : ''}
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
-                        ${showActionsColumn ? `
+                        ${hasUserActions ? `
                         <td class="actions-cell">
                             ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${disabledAttribute}>Salvar</button>` : ''}
                             ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>` : ''}
@@ -741,13 +739,21 @@ async function renderAdminPage(subpage) {
             const [rolesData, permissionsData] = await Promise.all([apiCall('admin/roles'), apiCall('admin/permissions')]);
             const permMap = Object.fromEntries(permissionsData.map(p => [p.name, p.description]));
             
+            // CORREÇÃO: Verifica se o usuário tem permissão para editar OU excluir cargos
+            const hasRoleActions = hasPermission('roles:edit') || hasPermission('roles:delete');
+
             adminContent.innerHTML = `
                 <div style="text-align: right; margin-bottom: 10px;">
                     ${hasPermission('roles:create') ? '<button id="create-new-role-btn">Criar Novo Cargo</button>' : ''}
                 </div>
                 <div class="table-container">
                     <table class="admin-table">
-                        <thead><tr><th>Cargo</th><th>Nível</th><th>Permissões</th><th>Ações</th></tr></thead>
+                        <thead><tr>
+                            <th>Cargo</th>
+                            <th>Nível</th>
+                            <th>Permissões</th>
+                            ${hasRoleActions ? '<th>Ações</th>' : ''}
+                        </tr></thead>
                         <tbody>
                             ${rolesData.map(role => {
                                 const canActOnRole = state.level < role.level && (role.level !== 1000 || state.level === 0);
@@ -758,10 +764,11 @@ async function renderAdminPage(subpage) {
                                     <td>${role.name}</td>
                                     <td>${role.level}</td>
                                     <td class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
+                                    ${hasRoleActions ? `
                                     <td class="actions-cell">
                                         ${hasPermission('roles:edit') ? `<button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${disabledAttribute}>Editar</button>` : ''}
                                         ${hasPermission('roles:delete') ? `<button class="delete-role-btn btn-danger" data-id="${role.id}" ${disabledAttribute}>Excluir</button>` : ''}
-                                    </td>
+                                    </td>` : ''}
                                 </tr>`;
                             }).join('')}
                         </tbody>
