@@ -656,14 +656,15 @@ async function renderAdminPage(subpage) {
     const canViewUsers = hasPermission('users:view_list');
     const canViewRoles = hasPermission('roles:view_list');
 
+    // Define a subpágina padrão com base na primeira permissão encontrada
     if (!subpage) {
         if (canViewUsers) subpage = 'users';
         else if (canViewRoles) subpage = 'roles';
     }
     
-    if (!canViewUsers && !canViewRoles) {
-        mainContent.innerHTML = "<p>Você não tem permissões suficientes para visualizar o painel de administração.</p>";
-        hideLoading();
+    // Proteção de acesso inicial
+    if ((subpage === 'users' && !canViewUsers) || (subpage === 'roles' && !canViewRoles)) {
+        mainContent.innerHTML = "<p>Você não tem permissão para visualizar esta seção.</p>";
         return;
     }
 
@@ -678,26 +679,30 @@ async function renderAdminPage(subpage) {
     if (rolesTab) rolesTab.onclick = () => router('admin/roles');
 
     try {
-        if (subpage === 'users' && canViewUsers) {
+        if (subpage === 'users') {
             const usersData = await apiCall('admin/users');
             let rolesData = [];
             if (hasPermission('roles:assign')) {
-                rolesData = await apiCall('admin/roles');
+                // Envolve a chamada secundária em seu próprio try/catch para não quebrar a página inteira
+                try {
+                    rolesData = await apiCall('admin/roles');
+                } catch (e) {
+                    console.error("Não foi possível carregar os cargos para atribuição:", e);
+                    showNotification("Aviso: A lista de cargos para atribuição não pôde ser carregada.", "error");
+                }
             }
             
             const rolesOptions = rolesData.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
             
-            const hasUserActions = hasPermission('roles:assign') || hasPermission('users:reset_password') || hasPermission('users:delete');
-
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
                         <thead><tr>
                             <th>Usuário</th>
                             <th>Cargo</th>
-                            ${hasPermission('users:view_chat_id') ? '<th>ID do Chat</th>' : ''}
+                            <th>ID do Chat</th>
                             <th>Criado em</th>
-                            ${hasUserActions ? '<th>Ações</th>' : ''}
+                            <th>Ações</th>
                         </tr></thead>
                         <tbody>`;
 
@@ -713,31 +718,31 @@ async function renderAdminPage(subpage) {
                         <td>
                             ${hasPermission('roles:assign') ? `
                             <select class="role-select" data-id="${user.id}" ${disabledAttribute}>
-                                ${rolesData.length > 0 ? rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`) : `<option>${user.role_name || 'N/A'}</option>`}
+                                ${rolesData.length > 0 ? rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`) : `<option value="${user.role_id}">${user.role_name || 'N/A'}</option>`}
                             </select>` : 
                             `<span>${user.role_name || 'N/A'}</span>`}
                         </td>
-                        ${hasPermission('users:view_chat_id') ? `
                         <td class="chat-id-cell">
                             <div class="chat-id-cell-content">
+                            ${hasPermission('users:view_chat_id') ? `
                                 <span>${user.telegram_chat_id || 'N/A'}</span>
                                 ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>` : ''}
+                            ` : '<span>-</span>'}
                             </div>
-                        </td>` : ''}
+                        </td>
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
-                        ${hasUserActions ? `
                         <td class="actions-cell">
                             ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${disabledAttribute}>Salvar</button>` : ''}
                             ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>` : ''}
                             ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>` : ''}
-                        </td>` : ''}
+                        </td>
                     </tr>`;
             }
 
             tableHTML += `</tbody></table></div>`;
             adminContent.innerHTML = tableHTML;
 
-        } else if (subpage === 'roles' && canViewRoles) {
+        } else if (subpage === 'roles') {
             const [rolesData, permissionsData] = await Promise.all([apiCall('admin/roles'), apiCall('admin/permissions')]);
             const permMap = Object.fromEntries(permissionsData.map(p => [p.name, p.description]));
             
@@ -767,8 +772,6 @@ async function renderAdminPage(subpage) {
                         </tbody>
                     </table>
                 </div>`;
-        } else {
-            adminContent.innerHTML = `<p>Você não tem permissão para ver esta seção.</p>`;
         }
     } catch (error) {
         adminContent.innerHTML = `<p style="color: #ff5555;">Erro ao carregar dados: ${error.message}</p>`;
