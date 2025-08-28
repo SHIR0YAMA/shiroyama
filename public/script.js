@@ -748,6 +748,7 @@ async function renderAdminPage(subpage) {
             
             const rolesOptions = rolesData.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
             
+            // CORREÇÃO DEFINITIVA: O cabeçalho da tabela é FIXO e SEMPRE tem 5 colunas.
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
@@ -766,6 +767,7 @@ async function renderAdminPage(subpage) {
                 const canActOnUser = !isSelf && !isSuperiorOrEqual;
                 const disabledAttribute = !canActOnUser ? 'disabled' : '';
 
+                // CORREÇÃO DEFINITIVA: Cada linha <tr> SEMPRE terá 5 células <td>.
                 tableHTML += `
                     <tr>
                         <td>${user.username}</td>
@@ -828,7 +830,6 @@ async function renderAdminPage(subpage) {
             adminContent.innerHTML = `<p>Você não tem permissão para ver esta seção.</p>`;
         }
     } catch (error) {
-        // CORREÇÃO: Passa o erro original para a mensagem
         adminContent.innerHTML = `<p style="color: #ff5555;">Erro ao carregar dados: ${error.message}</p>`;
     } finally {
         hideLoading();
