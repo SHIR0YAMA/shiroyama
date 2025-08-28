@@ -678,21 +678,13 @@ async function renderAdminPage(subpage) {
     if (rolesTab) rolesTab.onclick = () => router('admin/roles');
 
     try {
-        if (subpage === 'users' && (canViewUsers || hasPermission('roles:assign'))) {
-            const usersData = await apiCall('admin/users');
-            let rolesData = [];
-            if (hasPermission('roles:assign')) {
-                try {
-                    rolesData = await apiCall('admin/roles');
-                } catch (e) {
-                    console.error("Não foi possível carregar os cargos para atribuição:", e);
-                    showNotification("Aviso: A lista de cargos para atribuição não pôde ser carregada.", "error");
-                }
-            }
+        if (subpage === 'users' && canViewUsers) {
+            // OTIMIZAÇÃO: Apenas UMA chamada de API que retorna usuários E cargos.
+            const data = await apiCall('admin/users');
+            const usersList = data.users;
+            const rolesList = data.roles; // Pega os cargos da mesma resposta
             
-            const rolesOptions = rolesData.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
-            
-            const hasUserActions = hasPermission('roles:assign') || hasPermission('users:reset_password') || hasPermission('users:delete');
+            const rolesOptions = rolesList.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
             
             let tableHTML = `
                 <div class="table-container">
@@ -700,13 +692,13 @@ async function renderAdminPage(subpage) {
                         <thead><tr>
                             <th>Usuário</th>
                             <th>Cargo</th>
-                            ${hasPermission('users:view_chat_id') ? '<th>ID do Chat</th>' : ''}
+                            <th>ID do Chat</th>
                             <th>Criado em</th>
-                            ${hasUserActions ? '<th>Ações</th>' : ''}
+                            <th>Ações</th>
                         </tr></thead>
                         <tbody>`;
 
-            for (const user of usersData.users) {
+            for (const user of usersList) {
                 const isSelf = state.username === user.username;
                 const isSuperiorOrEqual = state.level >= user.role_level;
                 const canActOnUser = !isSelf && !isSuperiorOrEqual;
@@ -718,24 +710,24 @@ async function renderAdminPage(subpage) {
                         <td>
                             ${hasPermission('roles:assign') ? `
                             <select class="role-select" data-id="${user.id}" ${disabledAttribute}>
-                                ${rolesData.length > 0 ? rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`) : `<option>${user.role_name || 'N/A'}</option>`}
+                                ${rolesList.length > 0 ? rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`) : `<option>${user.role_name || 'N/A'}</option>`}
                             </select>` : 
                             `<span>${user.role_name || 'N/A'}</span>`}
                         </td>
-                        ${hasPermission('users:view_chat_id') ? `
                         <td class="chat-id-cell">
                             <div class="chat-id-cell-content">
+                            ${hasPermission('users:view_chat_id') ? `
                                 <span>${user.telegram_chat_id || 'N/A'}</span>
                                 ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>` : ''}
+                            ` : '<span>-</span>'}
                             </div>
-                        </td>` : ''}
+                        </td>
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
-                        ${hasUserActions ? `
                         <td class="actions-cell">
                             ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${disabledAttribute}>Salvar</button>` : ''}
                             ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>` : ''}
                             ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>` : ''}
-                        </td>` : ''}
+                        </td>
                     </tr>`;
             }
 
