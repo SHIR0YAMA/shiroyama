@@ -99,14 +99,7 @@
         .admin-table td .actions-cell button { padding: 8px 12px; flex-shrink: 0; }
         .admin-table td .actions-cell .btn-icon { font-size: 1em; padding: 8px; width: 36px; height: 36px; }
         
-        /* CORREÇÃO DEFINITIVA: Aplica o flexbox a um <div> interno, não ao <td> */
-        .chat-id-cell-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 10px;
-            width: 100%; /* Garante que o div ocupe todo o espaço da célula */
-        }
+        .chat-id-cell-content { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; }
         .chat-id-cell-content .btn-icon { font-size: 0.9em; padding: 6px; width: 30px; height: 30px; flex-shrink: 0; }
 
         /* Estilos para o modal de permissões com dropdowns */
@@ -239,6 +232,7 @@
                 <input type="number" id="role-level" min="1">
             </div>
             <h3>Permissões</h3>
+            <!-- O container de permissões será preenchido pelo script.js -->
             <div id="permissions-container"></div>
             <div class="modal-footer">
                 <button id="role-modal-cancel-btn">Cancelar</button>

@@ -716,12 +716,12 @@ async function renderAdminPage(subpage) {
                             `<span>${user.role_name || 'N/A'}</span>`}
                         </td>
                         <td class="chat-id-cell">
-                            ${hasPermission('users:view_chat_id') ? `
                             <div class="chat-id-cell-content">
+                            ${hasPermission('users:view_chat_id') ? `
                                 <span>${user.telegram_chat_id || 'N/A'}</span>
                                 ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>` : ''}
-                            </div>
                             ` : '<span>-</span>'}
+                            </div>
                         </td>
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
                         <td class="actions-cell">
