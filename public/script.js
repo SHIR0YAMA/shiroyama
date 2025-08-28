@@ -114,7 +114,6 @@ async function apiCall(endpoint, method = 'GET', body = null) {
         headers['Authorization'] = `Bearer ${state.token}`;
     }
 
-    // Adiciona um parâmetro aleatório para evitar cache em requisições GET
     let finalEndpoint = endpoint;
     if (method === 'GET') {
         finalEndpoint += (endpoint.includes('?') ? '&' : '?') + `_=${new Date().getTime()}`;
@@ -246,21 +245,9 @@ async function handleSingleForward(messageId) {
 }
 
 // --- 7. OPERAÇÕES DE ARQUIVO (Modais) ---
-let moveState = {
-    oldKeys: [],
-    destinationPath: null,
-    currentPath: [],
-    isFolder: false
-};
-let renameState = {
-    oldKey: null,
-    newKey: null,
-    isFolder: false
-};
-let roleState = {
-    id: null,
-    allPermissions: []
-};
+let moveState = { oldKeys: [], destinationPath: null, currentPath: [], isFolder: false };
+let renameState = { oldKey: null, newKey: null, isFolder: false };
+let roleState = { id: null, allPermissions: [] };
 
 function openMoveModal(keysToMove, isFolder = false) {
     moveState.oldKeys = Array.isArray(keysToMove) ? keysToMove : [keysToMove];
@@ -284,9 +271,7 @@ function openMoveModal(keysToMove, isFolder = false) {
     moveFileModal.classList.add('show');
 }
 
-function closeMoveModal() {
-    moveFileModal.classList.remove('show');
-}
+function closeMoveModal() { moveFileModal.classList.remove('show'); }
 
 function renderFolderNavigator(folderToExclude = null) {
     const navContainer = document.getElementById('folder-navigation');
@@ -318,20 +303,10 @@ async function confirmMoveFile() {
     showLoading();
     try {
         if (!moveState.isFolder) {
-            await apiCall('admin/bulk-move', 'POST', {
-                oldKeys: moveState.oldKeys,
-                destinationPath: moveState.destinationPath
-            });
-        } 
-        else {
-            await apiCall('admin/rename', 'POST', {
-                oldKey: moveState.oldKeys[0],
-                newKey: `${moveState.destinationPath}/${moveState.oldKeys[0].split('/').pop()}`,
-                isFolder: true,
-                action: 'move'
-            });
+            await apiCall('admin/bulk-move', 'POST', { oldKeys: moveState.oldKeys, destinationPath: moveState.destinationPath });
+        } else {
+            await apiCall('admin/rename', 'POST', { oldKey: moveState.oldKeys[0], newKey: `${moveState.destinationPath}/${moveState.oldKeys[0].split('/').pop()}`, isFolder: true, action: 'move' });
         }
-        
         showNotification("Item(ns) movido(s) com sucesso!", "success");
         closeMoveModal();
         await refreshFiles();
@@ -349,26 +324,19 @@ function openCreateFolderModal(fromMoveModal = false) {
     document.getElementById('new-folder-name').focus();
 }
 
-function closeCreateFolderModal() {
-    createFolderModal.classList.remove('show');
-}
+function closeCreateFolderModal() { createFolderModal.classList.remove('show'); }
 
 async function confirmCreateFolder() {
     const folderNameInput = document.getElementById('new-folder-name');
     const newFolderName = folderNameInput.value.trim();
-
     if (!newFolderName || newFolderName.includes('/') || newFolderName === '.placeholder') {
-        showNotification("Nome de pasta inválido.", "error");
-        return;
+        showNotification("Nome de pasta inválido.", "error"); return;
     }
 
     showLoading();
     const wasOpenedFromMoveModal = createFolderModal.dataset.fromMoveModal === 'true';
-
-    // CORREÇÃO AQUI: Decodifica o caminho da URL antes de usá-lo
     const currentPathString = decodeURIComponent(window.location.hash.slice(2) || '');
     const basePath = wasOpenedFromMoveModal ? moveState.currentPath : currentPathString.split('/').filter(p => p);
-    
     const fullPath = [...basePath, newFolderName].join('/');
 
     try {
@@ -376,7 +344,6 @@ async function confirmCreateFolder() {
         showNotification(`Pasta "${newFolderName}" criada!`, "success");
         closeCreateFolderModal();
         await refreshFiles();
-
         if (wasOpenedFromMoveModal) {
             moveState.currentPath = [...basePath, newFolderName];
             renderFolderNavigator();
@@ -400,30 +367,22 @@ function openRenameModal(key, isFolder) {
     renameInput.focus();
 }
 
-function closeRenameModal() {
-    renameModal.classList.remove('show');
-}
+function closeRenameModal() { renameModal.classList.remove('show'); }
 
 async function confirmRename() {
     const newName = document.getElementById('rename-new-name').value.trim();
     if (!newName || newName.includes('/')) {
-        showNotification("Nome inválido.", "error");
-        return;
+        showNotification("Nome inválido.", "error"); return;
     }
     const pathParts = renameState.oldKey.split('/');
     pathParts.pop();
     const newKey = [...pathParts, newName].join('/');
     if (renameState.oldKey === newKey) {
-        closeRenameModal();
-        return;
+        closeRenameModal(); return;
     }
     showLoading();
     try {
-        await apiCall('admin/rename', 'POST', {
-            oldKey: renameState.oldKey,
-            newKey,
-            isFolder: renameState.isFolder
-        });
+        await apiCall('admin/rename', 'POST', { oldKey: renameState.oldKey, newKey, isFolder: renameState.isFolder });
         showNotification("Renomeado com sucesso!", "success");
         closeRenameModal();
         await refreshFiles();
@@ -437,11 +396,7 @@ async function confirmRename() {
 async function deleteItems(keys, isFolder = false, folderName = '') {
     const itemsToDelete = Array.isArray(keys) ? keys : [keys];
     const keyCount = itemsToDelete.length;
-
-    let message = isFolder ?
-        `Tem certeza que deseja excluir a pasta "${folderName}" e todo o seu conteúdo? Esta ação é irreversível.` :
-        `Tem certeza que deseja excluir ${keyCount} item(ns)? Esta ação é irreversível.`;
-    
+    let message = isFolder ? `Tem certeza que deseja excluir a pasta "${folderName}" e todo o seu conteúdo? Esta ação é irreversível.` : `Tem certeza que deseja excluir ${keyCount} item(ns)? Esta ação é irreversível.`;
     if (!confirm(message)) return;
 
     showLoading();
@@ -477,12 +432,7 @@ async function openRoleModal(role = null) {
 
     const groupedPermissions = roleState.allPermissions.reduce((acc, perm) => {
         const group = perm.name.split(':')[0].split('_')[0];
-        const categoryMap = {
-            'users': 'users',
-            'roles': 'roles',
-            'items': 'arquivos',
-            'can': 'arquivos'
-        };
+        const categoryMap = { 'users': 'users', 'roles': 'roles', 'items': 'arquivos', 'can': 'arquivos' };
         const category = categoryMap[group] || 'outros';
         if (!acc[category]) acc[category] = [];
         acc[category].push(perm);
@@ -495,21 +445,15 @@ async function openRoleModal(role = null) {
 
     orderedCategories.forEach(category => {
         if (groupedPermissions[category]) {
-            permsHTML += `
-                <details class="permission-group" open>
-                    <summary>
-                        <input type="checkbox" class="group-checkbox" data-group="${category}">
-                        <strong>${categoryNames[category]}</strong>
-                    </summary>
-                    <div class="permission-list">`;
-            groupedPermissions[category].forEach(perm => {
+            let categoryPermissions = groupedPermissions[category];
+            if (category === 'arquivos' && groupedPermissions['items']) {
+                categoryPermissions = [...categoryPermissions, ...groupedPermissions['items']];
+            }
+            permsHTML += `<details class="permission-group" open><summary><input type="checkbox" class="group-checkbox" data-group="${category}"><strong>${categoryNames[category]}</strong></summary><div class="permission-list">`;
+            categoryPermissions.forEach(perm => {
                 const isChecked = role ? role.permissions.includes(perm.name) : false;
                 const label = perm.description || perm.name;
-                permsHTML += `
-                    <div class="permission-item">
-                        <input type="checkbox" id="perm-${perm.id}" class="perm-checkbox" data-group="${category}" value="${perm.id}" data-name="${perm.name}" ${isChecked ? 'checked' : ''}>
-                        <label for="perm-${perm.id}">${label}</label>
-                    </div>`;
+                permsHTML += `<div class="permission-item"><input type="checkbox" id="perm-${perm.id}" class="perm-checkbox" data-group="${category}" value="${perm.id}" data-name="${perm.name}" ${isChecked ? 'checked' : ''}><label for="perm-${perm.id}">${label}</label></div>`;
             });
             permsHTML += `</div></details>`;
         }
@@ -531,7 +475,6 @@ async function openRoleModal(role = null) {
     permsContainer.addEventListener('change', e => {
         const checkbox = e.target;
         if (!checkbox.classList.contains('perm-checkbox')) return;
-        
         const changedPermName = checkbox.dataset.name;
         const isChecked = checkbox.checked;
 
@@ -570,18 +513,14 @@ async function openRoleModal(role = null) {
     roleModal.classList.add('show');
 }
 
-function closeRoleModal() {
-    roleModal.classList.remove('show');
-}
+function closeRoleModal() { roleModal.classList.remove('show'); }
 
 async function confirmSaveRole() {
     const name = document.getElementById('role-name').value;
     const level = parseInt(document.getElementById('role-level').value);
     const selectedPerms = Array.from(document.querySelectorAll('#permissions-container .perm-checkbox:checked')).map(el => parseInt(el.value));
-    
     const endpoint = roleState.id ? `admin/roles/${roleState.id}` : `admin/roles`;
     const method = roleState.id ? 'PUT' : 'POST';
-
     showLoading();
     try {
         await apiCall(endpoint, method, { name, level, permissions: selectedPerms });
@@ -748,7 +687,6 @@ async function renderAdminPage(subpage) {
             
             const rolesOptions = rolesData.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
             
-            // CORREÇÃO DEFINITIVA: O cabeçalho da tabela é FIXO e SEMPRE tem 5 colunas.
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
@@ -767,7 +705,6 @@ async function renderAdminPage(subpage) {
                 const canActOnUser = !isSelf && !isSuperiorOrEqual;
                 const disabledAttribute = !canActOnUser ? 'disabled' : '';
 
-                // CORREÇÃO DEFINITIVA: Cada linha <tr> SEMPRE terá 5 células <td>.
                 tableHTML += `
                     <tr>
                         <td>${user.username}</td>
@@ -780,8 +717,10 @@ async function renderAdminPage(subpage) {
                         </td>
                         <td class="chat-id-cell">
                             ${hasPermission('users:view_chat_id') ? `
-                            <span>${user.telegram_chat_id || 'N/A'}</span>
-                            ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>` : ''}
+                            <div class="chat-id-cell-content">
+                                <span>${user.telegram_chat_id || 'N/A'}</span>
+                                ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>` : ''}
+                            </div>
                             ` : '<span>-</span>'}
                         </td>
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
@@ -875,19 +814,9 @@ function renderFilesPage(path) {
         const isFileB = itemB._isFile;
         if (isFileA && !isFileB) return 1;
         if (!isFileA && isFileB) return -1;
-        
         const sortOrder = state.sort.order === 'asc' ? 1 : -1;
-        
-        if (state.sort.key === 'name') {
-            return nameA.localeCompare(nameB, undefined, { numeric: true }) * sortOrder;
-        }
-        
-        if (state.sort.key === 'size') {
-            const sizeA = itemA.file_size || 0;
-            const sizeB = itemB.file_size || 0;
-            // CORREÇÃO: Garante que a subtração ocorra antes da multiplicação
-            return (sizeA - sizeB) * sortOrder;
-        }
+        if (state.sort.key === 'name') return nameA.localeCompare(nameB, undefined, { numeric: true }) * sortOrder;
+        if (state.sort.key === 'size') return (itemA.file_size || 0) - (itemB.file_size || 0) * sortOrder;
         return 0;
     });
 
@@ -1116,7 +1045,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let buttonsHTML = `<span>${selected.length} item(ns) selecionado(s)</span>`;
         if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
         if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`;
-        if (hasPermission('items:delete_files')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`;
+        if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`;
         bulkActionsContainer.innerHTML = buttonsHTML;
         if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
         if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys, false);
