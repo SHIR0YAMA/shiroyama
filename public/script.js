@@ -687,15 +687,18 @@ async function renderAdminPage(subpage) {
             
             const rolesOptions = rolesData.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
             
+            // CORREÇÃO: Verifica se o usuário tem QUALQUER permissão de ação
+            const hasUserActions = hasPermission('roles:assign') || hasPermission('users:reset_password') || hasPermission('users:delete');
+
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
                         <thead><tr>
                             <th>Usuário</th>
                             <th>Cargo</th>
-                            ${hasPermission('users:view_chat_id') ? '<th>ID do Chat</th>' : ''}
+                            <th>ID do Chat</th>
                             <th>Criado em</th>
-                            <th>Ações</th>
+                            ${hasUserActions ? '<th>Ações</th>' : ''}
                         </tr></thead>
                         <tbody>`;
 
@@ -715,19 +718,21 @@ async function renderAdminPage(subpage) {
                             </select>` : 
                             `<span>${user.role_name || 'N/A'}</span>`}
                         </td>
-                        ${hasPermission('users:view_chat_id') ? `
                         <td class="chat-id-cell">
                             <div class="chat-id-cell-content">
+                            ${hasPermission('users:view_chat_id') ? `
                                 <span>${user.telegram_chat_id || 'N/A'}</span>
                                 ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>` : ''}
+                            ` : '<span>-</span>'}
                             </div>
-                        </td>` : ''}
+                        </td>
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                        ${hasUserActions ? `
                         <td class="actions-cell">
                             ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${disabledAttribute}>Salvar</button>` : ''}
                             ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>` : ''}
                             ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>` : ''}
-                        </td>
+                        </td>` : ''}
                     </tr>`;
             }
 
