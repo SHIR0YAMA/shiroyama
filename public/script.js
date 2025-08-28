@@ -767,59 +767,68 @@ async function renderAdminPage(subpage) {
                 const disabledAttribute = !canActOnUser ? 'disabled' : '';
 
                 tableHTML += `
-                    <tr data-user-id="${user.id}">
+                    <tr>
                         <td>${user.username}</td>
-                        <td class="role-cell">
+                        <td>
+                            ${hasPermission('roles:assign') ? `
                             <select class="role-select" data-id="${user.id}" ${disabledAttribute}>
                                 ${rolesData.length > 0 ? rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`) : `<option>${user.role_name || 'N/A'}</option>`}
-                            </select>
-                            <span class="role-text" style="display:none;">${user.role_name || 'N/A'}</span>
+                            </select>` : 
+                            `<span>${user.role_name || 'N/A'}</span>`}
                         </td>
                         <td class="chat-id-cell">
+                            ${hasPermission('users:view_chat_id') ? `
                             <span>${user.telegram_chat_id || 'N/A'}</span>
-                            <button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>
+                            ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>` : ''}
+                            ` : '<span>-</span>'}
                         </td>
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
                         <td class="actions-cell">
-                            <button class="save-user-role-btn" data-id="${user.id}" ${disabledAttribute}>Salvar</button>
-                            <button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>
-                            <button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>
+                            ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${disabledAttribute}>Salvar</button>` : ''}
+                            ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>` : ''}
+                            ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>` : ''}
                         </td>
                     </tr>`;
             }
 
             tableHTML += `</tbody></table></div>`;
             adminContent.innerHTML = tableHTML;
-            
-            // Pós-renderização para ajustar a UI com base nas permissões
-            adminContent.querySelectorAll('tr[data-user-id]').forEach(row => {
-                if (!hasPermission('roles:assign')) {
-                    row.querySelector('.role-select').style.display = 'none';
-                    row.querySelector('.role-text').style.display = 'inline';
-                    row.querySelector('.save-user-role-btn').style.display = 'none';
-                }
-                if (!hasPermission('users:view_chat_id')) {
-                    row.querySelector('.chat-id-cell').innerHTML = '<span>-</span>';
-                } else if (!user.telegram_chat_id || !hasPermission('users:unlink_telegram')) {
-                    const unlinkBtn = row.querySelector('.unlink-telegram-btn');
-                    if (unlinkBtn) unlinkBtn.style.display = 'none';
-                }
-                if (!hasPermission('users:reset_password')) {
-                    const resetBtn = row.querySelector('.reset-password-btn');
-                    if (resetBtn) resetBtn.style.display = 'none';
-                }
-                if (!hasPermission('users:delete')) {
-                    const deleteBtn = row.querySelector('.delete-user-btn');
-                    if (deleteBtn) deleteBtn.style.display = 'none';
-                }
-            });
 
         } else if (subpage === 'roles' && canViewRoles) {
-            // ... (código da tabela de cargos, que está correto)
+            const [rolesData, permissionsData] = await Promise.all([apiCall('admin/roles'), apiCall('admin/permissions')]);
+            const permMap = Object.fromEntries(permissionsData.map(p => [p.name, p.description]));
+            
+            adminContent.innerHTML = `
+                <div style="text-align: right; margin-bottom: 10px;">
+                    ${hasPermission('roles:create') ? '<button id="create-new-role-btn">Criar Novo Cargo</button>' : ''}
+                </div>
+                <div class="table-container">
+                    <table class="admin-table">
+                        <thead><tr><th>Cargo</th><th>Nível</th><th>Permissões</th><th>Ações</th></tr></thead>
+                        <tbody>
+                            ${rolesData.map(role => {
+                                const canActOnRole = state.level < role.level && (role.level !== 1000 || state.level === 0);
+                                const disabledAttribute = !canActOnRole ? 'disabled' : '';
+
+                                return `
+                                <tr>
+                                    <td>${role.name}</td>
+                                    <td>${role.level}</td>
+                                    <td class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
+                                    <td class="actions-cell">
+                                        ${hasPermission('roles:edit') ? `<button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${disabledAttribute}>Editar</button>` : ''}
+                                        ${hasPermission('roles:delete') ? `<button class="delete-role-btn btn-danger" data-id="${role.id}" ${disabledAttribute}>Excluir</button>` : ''}
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>`;
         } else {
             adminContent.innerHTML = `<p>Você não tem permissão para ver esta seção.</p>`;
         }
     } catch (error) {
+        // CORREÇÃO: Passa o erro original para a mensagem
         adminContent.innerHTML = `<p style="color: #ff5555;">Erro ao carregar dados: ${error.message}</p>`;
     } finally {
         hideLoading();
