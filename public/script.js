@@ -678,23 +678,26 @@ async function renderAdminPage(subpage) {
     if (rolesTab) rolesTab.onclick = () => router('admin/roles');
 
     try {
-        if (subpage === 'users' && canViewUsers) {
-            // OTIMIZAÇÃO: Apenas UMA chamada de API que retorna usuários E cargos.
+        if (subpage === 'users' && (canViewUsers || hasPermission('roles:assign'))) {
             const data = await apiCall('admin/users');
             const usersList = data.users;
-            const rolesList = data.roles; // Pega os cargos da mesma resposta
+            const rolesList = data.roles;
             
             const rolesOptions = rolesList.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
             
+            // Verifica se as colunas opcionais devem ser exibidas
+            const showChatIdColumn = hasPermission('users:view_chat_id');
+            const showActionsColumn = hasPermission('roles:assign') || hasPermission('users:reset_password') || hasPermission('users:delete');
+
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
                         <thead><tr>
                             <th>Usuário</th>
                             <th>Cargo</th>
-                            <th>ID do Chat</th>
+                            ${showChatIdColumn ? '<th>ID do Chat</th>' : ''}
                             <th>Criado em</th>
-                            <th>Ações</th>
+                            ${showActionsColumn ? '<th>Ações</th>' : ''}
                         </tr></thead>
                         <tbody>`;
 
@@ -714,20 +717,20 @@ async function renderAdminPage(subpage) {
                             </select>` : 
                             `<span>${user.role_name || 'N/A'}</span>`}
                         </td>
+                        ${showChatIdColumn ? `
                         <td class="chat-id-cell">
                             <div class="chat-id-cell-content">
-                            ${hasPermission('users:view_chat_id') ? `
                                 <span>${user.telegram_chat_id || 'N/A'}</span>
                                 ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>` : ''}
-                            ` : '<span>-</span>'}
                             </div>
-                        </td>
+                        </td>` : ''}
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                        ${showActionsColumn ? `
                         <td class="actions-cell">
                             ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${disabledAttribute}>Salvar</button>` : ''}
                             ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>` : ''}
                             ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>` : ''}
-                        </td>
+                        </td>` : ''}
                     </tr>`;
             }
 
