@@ -51,9 +51,9 @@ async function handlePost(context) {
             const wasAllowed = originalAllowedRoleIds.includes(role.id);
             const isNowAllowed = roleIds.includes(role.id);
 
-            // Se a permissão está sendo removida para um cargo superior/igual, bloqueia
+            // Se a permissão está sendo REMOVIDA de um cargo superior/igual, bloqueia
             if (wasAllowed && !isNowAllowed && role.level <= loggedInUser.level) {
-                 return new Response(JSON.stringify({ message: `Você não pode remover a permissão de um cargo com hierarquia superior ou igual à sua (Nível ${role.level}).` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+                 return new Response(JSON.stringify({ message: `Você não pode remover a permissão de um cargo com hierarquia superior ou igual à sua.` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
             }
         }
 

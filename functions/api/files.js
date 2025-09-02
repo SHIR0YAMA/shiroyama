@@ -12,16 +12,14 @@ export async function onRequestGet(context) {
     }
 
     try {
-        // 1. Busca todas as regras de permissão de pastas e todas as chaves do KV em paralelo
         const [permsResult, kvListResult] = await Promise.all([
             env.DB.prepare("SELECT role_id, folder_path FROM folder_permissions").all(),
-            env.ARQUIVOS_TELEGRAM.list({ limit: 1000 }) // Para simplicidade, assumimos menos de 1000 chaves. Adicionar paginação se necessário.
+            env.ARQUIVOS_TELEGRAM.list({ limit: 1000 }) // Para simplicidade, assumimos menos de 1000 chaves
         ]);
 
         const folderPerms = permsResult.results;
         const allKeys = kvListResult.keys;
 
-        // Cria um mapa de pastas restritas para consulta rápida
         const restrictedFolders = {};
         folderPerms.forEach(p => {
             if (!restrictedFolders[p.folder_path]) {
@@ -31,23 +29,28 @@ export async function onRequestGet(context) {
         });
 
         const isOwner = loggedInUser.level === 0;
+        
+        // A lista de todas as pastas que realmente existem, antes do filtro de permissão
+        const allExistingFolders = [...new Set(allKeys.map(k => k.name.substring(0, k.name.lastIndexOf('/'))).filter(Boolean))];
 
-        // 2. Filtra a lista de chaves com base nas permissões do usuário
+        // Filtra as chaves com base nas permissões do usuário
         const accessibleKeys = allKeys.filter(key => {
             if (isOwner) return true; // Dono vê tudo
 
-            const pathParts = key.name.split('/');
-            pathParts.pop();
-            const folderPath = pathParts.join('/');
+            const folderPath = key.name.substring(0, key.name.lastIndexOf('/'));
             if (!folderPath) return true; // Arquivo na raiz é sempre visível
 
+            // Verifica se a pasta tem alguma restrição
             if (restrictedFolders[folderPath]) {
+                // Se for restrita, o usuário precisa ter um dos cargos permitidos
                 return restrictedFolders[folderPath].includes(loggedInUser.roleId);
             }
+            
+            // Se a pasta não está na lista de restritas, é pública
             return true;
         });
 
-        // 3. Obtém os metadados apenas para as chaves acessíveis
+        // Obtém os metadados apenas para as chaves acessíveis
         const filePromises = accessibleKeys.map(async (key) => {
             if (key.name.endsWith('/.placeholder')) {
                 return { name: key.name, isPlaceholder: true };
@@ -70,10 +73,7 @@ export async function onRequestGet(context) {
         });
 
         const accessibleFilesWithMetadata = (await Promise.all(filePromises)).filter(Boolean);
-
-        // 4. Obtém a lista de todas as pastas que realmente existem para a UI
-        const allExistingFolders = [...new Set(allKeys.map(k => k.name.substring(0, k.name.lastIndexOf('/'))).filter(Boolean))];
-
+        
         const headers = new Headers({
             'Content-Type': 'application/json',
             'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -83,7 +83,7 @@ export async function onRequestGet(context) {
 
         return new Response(JSON.stringify({ 
             files: accessibleFilesWithMetadata,
-            allFolders: allExistingFolders 
+            allFolders: allExistingFolders // Envia TODAS as pastas para o frontend poder checar se uma pasta existe
         }), { headers: headers });
 
     } catch (error) {

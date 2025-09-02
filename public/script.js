@@ -541,9 +541,15 @@ async function openFolderPermsModal(folderPath) {
         let rolesHTML = '';
         allRoles.forEach(role => {
             const isChecked = folderPerms.allowedRoleIds.includes(role.id);
-            const isDisabled = state.level >= role.level;
+            const isSuperiorOrEqual = state.level >= role.level;
+            const isDisabled = isSuperiorOrEqual && isChecked;
+
+            let title = '';
+            if (isDisabled) {
+                title = "Você não pode remover a permissão de um cargo superior ou igual ao seu.";
+            }
             
-            rolesHTML += `<div><input type="checkbox" id="role-perm-${role.id}" value="${role.id}" ${isChecked ? 'checked' : ''} ${isDisabled ? 'disabled' : ''}><label for="role-perm-${role.id}"> ${role.name} (Nível ${role.level})</label></div>`;
+            rolesHTML += `<div title="${title}"><input type="checkbox" id="role-perm-${role.id}" value="${role.id}" ${isChecked ? 'checked' : ''} ${isDisabled ? 'disabled' : ''}><label for="role-perm-${role.id}"> ${role.name} (Nível ${role.level})</label></div>`;
         });
         rolesContainer.innerHTML = rolesHTML || 'Nenhum cargo encontrado.';
     } catch (error) {
@@ -824,19 +830,20 @@ function renderFilesPage(path) {
     if (hasPermission('can_create_folders')) controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`;
     controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div>`;
     
-    // VERIFICAÇÃO DE ACESSO A PASTA
     const currentPathStr = path.join('/');
     const content = getContentForPath(path);
-    
-    // Cenário 1: Pasta não existe no sistema
-    if (path.length > 0 && !state.allFolders.includes(currentPathStr) && Object.keys(content).length === 0) {
+    const folderExistsSystemWide = state.allFolders.includes(currentPathStr);
+    const userCanSeeFolderContent = Object.keys(content).length > 0;
+
+    // Cenário 1: URL aponta para uma pasta que não existe no sistema
+    if (path.length > 0 && !folderExistsSystemWide) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Pasta Inexistente</h2><p>A pasta "${currentPathStr}" não foi encontrada no sistema.</p></div>`;
         hideLoading();
         return;
     }
     
-    // Cenário 2: Pasta existe mas o usuário não tem acesso (não há conteúdo visível para ele)
-    if (path.length > 0 && state.allFolders.includes(currentPathStr) && Object.keys(content).length === 0) {
+    // Cenário 2: URL aponta para uma pasta que existe, mas o usuário não tem acesso a ela (o backend filtrou)
+    if (path.length > 0 && folderExistsSystemWide && !userCanSeeFolderContent) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Acesso Negado</h2><p>Você não tem permissão para visualizar o conteúdo da pasta "${currentPathStr}".</p></div>`;
         hideLoading();
         return;
