@@ -54,7 +54,7 @@
         .file-name { flex-grow: 1; word-break: break-all; }
         a.file-name { display: inline-block; }
         .file-size { flex-shrink: 0; flex-basis: 100px; text-align: right; color: #bd93f9; }
-        .file-actions { flex-shrink: 0; flex-basis: 160px; text-align: center; display: flex; justify-content: flex-end; gap: 10px; }
+        .file-actions { flex-shrink: 0; flex-basis: 200px; text-align: center; display: flex; justify-content: flex-end; gap: 10px; } /* Aumentado o basis para acomodar o novo botão */
         .btn-icon { background: none; border: none; color: #8be9fd; font-size: 1.2em; cursor: pointer; padding: 5px; width: 40px; height: 40px; border-radius: 50%; transition: background-color 0.2s, color 0.2s; }
         .btn-icon:hover { background-color: #6272a4; color: #f8f8f2; }
         .btn-icon.danger:hover { background-color: #ff5555; }
@@ -76,7 +76,7 @@
         .toast.error { border-left-color: #ff5555; }
         .toast.info { border-left-color: #8be9fd; }
         .modal-content { text-align: left; }
-        #folder-navigation { min-height: 200px; max-height: 40vh; overflow-y: auto; background-color: #282a36; border: 1px solid #6272a4; border-radius: 5px; padding: 10px; margin-top: 15px; }
+        #folder-navigation, #folder-perms-roles-container { min-height: 200px; max-height: 40vh; overflow-y: auto; background-color: #282a36; border: 1px solid #6272a4; border-radius: 5px; padding: 10px; margin-top: 15px; }
         #folder-navigation ul { list-style: none; padding: 0; margin: 0; }
         #folder-navigation li { padding: 8px 12px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; gap: 10px; }
         #folder-navigation li:hover, #folder-navigation li.selected { background-color: #6272a4; }
@@ -93,11 +93,14 @@
         .admin-table th { color: #50fa7b; font-size: 14px; text-transform: uppercase; }
         .admin-table tr:hover { background-color: #3b3e50; }
         .admin-table td { font-size: 15px; }
+        
+        /* CORREÇÃO DE LAYOUT: Define larguras das colunas */
         .admin-table .col-user { width: 20%; }
         .admin-table .col-role { width: 25%; }
         .admin-table .col-chat-id { width: 20%; }
         .admin-table .col-created { width: 15%; }
         .admin-table .col-actions { width: 20%; }
+        
         .admin-table td .role-select { background-color: #282a36; color: #f8f8f2; border: 1px solid #6272a4; border-radius: 5px; padding: 8px; font-size: 14px; width: 100%; }
         .admin-table td .actions-cell { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; }
         .admin-table td .actions-cell button { padding: 8px 12px; flex-shrink: 0; }
@@ -114,7 +117,7 @@
         .permission-group summary:hover { background-color: #3b3e50; }
         .permission-list { padding-left: 35px; margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
         .permission-item { display: flex; align-items: center; gap: 8px; }
-        
+
         /* --- FIM DOS ESTILOS DO PAINEL DE ADMIN --- */
 
         /* --- ESTILOS PARA O ÍCONE DE CARREGAMENTO --- */
@@ -254,8 +257,7 @@
             </div>
         </div>
     </div>
-    
-    <!-- NOVO MODAL PARA PERMISSÕES DE PASTAS -->
+
     <div id="folder-perms-modal" class="modal-overlay">
         <div class="modal-content">
             <span id="folder-perms-close-btn" class="modal-close-btn">×</span>
