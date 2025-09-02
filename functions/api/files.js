@@ -12,12 +12,10 @@ export async function onRequestGet(context) {
     }
 
     try {
-        // --- NOVA LÓGICA DE PERMISSÕES DE PASTAS ---
-
         // 1. Busca todas as regras de permissão de pastas e todas as chaves do KV em paralelo
         const [permsResult, kvListResult] = await Promise.all([
             env.DB.prepare("SELECT role_id, folder_path FROM folder_permissions").all(),
-            env.ARQUIVOS_TELEGRAM.list({ limit: 1000 }) // Para simplicidade, limitamos a 1000. Adicionar paginação se necessário.
+            env.ARQUIVOS_TELEGRAM.list({ limit: 1000 }) // Para simplicidade, assumimos menos de 1000 chaves. Adicionar paginação se necessário.
         ]);
 
         const folderPerms = permsResult.results;
@@ -32,19 +30,20 @@ export async function onRequestGet(context) {
             restrictedFolders[p.folder_path].push(p.role_id);
         });
 
+        const isOwner = loggedInUser.level === 0;
+
         // 2. Filtra a lista de chaves com base nas permissões do usuário
         const accessibleKeys = allKeys.filter(key => {
-            const pathParts = key.name.split('/');
-            pathParts.pop(); // Remove o nome do arquivo, sobrando o caminho
-            const folderPath = pathParts.join('/');
+            if (isOwner) return true; // Dono vê tudo
 
-            // Se a pasta está na lista de restritas
+            const pathParts = key.name.split('/');
+            pathParts.pop();
+            const folderPath = pathParts.join('/');
+            if (!folderPath) return true; // Arquivo na raiz é sempre visível
+
             if (restrictedFolders[folderPath]) {
-                // O usuário só pode ver se o ID do seu cargo estiver na lista de permissões da pasta
                 return restrictedFolders[folderPath].includes(loggedInUser.roleId);
             }
-            
-            // Se a pasta não é restrita, é pública para quem tem 'can_view_files'
             return true;
         });
 
@@ -70,12 +69,10 @@ export async function onRequestGet(context) {
             return null;
         });
 
-        const accessibleFiles = (await Promise.all(filePromises)).filter(Boolean);
+        const accessibleFilesWithMetadata = (await Promise.all(filePromises)).filter(Boolean);
 
-        // 4. Obtém a lista de todas as pastas únicas que realmente existem (para a UI)
+        // 4. Obtém a lista de todas as pastas que realmente existem para a UI
         const allExistingFolders = [...new Set(allKeys.map(k => k.name.substring(0, k.name.lastIndexOf('/'))).filter(Boolean))];
-
-        // --- FIM DA NOVA LÓGICA ---
 
         const headers = new Headers({
             'Content-Type': 'application/json',
@@ -85,7 +82,7 @@ export async function onRequestGet(context) {
         });
 
         return new Response(JSON.stringify({ 
-            files: accessibleFiles,
+            files: accessibleFilesWithMetadata,
             allFolders: allExistingFolders 
         }), { headers: headers });
 

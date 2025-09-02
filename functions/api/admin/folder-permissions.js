@@ -1,6 +1,5 @@
 // /functions/api/admin/folder-permissions.js
 
-// Lida com a busca das permissões atuais de uma pasta específica
 async function handleGet(context) {
     const { request, env, data } = context;
     const loggedInUser = data.user;
@@ -26,7 +25,6 @@ async function handleGet(context) {
     }
 }
 
-// Lida com a atualização das permissões de uma pasta
 async function handlePost(context) {
     const { request, env, data } = context;
     const loggedInUser = data.user;
@@ -43,20 +41,32 @@ async function handlePost(context) {
             return new Response(JSON.stringify({ message: 'Payload inválido.' }), { status: 400 });
         }
 
-        // Inicia uma transação para garantir a atomicidade da operação
+        const { results: allRoles } = await db.prepare("SELECT id, level FROM roles").all();
+        
+        const originalPermsStmt = db.prepare("SELECT role_id FROM folder_permissions WHERE folder_path = ?").bind(folderPath);
+        const { results: originalPermsResults } = await originalPermsStmt.all();
+        const originalAllowedRoleIds = originalPermsResults.map(p => p.role_id);
+
+        for (const role of allRoles) {
+            const wasAllowed = originalAllowedRoleIds.includes(role.id);
+            const isNowAllowed = roleIds.includes(role.id);
+
+            // Se a permissão está sendo removida para um cargo superior/igual, bloqueia
+            if (wasAllowed && !isNowAllowed && role.level <= loggedInUser.level) {
+                 return new Response(JSON.stringify({ message: `Você não pode remover a permissão de um cargo com hierarquia superior ou igual à sua (Nível ${role.level}).` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+            }
+        }
+
         const batch = [
-            // 1. Deleta todas as permissões antigas para esta pasta
             db.prepare("DELETE FROM folder_permissions WHERE folder_path = ?").bind(folderPath)
         ];
 
-        // 2. Insere as novas permissões
         roleIds.forEach(roleId => {
             batch.push(db.prepare("INSERT INTO folder_permissions (folder_path, role_id) VALUES (?, ?)").bind(folderPath, roleId));
         });
 
         await db.batch(batch);
 
-        // Log da ação
         await env.DB.prepare("INSERT INTO admin_logs (admin_user_id, admin_username, action, target_info) VALUES (?, ?, ?, ?)")
             .bind(loggedInUser.userId, loggedInUser.username, 'update_folder_perms', `Pasta: ${folderPath}`)
             .run();
@@ -68,7 +78,6 @@ async function handlePost(context) {
         return new Response(JSON.stringify({ message: 'Erro interno no servidor.' }), { status: 500 });
     }
 }
-
 
 export function onRequest(context) {
     switch (context.request.method) {

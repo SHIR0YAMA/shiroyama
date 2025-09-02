@@ -541,7 +541,9 @@ async function openFolderPermsModal(folderPath) {
         let rolesHTML = '';
         allRoles.forEach(role => {
             const isChecked = folderPerms.allowedRoleIds.includes(role.id);
-            rolesHTML += `<div><input type="checkbox" id="role-perm-${role.id}" value="${role.id}" ${isChecked ? 'checked' : ''}><label for="role-perm-${role.id}"> ${role.name} (Nível ${role.level})</label></div>`;
+            const isDisabled = state.level >= role.level;
+            
+            rolesHTML += `<div><input type="checkbox" id="role-perm-${role.id}" value="${role.id}" ${isChecked ? 'checked' : ''} ${isDisabled ? 'disabled' : ''}><label for="role-perm-${role.id}"> ${role.name} (Nível ${role.level})</label></div>`;
         });
         rolesContainer.innerHTML = rolesHTML || 'Nenhum cargo encontrado.';
     } catch (error) {
@@ -821,6 +823,25 @@ function renderFilesPage(path) {
     let controlsHTML = `<div class="controls-buttons">`;
     if (hasPermission('can_create_folders')) controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`;
     controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div>`;
+    
+    // VERIFICAÇÃO DE ACESSO A PASTA
+    const currentPathStr = path.join('/');
+    const content = getContentForPath(path);
+    
+    // Cenário 1: Pasta não existe no sistema
+    if (path.length > 0 && !state.allFolders.includes(currentPathStr) && Object.keys(content).length === 0) {
+        mainContent.innerHTML = `<div class="auth-form"><h2>Pasta Inexistente</h2><p>A pasta "${currentPathStr}" não foi encontrada no sistema.</p></div>`;
+        hideLoading();
+        return;
+    }
+    
+    // Cenário 2: Pasta existe mas o usuário não tem acesso (não há conteúdo visível para ele)
+    if (path.length > 0 && state.allFolders.includes(currentPathStr) && Object.keys(content).length === 0) {
+        mainContent.innerHTML = `<div class="auth-form"><h2>Acesso Negado</h2><p>Você não tem permissão para visualizar o conteúdo da pasta "${currentPathStr}".</p></div>`;
+        hideLoading();
+        return;
+    }
+    
     mainContent.innerHTML = `<div class="controls"><div id="breadcrumb"></div>${controlsHTML}</div><div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div>`;
     
     document.getElementById('refresh-files-btn').onclick = refreshFiles;
@@ -850,7 +871,6 @@ function renderFilesPage(path) {
     });
 
     const fileListBodyElement = document.getElementById('file-list-body');
-    const content = getContentForPath(path);
     const items = Object.entries(content).sort(([nameA, itemA], [nameB, itemB]) => {
         const isFileA = itemA._isFile;
         const isFileB = itemB._isFile;
@@ -875,14 +895,12 @@ function renderFilesPage(path) {
         div.className = 'file-item';
         const itemPath = [...path, name].join('/');
         let actionsHTML = '<div class="file-actions">';
-        
         if (item._isFile) {
             if (hasPermission('can_rename_items')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear Arquivo"><i class="fas fa-edit"></i></button>`;
             if (hasPermission('can_move_items')) actionsHTML += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover Arquivo"><i class="fas fa-folder-open"></i></button>`;
             if (hasPermission('can_receive_files')) actionsHTML += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
             if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`;
         } else {
-            // AÇÕES PARA PASTAS
             if (hasPermission('can_manage_folder_permissions')) {
                 actionsHTML += `<button class="btn-icon btn-folder-perms" data-path="${itemPath}" title="Gerenciar Permissões"><i class="fas fa-cog"></i></button>`;
             }
@@ -891,7 +909,6 @@ function renderFilesPage(path) {
             if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir Pasta"><i class="fas fa-trash"></i></button>`;
         }
         actionsHTML += '</div>';
-        
         if (item._isFile) {
             div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}"><span class="file-icon">${getIconForFile(name)}</span><span class="file-name">${name}</span><span class="file-size">${formatFileSize(item.file_size)}</span>${actionsHTML}`;
         } else {
