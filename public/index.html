@@ -88,21 +88,24 @@
         .table-container { overflow-x: auto; }
 
         /* --- ESTILOS ADICIONADOS PARA O PAINEL DE ADMIN --- */
-        .admin-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        .admin-table th, .admin-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #3b3e50; }
+        .admin-table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
+        .admin-table th, .admin-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #3b3e50; vertical-align: middle; word-wrap: break-word; }
         .admin-table th { color: #50fa7b; font-size: 14px; text-transform: uppercase; }
         .admin-table tr:hover { background-color: #3b3e50; }
-        .admin-table td { font-size: 15px; vertical-align: middle; }
-        .admin-table td.permissions-cell { white-space: normal; word-break: break-word; line-height: 1.5; }
-        .admin-table td .role-select { background-color: #282a36; color: #f8f8f2; border: 1px solid #6272a4; border-radius: 5px; padding: 8px; font-size: 14px; }
+        .admin-table td { font-size: 15px; }
+        .admin-table .col-user { width: 20%; }
+        .admin-table .col-role { width: 25%; }
+        .admin-table .col-chat-id { width: 20%; }
+        .admin-table .col-created { width: 15%; }
+        .admin-table .col-actions { width: 20%; }
+        .admin-table td .role-select { background-color: #282a36; color: #f8f8f2; border: 1px solid #6272a4; border-radius: 5px; padding: 8px; font-size: 14px; width: 100%; }
         .admin-table td .actions-cell { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; }
         .admin-table td .actions-cell button { padding: 8px 12px; flex-shrink: 0; }
         .admin-table td .actions-cell .btn-icon { font-size: 1em; padding: 8px; width: 36px; height: 36px; }
         
         .chat-id-cell-content { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; }
         .chat-id-cell-content .btn-icon { font-size: 0.9em; padding: 6px; width: 30px; height: 30px; flex-shrink: 0; }
-
-        /* Estilos para o modal de permissões com dropdowns */
+        
         #permissions-container { display: flex; flex-direction: column; gap: 15px; text-align: left; }
         .permission-group summary { cursor: pointer; font-size: 1.1em; padding: 5px; border-radius: 4px; display: flex; align-items: center; gap: 10px; list-style: none; }
         .permission-group summary::-webkit-details-marker { display: none; }
