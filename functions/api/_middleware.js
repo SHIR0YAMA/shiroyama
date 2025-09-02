@@ -10,9 +10,19 @@ async function decodeJwt(token, secret) {
         const valid = await crypto.subtle.verify('HMAC', key, decodedSignature, new TextEncoder().encode(textToSign));
         if (!valid) return null;
         const decodedPayload = JSON.parse(atob(payload.replace(/_/g, '/').replace(/-/g, '+')));
+        
+        // Adiciona o campo 'iat' (issued at) se não existir
+        if (!decodedPayload.iat) {
+            decodedPayload.iat = Math.floor(Date.now() / 1000);
+        }
+
         if (decodedPayload.exp && decodedPayload.exp < Math.floor(Date.now() / 1000)) return null;
+        
         return decodedPayload;
-    } catch (e) { return null; }
+    } catch (e) {
+        console.error("Erro ao decodificar JWT:", e.message);
+        return null;
+    }
 }
 
 async function authMiddleware(context) {
@@ -20,7 +30,9 @@ async function authMiddleware(context) {
     const url = new URL(request.url);
 
     const publicRoutes = ['/api/auth/login', '/api/auth/register'];
-    if (publicRoutes.includes(url.pathname)) return next();
+    if (publicRoutes.includes(url.pathname)) {
+        return next();
+    }
 
     const authorization = request.headers.get('Authorization');
     if (!authorization || !authorization.startsWith('Bearer ')) {
@@ -35,6 +47,26 @@ async function authMiddleware(context) {
     if (!userData) {
         return new Response(JSON.stringify({ message: 'Token inválido ou expirado.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
     }
+    
+    // --- NOVA VERIFICAÇÃO DE INVALIDAÇÃO DE SESSÃO ---
+    const userDbInfo = await env.DB.prepare("SELECT token_valid_after FROM users WHERE id = ?").bind(userData.userId).first();
+    
+    // Se o usuário não for encontrado no DB (pode ter sido deletado), invalida a sessão
+    if (!userDbInfo) {
+        return new Response(JSON.stringify({ message: 'Sessão inválida. Usuário não encontrado.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // Se existe uma data de invalidação no banco...
+    if (userDbInfo.token_valid_after) {
+        const tokenIssuedAt = userData.iat; // 'iat' é a data de criação do token em segundos
+        const tokenMustBeValidAfter = new Date(userDbInfo.token_valid_after).getTime() / 1000;
+        
+        // ...e o token foi criado ANTES dessa data, ele é inválido.
+        if (tokenIssuedAt < tokenMustBeValidAfter) {
+            return new Response(JSON.stringify({ message: 'Sua sessão expirou devido a uma alteração de segurança. Por favor, faça login novamente.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+        }
+    }
+    // --- FIM DA NOVA VERIFICAÇÃO ---
 
     if (!context.data) context.data = {};
     context.data.user = userData;

@@ -17,6 +17,7 @@ async function createJwt(user, secret) {
         roleId: user.role_id,
         level: user.role_level,
         permissions: user.permissions,
+        iat: Math.floor(Date.now() / 1000), // Data de criação (Issued At)
         exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24 * 7) // Expira em 7 dias
     };
 
