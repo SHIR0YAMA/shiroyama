@@ -719,17 +719,16 @@ async function renderAdminPage(subpage) {
             
             const rolesOptions = rolesList.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
             
-            const hasUserActions = hasPermission('roles:assign') || hasPermission('users:reset_password') || hasPermission('users:delete');
-
+            // CORREÇÃO DEFINITIVA: O cabeçalho da tabela é FIXO e SEMPRE tem 5 colunas.
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
                         <thead><tr>
                             <th>Usuário</th>
                             <th>Cargo</th>
-                            ${hasPermission('users:view_chat_id') ? '<th>ID do Chat</th>' : ''}
+                            <th>ID do Chat</th>
                             <th>Criado em</th>
-                            ${hasUserActions ? '<th>Ações</th>' : ''}
+                            <th>Ações</th>
                         </tr></thead>
                         <tbody>`;
 
@@ -739,6 +738,7 @@ async function renderAdminPage(subpage) {
                 const canActOnUser = !isSelf && !isSuperiorOrEqual;
                 const disabledAttribute = !canActOnUser ? 'disabled' : '';
 
+                // CORREÇÃO DEFINITIVA: Cada linha <tr> SEMPRE terá 5 células <td>.
                 tableHTML += `
                     <tr>
                         <td>${user.username}</td>
@@ -749,20 +749,20 @@ async function renderAdminPage(subpage) {
                             </select>` : 
                             `<span>${user.role_name || 'N/A'}</span>`}
                         </td>
-                        ${hasPermission('users:view_chat_id') ? `
                         <td class="chat-id-cell">
                             <div class="chat-id-cell-content">
+                            ${hasPermission('users:view_chat_id') ? `
                                 <span>${user.telegram_chat_id || 'N/A'}</span>
                                 ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>` : ''}
+                            ` : '<span>-</span>'}
                             </div>
-                        </td>` : ''}
+                        </td>
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
-                        ${hasUserActions ? `
                         <td class="actions-cell">
                             ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${disabledAttribute}>Salvar</button>` : ''}
                             ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>` : ''}
                             ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>` : ''}
-                        </td>` : ''}
+                        </td>
                     </tr>`;
             }
 
@@ -773,20 +773,13 @@ async function renderAdminPage(subpage) {
             const [rolesData, permissionsData] = await Promise.all([apiCall('admin/roles'), apiCall('admin/permissions')]);
             const permMap = Object.fromEntries(permissionsData.map(p => [p.name, p.description]));
             
-            const hasRoleActions = hasPermission('roles:edit') || hasPermission('roles:delete');
-
             adminContent.innerHTML = `
                 <div style="text-align: right; margin-bottom: 10px;">
                     ${hasPermission('roles:create') ? '<button id="create-new-role-btn">Criar Novo Cargo</button>' : ''}
                 </div>
                 <div class="table-container">
                     <table class="admin-table">
-                        <thead><tr>
-                            <th>Cargo</th>
-                            <th>Nível</th>
-                            <th>Permissões</th>
-                            ${hasRoleActions ? '<th>Ações</th>' : ''}
-                        </tr></thead>
+                        <thead><tr><th>Cargo</th><th>Nível</th><th>Permissões</th><th>Ações</th></tr></thead>
                         <tbody>
                             ${rolesData.map(role => {
                                 const canActOnRole = state.level < role.level && (role.level !== 1000 || state.level === 0);
@@ -797,11 +790,10 @@ async function renderAdminPage(subpage) {
                                     <td>${role.name}</td>
                                     <td>${role.level}</td>
                                     <td class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
-                                    ${hasRoleActions ? `
                                     <td class="actions-cell">
                                         ${hasPermission('roles:edit') ? `<button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${disabledAttribute}>Editar</button>` : ''}
                                         ${hasPermission('roles:delete') ? `<button class="delete-role-btn btn-danger" data-id="${role.id}" ${disabledAttribute}>Excluir</button>` : ''}
-                                    </td>` : ''}
+                                    </td>
                                 </tr>`;
                             }).join('')}
                         </tbody>
