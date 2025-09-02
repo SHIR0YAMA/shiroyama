@@ -1111,4 +1111,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.addEventListener('hashchange', router);
     router();
-});me envie o script.js com essas últimas alterações que fizemos, por favor.
+});
