@@ -7,7 +7,10 @@ export async function onRequestPost(context) {
         const { userId: targetUserId, newRoleId } = await request.json();
         const db = env.DB;
 
-        // A verificação de permissão 'roles:assign' já foi feita pelo _middleware.js
+        // O _middleware agora só autentica. A verificação de permissão é feita aqui.
+        if (!loggedInUser.permissions.includes('roles:assign')) {
+            return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão para atribuir cargos.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
         
         const targetUserStmt = db.prepare("SELECT u.username, r.level as role_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?").bind(targetUserId);
         const newRoleStmt = db.prepare("SELECT level FROM roles WHERE id = ?").bind(newRoleId);
@@ -26,11 +29,10 @@ export async function onRequestPost(context) {
              return new Response(JSON.stringify({ message: 'Não é possível alterar o cargo para um nível hierárquico igual ou superior ao seu.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
         
-        // CORREÇÃO: A proteção específica do cargo "Membro" foi removida daqui.
-        // A regra de hierarquia acima já é suficiente. Se um admin tem nível < 1000, ele pode
-        // alterar o cargo de um Membro para outro cargo de nível < que o seu.
-
-        await db.prepare("UPDATE users SET role_id = ? WHERE id = ?").bind(newRoleId, targetUserId).run();
+        // --- NOVA LÓGICA DE INVALIDAÇÃO DE SESSÃO ---
+        // Atualiza o cargo E a data de validade do token para forçar um novo login.
+        await db.prepare("UPDATE users SET role_id = ?, token_valid_after = CURRENT_TIMESTAMP WHERE id = ?").bind(newRoleId, targetUserId).run();
+        // --- FIM DA NOVA LÓGICA ---
 
         await db.prepare("INSERT INTO admin_logs (admin_user_id, admin_username, action, target_info) VALUES (?, ?, ?, ?)")
             .bind(loggedInUser.userId, loggedInUser.username, 'update_user_role', `Usuário: ${targetUser.username}, Novo Cargo ID: ${newRoleId}`)

@@ -114,7 +114,7 @@
         .permission-group summary:hover { background-color: #3b3e50; }
         .permission-list { padding-left: 35px; margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
         .permission-item { display: flex; align-items: center; gap: 8px; }
-
+        
         /* --- FIM DOS ESTILOS DO PAINEL DE ADMIN --- */
 
         /* --- ESTILOS PARA O ÍCONE DE CARREGAMENTO --- */
@@ -235,7 +235,6 @@
                 <input type="number" id="role-level" min="1">
             </div>
             <h3>Permissões</h3>
-            <!-- O container de permissões será preenchido pelo script.js -->
             <div id="permissions-container"></div>
             <div class="modal-footer">
                 <button id="role-modal-cancel-btn">Cancelar</button>
@@ -252,6 +251,20 @@
             <p style="font-size: 14px; color: #f1fa8c;">Copie esta senha e envie para o usuário. Ela só será exibida esta vez.</p>
             <div class="modal-footer">
                 <button id="password-reset-close-btn">Fechar</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- NOVO MODAL PARA PERMISSÕES DE PASTAS -->
+    <div id="folder-perms-modal" class="modal-overlay">
+        <div class="modal-content">
+            <span id="folder-perms-close-btn" class="modal-close-btn">×</span>
+            <h2 id="folder-perms-title">Permissões da Pasta</h2>
+            <p>Marque os cargos que podem acessar esta pasta. Se nenhum for marcado, a pasta será pública para todos com permissão de visualizar arquivos.</p>
+            <div id="folder-perms-roles-container" class="permission-grid"></div>
+            <div class="modal-footer">
+                <button id="folder-perms-cancel-btn">Cancelar</button>
+                <button id="folder-perms-save-btn">Salvar Permissões</button>
             </div>
         </div>
     </div>

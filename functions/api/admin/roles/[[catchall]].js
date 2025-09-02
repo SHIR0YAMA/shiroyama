@@ -1,4 +1,4 @@
-// /functions/api/admin/roles/[[catchall]].js
+// /functions/api/admin/roles/[[catchall]].js (100% COMPLETO)
 
 async function handleGet(context) {
     try {
@@ -122,6 +122,10 @@ async function handlePut(context) {
             );
             await db.batch(permissionStmts);
         }
+
+        // Invalida a sessão de todos os usuários com este cargo
+        await db.prepare("UPDATE users SET token_valid_after = CURRENT_TIMESTAMP WHERE role_id = ?").bind(roleIdToEdit).run();
+
         return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     } catch (error) {
          if (error.message && error.message.includes('UNIQUE constraint failed')) {
@@ -136,15 +140,11 @@ async function handleDelete(context) {
     const { env, data, params } = context;
     try {
         const loggedInUser = data.user;
-        
-        if (!loggedInUser.permissions.includes('roles:delete')) {
-             return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão para excluir cargos.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
-        }
-        
         const roleIdToDelete = parseInt(params.catchall[0]);
         const db = env.DB;
+        
         if (isNaN(roleIdToDelete)) {
-            return new Response(JSON.stringify({ message: 'ID de cargo inválido.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+             return new Response(JSON.stringify({ message: 'ID de cargo inválido.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
         const targetRole = await db.prepare('SELECT level FROM roles WHERE id = ?').bind(roleIdToDelete).first();
         if (!targetRole) {
@@ -162,8 +162,10 @@ async function handleDelete(context) {
             return new Response(JSON.stringify({ message: 'Não é possível excluir este cargo, pois existem usuários associados a ele.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
         
-        await db.prepare('DELETE FROM roles WHERE id = ?').bind(roleIdToDelete).run();
-        await db.prepare('DELETE FROM role_permissions WHERE role_id = ?').bind(roleIdToDelete).run();
+        await db.batch([
+            db.prepare('DELETE FROM roles WHERE id = ?').bind(roleIdToDelete),
+            db.prepare('DELETE FROM role_permissions WHERE role_id = ?').bind(roleIdToDelete)
+        ]);
         
         return new Response(null, { status: 204 });
     } catch(e) {
