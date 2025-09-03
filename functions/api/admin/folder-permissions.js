@@ -42,18 +42,20 @@ async function handlePost(context) {
         }
 
         const { results: allRoles } = await db.prepare("SELECT id, level FROM roles").all();
+        const roleLevelMap = Object.fromEntries(allRoles.map(r => [r.id, r.level]));
         
         const originalPermsStmt = db.prepare("SELECT role_id FROM folder_permissions WHERE folder_path = ?").bind(folderPath);
         const { results: originalPermsResults } = await originalPermsStmt.all();
         const originalAllowedRoleIds = originalPermsResults.map(p => p.role_id);
 
-        for (const role of allRoles) {
-            const wasAllowed = originalAllowedRoleIds.includes(role.id);
-            const isNowAllowed = roleIds.includes(role.id);
-
-            // Se a permissão está sendo REMOVIDA de um cargo superior/igual, bloqueia
-            if (wasAllowed && !isNowAllowed && role.level <= loggedInUser.level) {
-                 return new Response(JSON.stringify({ message: `Você não pode remover a permissão de um cargo com hierarquia superior ou igual à sua.` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        for (const roleId of originalAllowedRoleIds) {
+            const isBeingRemoved = !roleIds.includes(roleId);
+            if (isBeingRemoved) {
+                const targetRoleLevel = roleLevelMap[roleId];
+                // Bloqueia se o alvo for superior, OU se for de mesmo nível E não for o próprio admin
+                if (targetRoleLevel < loggedInUser.level || (targetRoleLevel === loggedInUser.level && roleId !== loggedInUser.roleId)) {
+                    return new Response(JSON.stringify({ message: `Você não pode remover a permissão de um cargo com hierarquia superior ou igual à sua.` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+                }
             }
         }
 
@@ -61,9 +63,11 @@ async function handlePost(context) {
             db.prepare("DELETE FROM folder_permissions WHERE folder_path = ?").bind(folderPath)
         ];
 
-        roleIds.forEach(roleId => {
-            batch.push(db.prepare("INSERT INTO folder_permissions (folder_path, role_id) VALUES (?, ?)").bind(folderPath, roleId));
-        });
+        if (roleIds.length > 0) {
+            roleIds.forEach(roleId => {
+                batch.push(db.prepare("INSERT INTO folder_permissions (folder_path, role_id) VALUES (?, ?)").bind(folderPath, roleId));
+            });
+        }
 
         await db.batch(batch);
 

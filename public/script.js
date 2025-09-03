@@ -542,7 +542,7 @@ async function openFolderPermsModal(folderPath) {
         allRoles.forEach(role => {
             const isChecked = folderPerms.allowedRoleIds.includes(role.id);
             const isSuperiorOrEqual = state.level >= role.level;
-            const isDisabled = isSuperiorOrEqual && isChecked;
+            const isDisabled = isSuperiorOrEqual && isChecked && state.level !== 0; // Dono nunca é desabilitado
 
             let title = '';
             if (isDisabled) {
@@ -648,7 +648,7 @@ async function renderProfilePage() {
                 telegramSectionHTML += `<p>Clique no botão abaixo para autorizar o bot no Telegram.</p> <button id="link-telegram-btn">Vincular com o Telegram</button> <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>`;
             }
         } else {
-            telegramSectionHTML = ''; // Se não tem permissão, não mostra a seção
+            telegramSectionHTML = '';
         }
 
         mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${state.role || 'N/A'}</strong></p>
@@ -826,29 +826,26 @@ async function renderAdminPage(subpage) {
 }
 
 function renderFilesPage(path) {
-    let controlsHTML = `<div class="controls-buttons">`;
-    if (hasPermission('can_create_folders')) controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`;
-    controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div>`;
-    
     const currentPathStr = path.join('/');
     const content = getContentForPath(path);
     const folderExistsSystemWide = state.allFolders.includes(currentPathStr);
-    const userCanSeeFolderContent = Object.keys(content).length > 0;
+    const userCanSeeFolderContent = Object.keys(content).length > 0 || (path.length > 0 && state.allFiles.some(f => f.name.startsWith(currentPathStr + '/') && f.isPlaceholder));
 
-    // Cenário 1: URL aponta para uma pasta que não existe no sistema
     if (path.length > 0 && !folderExistsSystemWide) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Pasta Inexistente</h2><p>A pasta "${currentPathStr}" não foi encontrada no sistema.</p></div>`;
         hideLoading();
         return;
     }
     
-    // Cenário 2: URL aponta para uma pasta que existe, mas o usuário não tem acesso a ela (o backend filtrou)
     if (path.length > 0 && folderExistsSystemWide && !userCanSeeFolderContent) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Acesso Negado</h2><p>Você não tem permissão para visualizar o conteúdo da pasta "${currentPathStr}".</p></div>`;
         hideLoading();
         return;
     }
     
+    let controlsHTML = `<div class="controls-buttons">`;
+    if (hasPermission('can_create_folders')) controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`;
+    controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div>`;
     mainContent.innerHTML = `<div class="controls"><div id="breadcrumb"></div>${controlsHTML}</div><div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div>`;
     
     document.getElementById('refresh-files-btn').onclick = refreshFiles;
