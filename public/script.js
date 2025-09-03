@@ -178,28 +178,36 @@ function parseJwt() {
 function buildFileTree(files) {
     const tree = {};
     
-    // Constrói a árvore de diretórios APENAS com base nos arquivos que o usuário tem permissão para ver.
+    // Passo 1: Constrói a árvore com base nos arquivos que o usuário pode ver
     files.forEach(file => {
-        // Ignora os placeholders que o backend possa ter enviado
         if (file.isPlaceholder) return;
         
         const parts = file.name.split('/').filter(p => p);
         let currentLevel = tree;
         parts.forEach((part, index) => {
             if (index === parts.length - 1) {
-                // É o arquivo
                 currentLevel[part] = { ...file, _isFile: true };
             } else {
-                // É uma pasta no caminho do arquivo
                 if (!currentLevel[part]) {
-                    currentLevel[part] = {}; // Cria a pasta se não existir
+                    currentLevel[part] = {};
                 }
                 currentLevel = currentLevel[part];
             }
         });
     });
 
-    // O bloco que usava 'state.allFolders' foi removido.
+    // Passo 2 (RESTAURADO E CORRIGIDO): Garante que pastas vazias (mas permitidas) também apareçam
+    state.allFolders.forEach(folderPath => {
+        const parts = folderPath.split('/').filter(p => p);
+        let currentLevel = tree;
+        parts.forEach(part => {
+            if (!currentLevel[part]) {
+                // Cria a pasta apenas se ela ainda não existir na árvore
+                currentLevel[part] = {}; 
+            }
+            currentLevel = currentLevel[part];
+        });
+    });
 
     return tree;
 }
