@@ -14,7 +14,7 @@ export async function onRequestGet(context) {
     try {
         const [permsResult, kvListResult] = await Promise.all([
             env.DB.prepare("SELECT role_id, folder_path FROM folder_permissions").all(),
-            env.ARQUIVOS_TELEGRAM.list({ limit: 1000 }) // Para simplicidade, assumimos menos de 1000 chaves. Adicionar paginação se necessário.
+            env.ARQUIVOS_TELEGRAM.list({ limit: 1000 }) // Adicionar paginação aqui se tiver mais de 1000 chaves
         ]);
 
         const folderPerms = permsResult.results;
@@ -30,34 +30,35 @@ export async function onRequestGet(context) {
 
         const isOwner = loggedInUser.level === 0;
         
-        // A lista de todas as pastas que realmente existem, antes do filtro de permissão
-        const allExistingFolders = [...new Set(allKeys.map(k => k.name.substring(0, k.name.lastIndexOf('/'))).filter(Boolean))];
-
-        // Filtra as pastas que o usuário pode ver
-        const visibleFolders = allExistingFolders.filter(folderPath => {
+        const canAccessPath = (path) => {
             if (isOwner) return true;
+            if (!path) return true; // Raiz
 
-            const pathParts = folderPath.split('/');
-            // Itera do caminho mais específico para o mais geral
+            // Otimização: Se alguma subpasta tem permissão, a pasta pai é atravessável
+            for (const [restrictedPath, allowedRoles] of permissionMap.entries()) {
+                if (restrictedPath.startsWith(path) && allowedRoles.has(loggedInUser.roleId)) {
+                    return true;
+                }
+            }
+
+            // Verifica a permissão da hierarquia de pastas, da mais específica para a mais geral
+            const pathParts = path.split('/');
             for (let i = pathParts.length; i > 0; i--) {
                 const currentPath = pathParts.slice(0, i).join('/');
                 if (permissionMap.has(currentPath)) {
-                    // Encontrou a regra mais próxima. Se o usuário tiver permissão, ele pode ver.
                     return permissionMap.get(currentPath).has(loggedInUser.roleId);
                 }
             }
-            // Se nenhum pai na hierarquia tem restrição, é público
-            return true;
-        });
+            return true; // Se nenhum ancestral tem regra, é público
+        };
 
-        // Filtra os arquivos com base nas pastas visíveis
+        const allExistingFolders = [...new Set(allKeys.map(k => k.name.substring(0, k.name.lastIndexOf('/'))).filter(Boolean))];
+        
+        const visibleFolders = allExistingFolders.filter(folderPath => canAccessPath(folderPath));
+
         const accessibleKeys = allKeys.filter(key => {
-            if (isOwner) return true; // Dono vê tudo
-
             const folderPath = key.name.substring(0, key.name.lastIndexOf('/'));
-            if (!folderPath) return true; // Arquivo na raiz é sempre visível
-
-            return visibleFolders.includes(folderPath);
+            return canAccessPath(folderPath);
         });
         
         const filePromises = accessibleKeys.map(async (key) => {
@@ -92,7 +93,7 @@ export async function onRequestGet(context) {
 
         return new Response(JSON.stringify({ 
             files: accessibleFilesWithMetadata,
-            allFolders: visibleFolders // Envia a lista de pastas JÁ FILTRADA
+            allFolders: visibleFolders
         }), { headers: headers });
 
     } catch (error) {
