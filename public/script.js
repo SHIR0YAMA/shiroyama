@@ -178,7 +178,6 @@ function parseJwt() {
 function buildFileTree(files) {
     const tree = {};
     
-    // Passo 1: Constrói a árvore com base nos arquivos que o usuário pode ver
     files.forEach(file => {
         if (file.isPlaceholder) return;
         
@@ -196,13 +195,11 @@ function buildFileTree(files) {
         });
     });
 
-    // Passo 2 (RESTAURADO E CORRIGIDO): Garante que pastas vazias (mas permitidas) também apareçam
     state.allFolders.forEach(folderPath => {
         const parts = folderPath.split('/').filter(p => p);
         let currentLevel = tree;
         parts.forEach(part => {
             if (!currentLevel[part]) {
-                // Cria a pasta apenas se ela ainda não existir na árvore
                 currentLevel[part] = {}; 
             }
             currentLevel = currentLevel[part];

@@ -5,13 +5,16 @@ export async function onRequestGet(context) {
     const loggedInUser = data.user;
 
     if (!loggedInUser || !loggedInUser.permissions.includes('can_view_files')) {
-        return new Response(JSON.stringify({ message: 'Acesso negado.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão para visualizar arquivos.' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' }
+        });
     }
 
     try {
         const [permsResult, kvListResult] = await Promise.all([
             env.DB.prepare("SELECT role_id, folder_path FROM folder_permissions").all(),
-            env.ARQUIVOS_TELEGRAM.list({ limit: 1000 }) // Adicionar paginação aqui se tiver mais de 1000 chaves
+            env.ARQUIVOS_TELEGRAM.list({ limit: 1000 }) // Para simplicidade, assumimos menos de 1000 chaves. Adicionar paginação se necessário.
         ]);
 
         const folderPerms = permsResult.results;
@@ -26,13 +29,15 @@ export async function onRequestGet(context) {
         });
 
         const isOwner = loggedInUser.level === 0;
+        
+        // A lista de todas as pastas que realmente existem, antes do filtro de permissão
+        const allExistingFolders = [...new Set(allKeys.map(k => k.name.substring(0, k.name.lastIndexOf('/'))).filter(Boolean))];
 
-        const accessibleKeys = allKeys.filter(key => {
+        // Filtra as pastas que o usuário pode ver
+        const visibleFolders = allExistingFolders.filter(folderPath => {
             if (isOwner) return true;
 
-            const pathParts = key.name.split('/');
-            pathParts.pop(); // Remove o nome do arquivo
-
+            const pathParts = folderPath.split('/');
             // Itera do caminho mais específico para o mais geral
             for (let i = pathParts.length; i > 0; i--) {
                 const currentPath = pathParts.slice(0, i).join('/');
@@ -41,12 +46,20 @@ export async function onRequestGet(context) {
                     return permissionMap.get(currentPath).has(loggedInUser.roleId);
                 }
             }
-            
             // Se nenhum pai na hierarquia tem restrição, é público
             return true;
         });
 
-        // Obtém os metadados apenas para as chaves acessíveis
+        // Filtra os arquivos com base nas pastas visíveis
+        const accessibleKeys = allKeys.filter(key => {
+            if (isOwner) return true; // Dono vê tudo
+
+            const folderPath = key.name.substring(0, key.name.lastIndexOf('/'));
+            if (!folderPath) return true; // Arquivo na raiz é sempre visível
+
+            return visibleFolders.includes(folderPath);
+        });
+        
         const filePromises = accessibleKeys.map(async (key) => {
             if (key.name.endsWith('/.placeholder')) {
                 return { name: key.name, isPlaceholder: true };
@@ -70,20 +83,23 @@ export async function onRequestGet(context) {
 
         const accessibleFilesWithMetadata = (await Promise.all(filePromises)).filter(Boolean);
         
-        const allExistingFolders = [...new Set(allKeys.map(k => k.name.substring(0, k.name.lastIndexOf('/'))).filter(Boolean))];
-
         const headers = new Headers({
             'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache, no-store, must-revalidate'
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
         });
 
         return new Response(JSON.stringify({ 
             files: accessibleFilesWithMetadata,
-            allFolders: allExistingFolders 
-        }), { headers });
+            allFolders: visibleFolders // Envia a lista de pastas JÁ FILTRADA
+        }), { headers: headers });
 
     } catch (error) {
         console.error("Erro ao listar arquivos:", error);
-        return new Response(JSON.stringify({ message: "Erro interno." }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ message: "Erro interno ao buscar a lista de arquivos." }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' }
+        });
     }
 }
