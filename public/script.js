@@ -177,27 +177,30 @@ function parseJwt() {
 // --- 6. FUNÇÕES DE LÓGICA DE ARQUIVOS ---
 function buildFileTree(files) {
     const tree = {};
+    
+    // Constrói a árvore de diretórios APENAS com base nos arquivos que o usuário tem permissão para ver.
     files.forEach(file => {
+        // Ignora os placeholders que o backend possa ter enviado
         if (file.isPlaceholder) return;
+        
         const parts = file.name.split('/').filter(p => p);
         let currentLevel = tree;
         parts.forEach((part, index) => {
             if (index === parts.length - 1) {
+                // É o arquivo
                 currentLevel[part] = { ...file, _isFile: true };
             } else {
-                if (!currentLevel[part]) currentLevel[part] = {};
+                // É uma pasta no caminho do arquivo
+                if (!currentLevel[part]) {
+                    currentLevel[part] = {}; // Cria a pasta se não existir
+                }
                 currentLevel = currentLevel[part];
             }
         });
     });
-    state.allFolders.forEach(folderPath => {
-        const parts = folderPath.split('/').filter(p => p);
-        let currentLevel = tree;
-        parts.forEach(part => {
-            if (!currentLevel[part]) currentLevel[part] = {};
-            currentLevel = currentLevel[part];
-        });
-    });
+
+    // O bloco que usava 'state.allFolders' foi removido.
+
     return tree;
 }
 
