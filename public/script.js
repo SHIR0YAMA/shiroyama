@@ -1,4 +1,4 @@
-// /public/script.js
+// /public/script.js (Versão Estável Restaurada)
 
 // --- 1. FUNÇÕES AUXILIARES ---
 function formatFileSize(bytes) {
@@ -78,7 +78,6 @@ const state = {
     permissions: [],
     fileTree: {},
     allFiles: [],
-    allFolders: [],
     sort: { key: 'name', order: 'asc' }
 };
 
@@ -86,7 +85,6 @@ async function refreshFiles() {
     showLoading();
     showNotification('Atualizando lista de arquivos...', 'info');
     state.allFiles = [];
-    state.allFolders = [];
     state.fileTree = {};
     await router();
 }
@@ -105,19 +103,15 @@ const createFolderModal = document.getElementById('create-folder-modal');
 const renameModal = document.getElementById('rename-modal');
 const roleModal = document.getElementById('role-modal');
 const passwordResetModal = document.getElementById('password-reset-modal');
-const folderPermsModal = document.getElementById('folder-perms-modal');
-const userRolesModal = document.getElementById('user-roles-modal');
 
 // --- 4. FUNÇÃO CENTRAL DE API ---
 async function apiCall(endpoint, method = 'GET', body = null) {
     const headers = { 'Content-Type': 'application/json' };
-    if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
-    let finalEndpoint = endpoint;
-    if (method === 'GET') {
-        finalEndpoint += (endpoint.includes('?') ? '&' : '?') + `_=${new Date().getTime()}`;
+    if (state.token) {
+        headers['Authorization'] = `Bearer ${state.token}`;
     }
     try {
-        const response = await fetch(`/api/${finalEndpoint}`, { method, headers, body: body ? JSON.stringify(body) : null });
+        const response = await fetch(`/api/${endpoint}`, { method, headers, body: body ? JSON.stringify(body) : null });
         if (response.status === 204) return null;
         const result = await response.json();
         if (!response.ok) {
@@ -141,7 +135,6 @@ function login(token) {
         state.permissions = payload.permissions || [];
         localStorage.setItem('jwtToken', token);
     } catch (e) {
-        console.error("Erro ao decodificar o token:", e);
         logout();
     }
 }
@@ -169,7 +162,6 @@ function parseJwt() {
             state.level = payload.level;
             state.permissions = payload.permissions || [];
         } catch (e) {
-            console.error("Token inválido no localStorage, limpando sessão.");
             logout();
         }
     }
@@ -179,24 +171,29 @@ function parseJwt() {
 function buildFileTree(files) {
     const tree = {};
     files.forEach(file => {
-        if (file.isPlaceholder) return;
+        if (file.name.endsWith('/.placeholder')) {
+            const folderOnlyPath = file.name.substring(0, file.name.length - 13);
+            const parts = folderOnlyPath.split('/').filter(p => p);
+            let currentLevel = tree;
+            parts.forEach(part => {
+                if (!currentLevel[part]) {
+                    currentLevel[part] = {};
+                }
+                currentLevel = currentLevel[part];
+            });
+            return;
+        }
         const parts = file.name.split('/').filter(p => p);
         let currentLevel = tree;
         parts.forEach((part, index) => {
             if (index === parts.length - 1) {
                 currentLevel[part] = { ...file, _isFile: true };
             } else {
-                if (!currentLevel[part]) currentLevel[part] = {};
+                if (!currentLevel[part]) {
+                    currentLevel[part] = {};
+                }
                 currentLevel = currentLevel[part];
             }
-        });
-    });
-    state.allFolders.forEach(folderPath => {
-        const parts = folderPath.split('/').filter(p => p);
-        let currentLevel = tree;
-        parts.forEach(part => {
-            if (!currentLevel[part]) currentLevel[part] = {};
-            currentLevel = currentLevel[part];
         });
     });
     return tree;
@@ -238,8 +235,6 @@ async function handleSingleForward(messageId) {
 let moveState = { oldKeys: [], destinationPath: null, currentPath: [], isFolder: false };
 let renameState = { oldKey: null, newKey: null, isFolder: false };
 let roleState = { id: null, allPermissions: [] };
-let folderPermsState = { folderPath: null };
-let userRolesState = { userId: null };
 
 function openMoveModal(keysToMove, isFolder = false) {
     moveState.oldKeys = Array.isArray(keysToMove) ? keysToMove : [keysToMove];
@@ -248,12 +243,6 @@ function openMoveModal(keysToMove, isFolder = false) {
     const displayName = moveState.oldKeys.length > 1 ? `${moveState.oldKeys.length} itens` : firstFileName;
     document.getElementById('move-file-name').textContent = displayName;
     
-    const createFolderBtn = document.getElementById('create-folder-in-move-modal-btn');
-    if (hasPermission('can_create_folders') && (hasPermission('can_move_items') || hasPermission('can_move_folders'))) {
-        createFolderBtn.style.display = 'block';
-    } else {
-        createFolderBtn.style.display = 'none';
-    }
     moveState.currentPath = [];
     renderFolderNavigator(isFolder ? firstFileName : null);
     moveFileModal.classList.add('show');
@@ -690,7 +679,7 @@ async function renderAdminPage(subpage) {
         else if (canViewRoles) subpage = 'roles';
     }
     
-    if (!canViewUsers && !canViewRoles) {
+    if (!canViewUsers && !canViewRoles && !hasPermission('roles:assign')) {
         mainContent.innerHTML = "<p>Você não tem permissões suficientes para visualizar o painel de administração.</p>";
         hideLoading();
         return;
@@ -707,14 +696,11 @@ async function renderAdminPage(subpage) {
     if (rolesTab) rolesTab.onclick = () => router('admin/roles');
 
     try {
-        if (subpage === 'users' && canViewUsers) {
+        if (subpage === 'users' && (canViewUsers || hasPermission('roles:assign'))) {
             const data = await apiCall('admin/users');
             const usersList = data.users;
             const rolesList = data.roles;
             
-            const rolesOptions = rolesList.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
-            
-            // Passo 1: Renderiza a tabela completa, com todas as colunas e botões.
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
@@ -732,23 +718,24 @@ async function renderAdminPage(subpage) {
                 const isSuperiorOrEqual = state.level >= user.role_level;
                 const canActOnUser = !isSelf && !isSuperiorOrEqual;
                 const disabledAttribute = !canActOnUser ? 'disabled' : '';
+
                 const rolesAsTags = user.roles.map(r => `<span class="role-tag">${r.role_name}</span>`).join(' ');
 
                 tableHTML += `
                     <tr data-user-id="${user.id}">
-                        <td class="col-user">${user.username}</td>
-                        <td class="col-role roles-cell">
+                        <td>${user.username}</td>
+                        <td class="roles-cell">
                             <div>${rolesAsTags || 'Nenhum'}</div>
                             <button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-edit"></i></button>
                         </td>
-                        <td class="col-chat-id chat-id-cell">
+                        <td class="chat-id-cell">
                             <div class="chat-id-cell-content">
-                                <span>${user.telegram_chat_id || 'N/A'}</span>
+                                <span>-</span>
                                 <button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>
                             </div>
                         </td>
-                        <td class="col-created">${new Date(user.created_at).toLocaleDateString()}</td>
-                        <td class="col-actions actions-cell">
+                        <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                        <td class="actions-cell">
                             <button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>
                             <button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>
                         </td>
@@ -758,34 +745,40 @@ async function renderAdminPage(subpage) {
             tableHTML += `</tbody></table></div>`;
             adminContent.innerHTML = tableHTML;
             
-            // Passo 2: Após renderizar, esconde elementos com base nas permissões.
-            const adminTable = adminContent.querySelector('.admin-table');
-            if (!hasPermission('roles:assign')) {
-                adminTable.querySelectorAll('.edit-user-roles-btn').forEach(el => el.style.display = 'none');
-            }
-            if (!hasPermission('users:view_chat_id')) {
-                adminTable.querySelectorAll('.col-chat-id').forEach(el => el.style.display = 'none');
-            }
-            if (!hasPermission('users:unlink_telegram')) {
-                adminTable.querySelectorAll('.unlink-telegram-btn').forEach(el => el.style.display = 'none');
-            }
-            if (!hasPermission('users:reset_password')) {
-                adminTable.querySelectorAll('.reset-password-btn').forEach(el => el.style.display = 'none');
-            }
-            if (!hasPermission('users:delete')) {
-                adminTable.querySelectorAll('.delete-user-btn').forEach(el => el.style.display = 'none');
-            }
-            // Limpa a coluna Ações se todos os botões foram escondidos
-            const hasVisibleActions = hasPermission('users:reset_password') || hasPermission('users:delete');
-            if (!hasVisibleActions) {
-                 adminTable.querySelectorAll('.col-actions').forEach(el => el.style.display = 'none');
-            }
-
+            // Pós-renderização para ajustar a UI com base nas permissões
+            adminContent.querySelectorAll('tr[data-user-id]').forEach((row, index) => {
+                const user = usersList[index];
+                if (!hasPermission('roles:assign')) {
+                    row.querySelector('.edit-user-roles-btn').style.display = 'none';
+                }
+                if (!hasPermission('users:view_chat_id')) {
+                    row.querySelector('.col-chat-id').style.display = 'none';
+                } else if (!user.telegram_chat_id || !hasPermission('users:unlink_telegram')) {
+                    const unlinkBtn = row.querySelector('.unlink-telegram-btn');
+                    if (unlinkBtn) unlinkBtn.style.display = 'none';
+                    if (user.telegram_chat_id) {
+                         row.querySelector('.chat-id-cell-content span').textContent = user.telegram_chat_id;
+                    }
+                }
+                if (!hasPermission('users:reset_password')) {
+                    const resetBtn = row.querySelector('.reset-password-btn');
+                    if (resetBtn) resetBtn.style.display = 'none';
+                }
+                if (!hasPermission('users:delete')) {
+                    const deleteBtn = row.querySelector('.delete-user-btn');
+                    if (deleteBtn) deleteBtn.style.display = 'none';
+                }
+                
+                const hasVisibleActions = hasPermission('users:reset_password') || hasPermission('users:delete');
+                if (!hasVisibleActions) {
+                     row.querySelector('.col-actions').style.display = 'none';
+                     adminContent.querySelector('th.col-actions').style.display = 'none';
+                }
+            });
 
         } else if (subpage === 'roles' && canViewRoles) {
             const [rolesData, permissionsData] = await Promise.all([apiCall('admin/roles'), apiCall('admin/permissions')]);
             const permMap = Object.fromEntries(permissionsData.map(p => [p.name, p.description]));
-            
             const hasRoleActions = hasPermission('roles:edit') || hasPermission('roles:delete');
 
             adminContent.innerHTML = `
@@ -804,7 +797,6 @@ async function renderAdminPage(subpage) {
                             ${rolesData.map(role => {
                                 const canActOnRole = state.level < role.level && (role.level !== 1000 || state.level === 0);
                                 const disabledAttribute = !canActOnRole ? 'disabled' : '';
-
                                 return `
                                 <tr>
                                     <td>${role.name}</td>
@@ -831,7 +823,23 @@ async function renderAdminPage(subpage) {
 }
 
 function renderFilesPage(path) {
-    // Passo 1: Renderiza a estrutura básica da página (cabeçalho, breadcrumb, etc.)
+    const currentPathStr = path.join('/');
+    const content = getContentForPath(path);
+    const folderExistsSystemWide = state.allFolders.includes(currentPathStr);
+    const userCanSeeFolderContent = Object.keys(content).length > 0;
+
+    if (path.length > 0 && !folderExistsSystemWide) {
+        mainContent.innerHTML = `<div class="auth-form"><h2>Pasta Inexistente</h2><p>A pasta "${currentPathStr}" não foi encontrada no sistema.</p></div>`;
+        hideLoading();
+        return;
+    }
+    
+    if (path.length > 0 && folderExistsSystemWide && !userCanSeeFolderContent) {
+        mainContent.innerHTML = `<div class="auth-form"><h2>Acesso Negado</h2><p>Você não tem permissão para visualizar o conteúdo da pasta "${currentPathStr}".</p></div>`;
+        hideLoading();
+        return;
+    }
+    
     let controlsHTML = `<div class="controls-buttons">`;
     if (hasPermission('can_create_folders')) controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`;
     controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div>`;
@@ -864,26 +872,6 @@ function renderFilesPage(path) {
     });
 
     const fileListBodyElement = document.getElementById('file-list-body');
-    const currentPathStr = path.join('/');
-    const content = getContentForPath(path);
-    
-    // Passo 2: Verifica as condições de erro
-    const folderExistsSystemWide = state.allFolders.includes(currentPathStr);
-    const userCanSeeFolderContent = Object.keys(content).length > 0;
-
-    if (path.length > 0 && !folderExistsSystemWide) {
-        fileListBodyElement.innerHTML = `<div class="auth-form" style="margin: auto;"><h2>Pasta Inexistente</h2><p>A pasta "${currentPathStr}" não foi encontrada no sistema.</p></div>`;
-        document.querySelector('.file-list-header').style.display = 'none';
-        return;
-    }
-    
-    if (path.length > 0 && folderExistsSystemWide && !userCanSeeFolderContent) {
-        fileListBodyElement.innerHTML = `<div class="auth-form" style="margin: auto;"><h2>Acesso Negado</h2><p>Você não tem permissão para visualizar o conteúdo da pasta "${currentPathStr}".</p></div>`;
-        document.querySelector('.file-list-header').style.display = 'none';
-        return;
-    }
-
-    // Passo 3: Continua com a renderização normal se não houver erros
     const items = Object.entries(content).sort(([nameA, itemA], [nameB, itemB]) => {
         const isFileA = itemA._isFile;
         const isFileB = itemB._isFile;
@@ -907,6 +895,8 @@ function renderFilesPage(path) {
     }
     
     fileListBodyElement.innerHTML = ''; // Limpa a área antes de adicionar os itens
+    if (items.length === 0) fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Pasta vazia.</div>';
+    
     items.forEach(([name, item]) => {
         const div = document.createElement('div');
         div.className = 'file-item';
