@@ -24,7 +24,7 @@
         header nav { display: flex; align-items: center; gap: 15px; }
         header nav .nav-greeting { display: flex; align-items: center; gap: 10px; color: #f1fa8c; }
         header nav .nav-links { display: flex; align-items: center; gap: 10px; }
-        .role-tag { background-color: #282a36; color: #bd93f9; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 1px solid #6272a4; }
+        .role-tag { background-color: #282a36; color: #bd93f9; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 1px solid #6272a4; margin: 2px; display: inline-block; }
         .nav-button { padding: 8px 12px; font-weight: bold; font-size: 14px; }
         #logout-btn { background-color: #ff5555; }
         #logout-btn:hover { background-color: #ff7070; }
@@ -76,7 +76,7 @@
         .toast.error { border-left-color: #ff5555; }
         .toast.info { border-left-color: #8be9fd; }
         .modal-content { text-align: left; }
-        #folder-navigation, #folder-perms-roles-container { min-height: 200px; max-height: 40vh; overflow-y: auto; background-color: #282a36; border: 1px solid #6272a4; border-radius: 5px; padding: 10px; margin-top: 15px; }
+        #folder-navigation, #folder-perms-roles-container, #user-roles-container { min-height: 200px; max-height: 40vh; overflow-y: auto; background-color: #282a36; border: 1px solid #6272a4; border-radius: 5px; padding: 10px; margin-top: 15px; }
         #folder-navigation ul { list-style: none; padding: 0; margin: 0; }
         #folder-navigation li { padding: 8px 12px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; gap: 10px; }
         #folder-navigation li:hover, #folder-navigation li.selected { background-color: #6272a4; }
@@ -93,14 +93,14 @@
         .admin-table th { color: #50fa7b; font-size: 14px; text-transform: uppercase; }
         .admin-table tr:hover { background-color: #3b3e50; }
         .admin-table td { font-size: 15px; }
-        .admin-table td .role-select { background-color: #282a36; color: #f8f8f2; border: 1px solid #6272a4; border-radius: 5px; padding: 8px; font-size: 14px; width: 100%; }
+        .admin-table .roles-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .admin-table .actions-cell { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; }
         .admin-table .actions-cell button { padding: 8px 12px; flex-shrink: 0; }
         .admin-table .actions-cell .btn-icon { font-size: 1em; padding: 8px; width: 36px; height: 36px; }
         .chat-id-cell-content { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; }
         .chat-id-cell-content .btn-icon { font-size: 0.9em; padding: 6px; width: 30px; height: 30px; flex-shrink: 0; }
         
-        #permissions-container { display: flex; flex-direction: column; gap: 15px; text-align: left; }
+        #permissions-container, #user-roles-container, #folder-perms-roles-container { display: flex; flex-direction: column; gap: 15px; text-align: left; }
         .permission-group summary { cursor: pointer; font-size: 1.1em; padding: 5px; border-radius: 4px; display: flex; align-items: center; gap: 10px; list-style: none; }
         .permission-group summary::-webkit-details-marker { display: none; }
         .permission-group summary::before { content: '▶'; display: inline-block; margin-right: 10px; transition: transform 0.2s; font-size: 0.8em; }
@@ -257,6 +257,20 @@
             <div class="modal-footer">
                 <button id="folder-perms-cancel-btn">Cancelar</button>
                 <button id="folder-perms-save-btn">Salvar Permissões</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NOVO MODAL PARA ATRIBUIR CARGOS -->
+    <div id="user-roles-modal" class="modal-overlay">
+        <div class="modal-content">
+            <span id="user-roles-close-btn" class="modal-close-btn">×</span>
+            <h2 id="user-roles-title">Editar Cargos do Usuário</h2>
+            <p>Selecione os cargos para o usuário <strong id="user-roles-username"></strong>.</p>
+            <div id="user-roles-container"></div>
+            <div class="modal-footer">
+                <button id="user-roles-cancel-btn">Cancelar</button>
+                <button id="user-roles-save-btn">Salvar Cargos</button>
             </div>
         </div>
     </div>

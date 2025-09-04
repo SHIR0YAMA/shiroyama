@@ -106,6 +106,7 @@ const renameModal = document.getElementById('rename-modal');
 const roleModal = document.getElementById('role-modal');
 const passwordResetModal = document.getElementById('password-reset-modal');
 const folderPermsModal = document.getElementById('folder-perms-modal');
+const userRolesModal = document.getElementById('user-roles-modal');
 
 // --- 4. FUNÇÃO CENTRAL DE API ---
 async function apiCall(endpoint, method = 'GET', body = null) {
@@ -177,35 +178,27 @@ function parseJwt() {
 // --- 6. FUNÇÕES DE LÓGICA DE ARQUIVOS ---
 function buildFileTree(files) {
     const tree = {};
-    
     files.forEach(file => {
         if (file.isPlaceholder) return;
-        
         const parts = file.name.split('/').filter(p => p);
         let currentLevel = tree;
         parts.forEach((part, index) => {
             if (index === parts.length - 1) {
                 currentLevel[part] = { ...file, _isFile: true };
             } else {
-                if (!currentLevel[part]) {
-                    currentLevel[part] = {};
-                }
+                if (!currentLevel[part]) currentLevel[part] = {};
                 currentLevel = currentLevel[part];
             }
         });
     });
-
     state.allFolders.forEach(folderPath => {
         const parts = folderPath.split('/').filter(p => p);
         let currentLevel = tree;
         parts.forEach(part => {
-            if (!currentLevel[part]) {
-                currentLevel[part] = {}; 
-            }
+            if (!currentLevel[part]) currentLevel[part] = {};
             currentLevel = currentLevel[part];
         });
     });
-
     return tree;
 }
 
@@ -246,6 +239,7 @@ let moveState = { oldKeys: [], destinationPath: null, currentPath: [], isFolder:
 let renameState = { oldKey: null, newKey: null, isFolder: false };
 let roleState = { id: null, allPermissions: [] };
 let folderPermsState = { folderPath: null };
+let userRolesState = { userId: null };
 
 function openMoveModal(keysToMove, isFolder = false) {
     moveState.oldKeys = Array.isArray(keysToMove) ? keysToMove : [keysToMove];
@@ -255,15 +249,11 @@ function openMoveModal(keysToMove, isFolder = false) {
     document.getElementById('move-file-name').textContent = displayName;
     
     const createFolderBtn = document.getElementById('create-folder-in-move-modal-btn');
-    const canCreateFolders = hasPermission('can_create_folders');
-    const canMoveAny = hasPermission('can_move_items') || hasPermission('can_move_folders');
-
-    if (canCreateFolders && canMoveAny) {
+    if (hasPermission('can_create_folders') && (hasPermission('can_move_items') || hasPermission('can_move_folders'))) {
         createFolderBtn.style.display = 'block';
     } else {
         createFolderBtn.style.display = 'none';
     }
-
     moveState.currentPath = [];
     renderFolderNavigator(isFolder ? firstFileName : null);
     moveFileModal.classList.add('show');
@@ -276,21 +266,15 @@ function renderFolderNavigator(folderToExclude = null) {
     const pathDisplay = document.getElementById('move-file-path');
     const confirmBtn = document.getElementById('move-file-confirm-btn');
     const currentFolderContent = getContentForPath(moveState.currentPath);
-    
     const subFolders = Object.entries(currentFolderContent)
-        .filter(([name, item]) => !item._isFile && name !== folderToExclude)
-        .map(([name, _]) => name);
+        .filter(([_, item]) => !item._isFile && item.name !== folderToExclude)
+        .map(([name]) => name);
 
     let html = '<ul>';
-    if (moveState.currentPath.length > 0) {
-        html += `<li data-action="up">⬅️ .. (Voltar)</li>`;
-    }
-    subFolders.forEach(folder => {
-        html += `<li data-action="down" data-folder="${folder}">📁 ${folder}</li>`;
-    });
+    if (moveState.currentPath.length > 0) html += `<li data-action="up">⬅️ .. (Voltar)</li>`;
+    subFolders.forEach(folder => { html += `<li data-action="down" data-folder="${folder}">📁 ${folder}</li>`; });
     html += '</ul>';
     navContainer.innerHTML = html;
-
     const currentDisplayPath = `/${moveState.currentPath.join('/')}`;
     pathDisplay.textContent = currentDisplayPath;
     confirmBtn.disabled = false;
@@ -300,11 +284,11 @@ async function confirmMoveFile() {
     moveState.destinationPath = moveState.currentPath.join('/');
     showLoading();
     try {
-        if (!moveState.isFolder) {
-            await apiCall('admin/bulk-move', 'POST', { oldKeys: moveState.oldKeys, destinationPath: moveState.destinationPath });
-        } else {
-            await apiCall('admin/rename', 'POST', { oldKey: moveState.oldKeys[0], newKey: `${moveState.destinationPath}/${moveState.oldKeys[0].split('/').pop()}`, isFolder: true, action: 'move' });
-        }
+        const apiToCall = moveState.isFolder ? 'admin/rename' : 'admin/bulk-move';
+        const payload = moveState.isFolder ? 
+            { oldKey: moveState.oldKeys[0], newKey: `${moveState.destinationPath}/${moveState.oldKeys[0].split('/').pop()}`, isFolder: true, action: 'move' } :
+            { oldKeys: moveState.oldKeys, destinationPath: moveState.destinationPath };
+        await apiCall(apiToCall, 'POST', payload);
         showNotification("Item(ns) movido(s) com sucesso!", "success");
         closeMoveModal();
         await refreshFiles();
@@ -330,13 +314,11 @@ async function confirmCreateFolder() {
     if (!newFolderName || newFolderName.includes('/') || newFolderName === '.placeholder') {
         showNotification("Nome de pasta inválido.", "error"); return;
     }
-
     showLoading();
     const wasOpenedFromMoveModal = createFolderModal.dataset.fromMoveModal === 'true';
     const currentPathString = decodeURIComponent(window.location.hash.slice(2) || '');
     const basePath = wasOpenedFromMoveModal ? moveState.currentPath : currentPathString.split('/').filter(p => p);
     const fullPath = [...basePath, newFolderName].join('/');
-
     try {
         await apiCall('admin/create-folder', 'POST', { folderPath: fullPath });
         showNotification(`Pasta "${newFolderName}" criada!`, "success");
@@ -393,9 +375,8 @@ async function confirmRename() {
 
 async function deleteItems(keys, isFolder = false, folderName = '') {
     const itemsToDelete = Array.isArray(keys) ? keys : [keys];
-    const keyCount = itemsToDelete.length;
-    let message = isFolder ? `Tem certeza que deseja excluir a pasta "${folderName}" e todo o seu conteúdo? Esta ação é irreversível.` : `Tem certeza que deseja excluir ${keyCount} item(ns)? Esta ação é irreversível.`;
-    if (!confirm(message)) return;
+    let message = isFolder ? `Tem certeza que deseja excluir a pasta "${folderName}" e todo o seu conteúdo?` : `Tem certeza que deseja excluir ${itemsToDelete.length} item(ns)?`;
+    if (!confirm(message + " Esta ação é irreversível.")) return;
 
     showLoading();
     try {
@@ -412,12 +393,10 @@ async function deleteItems(keys, isFolder = false, folderName = '') {
 
 async function openRoleModal(role = null) {
     const title = document.getElementById('role-modal-title');
-    const nameInput = document.getElementById('role-name');
-    const levelInput = document.getElementById('role-level');
     const permsContainer = document.getElementById('permissions-container');
     title.textContent = role ? `Editar Cargo: ${role.name}` : 'Criar Novo Cargo';
-    nameInput.value = role ? role.name : '';
-    levelInput.value = role ? role.level : '';
+    document.getElementById('role-name').value = role ? role.name : '';
+    document.getElementById('role-level').value = role ? role.level : '';
     roleState.id = role ? role.id : null;
 
     if (roleState.allPermissions.length === 0) {
@@ -733,19 +712,15 @@ async function renderAdminPage(subpage) {
             const usersList = data.users;
             const rolesList = data.roles;
             
-            const rolesOptions = rolesList.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
-            
-            const hasUserActions = hasPermission('roles:assign') || hasPermission('users:reset_password') || hasPermission('users:delete');
-
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
                         <thead><tr>
                             <th class="col-user">Usuário</th>
-                            <th class="col-role">Cargo</th>
-                            ${hasPermission('users:view_chat_id') ? '<th class="col-chat-id">ID do Chat</th>' : ''}
+                            <th class="col-role">Cargos</th>
+                            <th class="col-chat-id">ID do Chat</th>
                             <th class="col-created">Criado em</th>
-                            ${hasUserActions ? '<th class="col-actions">Ações</th>' : ''}
+                            <th class="col-actions">Ações</th>
                         </tr></thead>
                         <tbody>`;
 
@@ -755,30 +730,28 @@ async function renderAdminPage(subpage) {
                 const canActOnUser = !isSelf && !isSuperiorOrEqual;
                 const disabledAttribute = !canActOnUser ? 'disabled' : '';
 
+                const rolesAsTags = user.roles.map(r => `<span class="role-tag">${r.role_name}</span>`).join(' ');
+
                 tableHTML += `
                     <tr>
                         <td>${user.username}</td>
-                        <td>
-                            ${hasPermission('roles:assign') ? `
-                            <select class="role-select" data-id="${user.id}" ${disabledAttribute}>
-                                ${rolesList.length > 0 ? rolesOptions.replace(`value="${user.role_id}"`, `value="${user.role_id}" selected`) : `<option>${user.role_name || 'N/A'}</option>`}
-                            </select>` : 
-                            `<span>${user.role_name || 'N/A'}</span>`}
+                        <td class="roles-cell">
+                            <div>${rolesAsTags || 'Nenhum'}</div>
+                            ${hasPermission('roles:assign') ? `<button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-edit"></i></button>` : ''}
                         </td>
-                        ${hasPermission('users:view_chat_id') ? `
                         <td class="chat-id-cell">
                             <div class="chat-id-cell-content">
+                            ${hasPermission('users:view_chat_id') ? `
                                 <span>${user.telegram_chat_id || 'N/A'}</span>
                                 ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>` : ''}
+                            ` : '<span>-</span>'}
                             </div>
-                        </td>` : ''}
+                        </td>
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
-                        ${hasUserActions ? `
                         <td class="actions-cell">
-                            ${hasPermission('roles:assign') ? `<button class="save-user-role-btn" data-id="${user.id}" ${disabledAttribute}>Salvar</button>` : ''}
                             ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>` : ''}
                             ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>` : ''}
-                        </td>` : ''}
+                        </td>
                     </tr>`;
             }
 
@@ -898,6 +871,10 @@ function renderFilesPage(path) {
         fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Pasta vazia.</div>';
         document.getElementById('select-all-checkbox').style.visibility = 'hidden';
         return;
+    } else if (items.length === 0) {
+        fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Nenhum arquivo encontrado.</div>';
+        document.getElementById('select-all-checkbox').style.visibility = 'hidden';
+        return;
     }
     
     document.getElementById('select-all-checkbox').style.visibility = 'visible';
@@ -993,6 +970,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('role-modal-close-btn').onclick = closeRoleModal;
     document.getElementById('password-reset-close-btn').onclick = () => passwordResetModal.classList.remove('show');
     document.getElementById('folder-perms-close-btn').onclick = closeFolderPermsModal;
+    document.getElementById('user-roles-close-btn').onclick = closeUserRolesModal;
+
     document.getElementById('modal-login-btn').onclick = () => window.location.hash = '/login';
     document.getElementById('modal-register-btn').onclick = () => window.location.hash = '/register';
     document.getElementById('move-file-cancel-btn').onclick = closeMoveModal;
@@ -1005,8 +984,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('role-modal-save-btn').onclick = confirmSaveRole;
     document.getElementById('folder-perms-cancel-btn').onclick = closeFolderPermsModal;
     document.getElementById('folder-perms-save-btn').onclick = confirmSaveFolderPerms;
+    document.getElementById('user-roles-cancel-btn').onclick = closeUserRolesModal;
+    document.getElementById('user-roles-save-btn').onclick = confirmSaveUserRoles;
 
-    [authModal, whyLinkModal, moveFileModal, createFolderModal, renameModal, roleModal, passwordResetModal, folderPermsModal].forEach(modal => {
+
+    [authModal, whyLinkModal, moveFileModal, createFolderModal, renameModal, roleModal, passwordResetModal, folderPermsModal, userRolesModal].forEach(modal => {
         if (modal) modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('show'); };
     });
 
@@ -1040,6 +1022,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.classList.contains('btn-folder-perms')) {
             openFolderPermsModal(target.dataset.path);
         }
+        if (target.classList.contains('edit-user-roles-btn')) {
+            const userId = target.dataset.userId;
+            const username = target.dataset.username;
+            const userRoles = JSON.parse(target.dataset.userRoles);
+            openUserRolesModal(userId, username, userRoles);
+        }
 
         if (target.classList.contains('sortable-header')) {
             const sortKey = target.dataset.sort;
@@ -1048,13 +1036,6 @@ document.addEventListener('DOMContentLoaded', () => {
             await router();
         }
 
-        if (target.classList.contains('save-user-role-btn')) {
-            const userId = target.dataset.id;
-            const newRoleId = document.querySelector(`.role-select[data-id="${userId}"]`).value;
-            apiCall('admin/users/update-role', 'POST', { userId: parseInt(userId), newRoleId: parseInt(newRoleId) })
-                .then(() => showNotification("Cargo do usuário atualizado.", "success"))
-                .catch(err => showNotification(`Erro: ${err.message}`, "error"));
-        }
         if (target.classList.contains('delete-user-btn')) {
             const userId = target.dataset.id;
             const username = target.dataset.username;
