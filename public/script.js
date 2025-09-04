@@ -550,7 +550,7 @@ async function openFolderPermsModal(folderPath) {
         allRoles.forEach(role => {
             const isChecked = folderPerms.allowedRoleIds.includes(role.id);
             const isSuperiorOrEqual = state.level >= role.level;
-            const isDisabled = isSuperiorOrEqual && isChecked && state.level !== 0; // Dono nunca é desabilitado
+            const isDisabled = isSuperiorOrEqual && isChecked && state.level !== 0;
 
             let title = '';
             if (isDisabled) {
@@ -741,11 +741,11 @@ async function renderAdminPage(subpage) {
                 <div class="table-container">
                     <table class="admin-table">
                         <thead><tr>
-                            <th>Usuário</th>
-                            <th>Cargo</th>
-                            ${hasPermission('users:view_chat_id') ? '<th>ID do Chat</th>' : ''}
-                            <th>Criado em</th>
-                            ${hasUserActions ? '<th>Ações</th>' : ''}
+                            <th class="col-user">Usuário</th>
+                            <th class="col-role">Cargo</th>
+                            ${hasPermission('users:view_chat_id') ? '<th class="col-chat-id">ID do Chat</th>' : ''}
+                            <th class="col-created">Criado em</th>
+                            ${hasUserActions ? '<th class="col-actions">Ações</th>' : ''}
                         </tr></thead>
                         <tbody>`;
 
@@ -837,7 +837,7 @@ function renderFilesPage(path) {
     const currentPathStr = path.join('/');
     const content = getContentForPath(path);
     const folderExistsSystemWide = state.allFolders.includes(currentPathStr);
-    const userCanSeeFolderContent = Object.keys(content).length > 0 || (path.length > 0 && state.allFiles.some(f => f.name.startsWith(currentPathStr + '/') && f.isPlaceholder));
+    const userCanSeeFolderContent = Object.keys(content).length > 0;
 
     if (path.length > 0 && !folderExistsSystemWide) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Pasta Inexistente</h2><p>A pasta "${currentPathStr}" não foi encontrada no sistema.</p></div>`;
@@ -894,7 +894,7 @@ function renderFilesPage(path) {
         return 0;
     });
 
-    if (items.length === 0) {
+    if (items.length === 0 && path.length > 0) {
         fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Pasta vazia.</div>';
         document.getElementById('select-all-checkbox').style.visibility = 'hidden';
         return;
