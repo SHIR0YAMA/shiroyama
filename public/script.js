@@ -714,8 +714,7 @@ async function renderAdminPage(subpage) {
             
             const rolesOptions = rolesList.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
             
-            const hasUserActions = hasPermission('roles:assign') || hasPermission('users:reset_password') || hasPermission('users:delete');
-
+            // Passo 1: Renderiza a tabela completa, com todas as colunas e botões.
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
@@ -733,34 +732,55 @@ async function renderAdminPage(subpage) {
                 const isSuperiorOrEqual = state.level >= user.role_level;
                 const canActOnUser = !isSelf && !isSuperiorOrEqual;
                 const disabledAttribute = !canActOnUser ? 'disabled' : '';
-
                 const rolesAsTags = user.roles.map(r => `<span class="role-tag">${r.role_name}</span>`).join(' ');
 
                 tableHTML += `
-                    <tr>
-                        <td>${user.username}</td>
-                        <td class="roles-cell">
+                    <tr data-user-id="${user.id}">
+                        <td class="col-user">${user.username}</td>
+                        <td class="col-role roles-cell">
                             <div>${rolesAsTags || 'Nenhum'}</div>
-                            ${hasPermission('roles:assign') ? `<button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-edit"></i></button>` : ''}
+                            <button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-edit"></i></button>
                         </td>
-                        <td class="chat-id-cell">
+                        <td class="col-chat-id chat-id-cell">
                             <div class="chat-id-cell-content">
-                            ${hasPermission('users:view_chat_id') ? `
                                 <span>${user.telegram_chat_id || 'N/A'}</span>
-                                ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>` : ''}
-                            ` : '<span>-</span>'}
+                                <button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>
                             </div>
                         </td>
-                        <td>${new Date(user.created_at).toLocaleDateString()}</td>
-                        <td class="actions-cell">
-                            ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>` : ''}
-                            ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>` : ''}
+                        <td class="col-created">${new Date(user.created_at).toLocaleDateString()}</td>
+                        <td class="col-actions actions-cell">
+                            <button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>
+                            <button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>
                         </td>
                     </tr>`;
             }
 
             tableHTML += `</tbody></table></div>`;
             adminContent.innerHTML = tableHTML;
+            
+            // Passo 2: Após renderizar, esconde elementos com base nas permissões.
+            const adminTable = adminContent.querySelector('.admin-table');
+            if (!hasPermission('roles:assign')) {
+                adminTable.querySelectorAll('.edit-user-roles-btn').forEach(el => el.style.display = 'none');
+            }
+            if (!hasPermission('users:view_chat_id')) {
+                adminTable.querySelectorAll('.col-chat-id').forEach(el => el.style.display = 'none');
+            }
+            if (!hasPermission('users:unlink_telegram')) {
+                adminTable.querySelectorAll('.unlink-telegram-btn').forEach(el => el.style.display = 'none');
+            }
+            if (!hasPermission('users:reset_password')) {
+                adminTable.querySelectorAll('.reset-password-btn').forEach(el => el.style.display = 'none');
+            }
+            if (!hasPermission('users:delete')) {
+                adminTable.querySelectorAll('.delete-user-btn').forEach(el => el.style.display = 'none');
+            }
+            // Limpa a coluna Ações se todos os botões foram escondidos
+            const hasVisibleActions = hasPermission('users:reset_password') || hasPermission('users:delete');
+            if (!hasVisibleActions) {
+                 adminTable.querySelectorAll('.col-actions').forEach(el => el.style.display = 'none');
+            }
+
 
         } else if (subpage === 'roles' && canViewRoles) {
             const [rolesData, permissionsData] = await Promise.all([apiCall('admin/roles'), apiCall('admin/permissions')]);
