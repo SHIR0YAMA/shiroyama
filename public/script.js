@@ -690,7 +690,7 @@ async function renderAdminPage(subpage) {
         else if (canViewRoles) subpage = 'roles';
     }
     
-    if (!canViewUsers && !canViewRoles && !hasPermission('roles:assign')) {
+    if (!canViewUsers && !canViewRoles) {
         mainContent.innerHTML = "<p>Você não tem permissões suficientes para visualizar o painel de administração.</p>";
         hideLoading();
         return;
@@ -712,6 +712,10 @@ async function renderAdminPage(subpage) {
             const usersList = data.users;
             const rolesList = data.roles;
             
+            const rolesOptions = rolesList.map(r => `<option value="${r.id}">${r.name} (Nível ${r.level})</option>`).join('');
+            
+            const hasUserActions = hasPermission('roles:assign') || hasPermission('users:reset_password') || hasPermission('users:delete');
+
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
@@ -863,22 +867,21 @@ function renderFilesPage(path) {
         if (!isFileA && isFileB) return -1;
         const sortOrder = state.sort.order === 'asc' ? 1 : -1;
         if (state.sort.key === 'name') return nameA.localeCompare(nameB, undefined, { numeric: true }) * sortOrder;
-        if (state.sort.key === 'size') return (itemA.file_size || 0) - (itemB.file_size || 0) * sortOrder;
+        if (state.sort.key === 'size') {
+            const sizeA = itemA.file_size || 0;
+            const sizeB = itemB.file_size || 0;
+            return (sizeA - sizeB) * sortOrder;
+        }
         return 0;
     });
 
-    if (items.length === 0 && path.length > 0) {
+    if (items.length === 0) {
         fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Pasta vazia.</div>';
         document.getElementById('select-all-checkbox').style.visibility = 'hidden';
-        return;
-    } else if (items.length === 0) {
-        fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Nenhum arquivo encontrado.</div>';
-        document.getElementById('select-all-checkbox').style.visibility = 'hidden';
-        return;
+    } else {
+        document.getElementById('select-all-checkbox').style.visibility = 'visible';
     }
     
-    document.getElementById('select-all-checkbox').style.visibility = 'visible';
-
     items.forEach(([name, item]) => {
         const div = document.createElement('div');
         div.className = 'file-item';
@@ -917,11 +920,9 @@ function renderFilesPage(path) {
 async function router(routeOverride) {
     showLoading();
     await parseJwt();
-    
     const pathString = (typeof routeOverride === 'string') ? routeOverride : (window.location.hash.slice(1) || '/');
     const path = pathString.split('/').filter(p => p && p !== '#').map(decodeURIComponent);
     const primaryRoute = path[0] || 'home';
-    
     await renderNav();
 
     try {
@@ -939,9 +940,9 @@ async function router(routeOverride) {
                 break;
             default:
                 if (!state.token) { renderLoginPage(); break; }
-                if (!hasPermission('can_view_files')) { mainContent.innerHTML = "<h2>Acesso Negado</h2><p>Você não tem permissão para visualizar arquivos.</p>"; break; }
+                if (!hasPermission('can_view_files')) { mainContent.innerHTML = "<h2>Acesso Negado</h2>"; break; }
                 if (state.allFiles.length === 0) {
-                    const data = await apiCall(`files`);
+                    const data = await apiCall('files');
                     state.allFiles = data.files || [];
                     state.allFolders = data.allFolders || [];
                     state.fileTree = buildFileTree(state.allFiles);
@@ -952,7 +953,7 @@ async function router(routeOverride) {
         }
     } catch (error) {
         if (error.message.includes('Token')) logout();
-        else mainContent.innerHTML = `<h2>Erro</h2><p style="color: #ff5555;">${error.message}</p>`;
+        else mainContent.innerHTML = `<h2>Erro</h2><p>${error.message}</p>`;
     } finally {
         setTimeout(hideLoading, 200);
     }
@@ -971,7 +972,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('password-reset-close-btn').onclick = () => passwordResetModal.classList.remove('show');
     document.getElementById('folder-perms-close-btn').onclick = closeFolderPermsModal;
     document.getElementById('user-roles-close-btn').onclick = closeUserRolesModal;
-
     document.getElementById('modal-login-btn').onclick = () => window.location.hash = '/login';
     document.getElementById('modal-register-btn').onclick = () => window.location.hash = '/register';
     document.getElementById('move-file-cancel-btn').onclick = closeMoveModal;
@@ -986,7 +986,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('folder-perms-save-btn').onclick = confirmSaveFolderPerms;
     document.getElementById('user-roles-cancel-btn').onclick = closeUserRolesModal;
     document.getElementById('user-roles-save-btn').onclick = confirmSaveUserRoles;
-
 
     [authModal, whyLinkModal, moveFileModal, createFolderModal, renameModal, roleModal, passwordResetModal, folderPermsModal, userRolesModal].forEach(modal => {
         if (modal) modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('show'); };
