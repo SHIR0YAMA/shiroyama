@@ -831,23 +831,7 @@ async function renderAdminPage(subpage) {
 }
 
 function renderFilesPage(path) {
-    const currentPathStr = path.join('/');
-    const content = getContentForPath(path);
-    const folderExistsSystemWide = state.allFolders.includes(currentPathStr);
-    const userCanSeeFolderContent = Object.keys(content).length > 0;
-
-    if (path.length > 0 && !folderExistsSystemWide) {
-        mainContent.innerHTML = `<div class="auth-form"><h2>Pasta Inexistente</h2><p>A pasta "${currentPathStr}" não foi encontrada no sistema.</p></div>`;
-        hideLoading();
-        return;
-    }
-    
-    if (path.length > 0 && folderExistsSystemWide && !userCanSeeFolderContent) {
-        mainContent.innerHTML = `<div class="auth-form"><h2>Acesso Negado</h2><p>Você não tem permissão para visualizar o conteúdo da pasta "${currentPathStr}".</p></div>`;
-        hideLoading();
-        return;
-    }
-    
+    // Passo 1: Renderiza a estrutura básica da página (cabeçalho, breadcrumb, etc.)
     let controlsHTML = `<div class="controls-buttons">`;
     if (hasPermission('can_create_folders')) controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`;
     controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div>`;
@@ -880,6 +864,26 @@ function renderFilesPage(path) {
     });
 
     const fileListBodyElement = document.getElementById('file-list-body');
+    const currentPathStr = path.join('/');
+    const content = getContentForPath(path);
+    
+    // Passo 2: Verifica as condições de erro
+    const folderExistsSystemWide = state.allFolders.includes(currentPathStr);
+    const userCanSeeFolderContent = Object.keys(content).length > 0;
+
+    if (path.length > 0 && !folderExistsSystemWide) {
+        fileListBodyElement.innerHTML = `<div class="auth-form" style="margin: auto;"><h2>Pasta Inexistente</h2><p>A pasta "${currentPathStr}" não foi encontrada no sistema.</p></div>`;
+        document.querySelector('.file-list-header').style.display = 'none';
+        return;
+    }
+    
+    if (path.length > 0 && folderExistsSystemWide && !userCanSeeFolderContent) {
+        fileListBodyElement.innerHTML = `<div class="auth-form" style="margin: auto;"><h2>Acesso Negado</h2><p>Você não tem permissão para visualizar o conteúdo da pasta "${currentPathStr}".</p></div>`;
+        document.querySelector('.file-list-header').style.display = 'none';
+        return;
+    }
+
+    // Passo 3: Continua com a renderização normal se não houver erros
     const items = Object.entries(content).sort(([nameA, itemA], [nameB, itemB]) => {
         const isFileA = itemA._isFile;
         const isFileB = itemB._isFile;
@@ -902,6 +906,7 @@ function renderFilesPage(path) {
         document.getElementById('select-all-checkbox').style.visibility = 'visible';
     }
     
+    fileListBodyElement.innerHTML = ''; // Limpa a área antes de adicionar os itens
     items.forEach(([name, item]) => {
         const div = document.createElement('div');
         div.className = 'file-item';
