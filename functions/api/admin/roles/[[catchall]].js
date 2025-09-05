@@ -1,7 +1,6 @@
 // /functions/api/admin/roles/[[catchall]].js
 
 async function handleGet(context) {
-    // A verificação de permissão ('roles:view_list') já é feita pelo _middleware.js
     try {
         const stmt = context.env.DB.prepare(`
             SELECT r.id, r.name, r.level, GROUP_CONCAT(p.name) as permissions
@@ -108,17 +107,6 @@ async function handlePut(context) {
             for (const permId of requestedPermissionIds) {
                 if (!userPermissionIds.includes(parseInt(permId))) {
                     return new Response(JSON.stringify({ message: `Você não pode conceder a permissão ID ${permId}, pois você não a possui.` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
-                }
-            }
-            
-            const originalRolePermsStmt = db.prepare(`SELECT permission_id FROM role_permissions WHERE role_id = ?`).bind(roleIdToEdit);
-            const { results: originalPermsResults } = await originalRolePermsStmt.all();
-            const originalPermissionIds = originalPermsResults.map(p => p.permission_id);
-            const permissionsBeingRemoved = originalPermissionIds.filter(id => !requestedPermissionIds.includes(id));
-            
-            for (const permId of permissionsBeingRemoved) {
-                if (!userPermissionIds.includes(permId)) {
-                    return new Response(JSON.stringify({ message: `Você não pode remover a permissão ID ${permId}, pois você não a possui.` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
                 }
             }
         }
