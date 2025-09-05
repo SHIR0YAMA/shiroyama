@@ -4,7 +4,8 @@ export async function onRequestGet(context) {
     const { env, data } = context;
     const loggedInUser = data.user;
 
-    if (!loggedInUser || !loggedIn-l..permissions.includes('can_view_files')) {
+    // A verificação de permissão 'can_view_files' é feita aqui
+    if (!loggedInUser || !loggedInUser.permissions.includes('can_view_files')) {
         return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão para visualizar arquivos.' }), {
             status: 403,
             headers: { 'Content-Type': 'application/json' }
