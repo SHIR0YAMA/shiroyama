@@ -1,62 +1,42 @@
 // /functions/api/user/status.js
 
-async function verifyJwt(token, secret) {
-    try {
-        const encoder = new TextEncoder();
-        const [encodedHeader, encodedPayload, encodedSignature] = token.split('.');
-        if (!encodedHeader || !encodedPayload || !encodedSignature) throw new Error('Formato do token inválido');
-        const dataToSign = `${encodedHeader}.${encodedPayload}`;
-        const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
-        const signature = new Uint8Array(atob(encodedSignature.replace(/_/g, '/').replace(/-/g, '+')).split('').map(c => c.charCodeAt(0)));
-        const isValid = await crypto.subtle.verify('HMAC', key, signature, encoder.encode(dataToSign));
-        if (!isValid) throw new Error('Assinatura do token inválida');
-        const decodedPayload = JSON.parse(new TextDecoder().decode(new Uint8Array(atob(encodedPayload.replace(/_/g, '/').replace(/-/g, '+')).split('').map(c => c.charCodeAt(0)))));
-        if (decodedPayload.exp < Math.floor(Date.now() / 1000)) throw new Error('Token expirado');
-        return decodedPayload;
-    } catch (error) {
-        throw new Error(`Token inválido: ${error.message}`);
-    }
-}
-
 export async function onRequestGet(context) {
-    const { request, env } = context;
+    const { env, data } = context;
     try {
-        const authHeader = request.headers.get('Authorization');
-        if (!authHeader) {
-            return new Response(JSON.stringify({ message: 'Auth requerida' }), { status: 401 });
-        }
-        const token = authHeader.split(' ')[1];
-        const payload = await verifyJwt(token, env.JWT_SECRET);
-        
-        // --- CONSULTA SQL CORRIGIDA ---
-        // Esta query agora busca o nome do cargo (role_name) da tabela 'roles'
-        const query = `
-            SELECT 
-                u.id, 
-                u.username, 
-                r.name as role_name, 
-                u.telegram_chat_id, 
-                u.telegram_username 
-            FROM users u
-            LEFT JOIN roles r ON u.role_id = r.id
-            WHERE u.id = ?
-        `;
-        const stmt = env.DB.prepare(query).bind(payload.userId);
-        const user = await stmt.first();
+        const loggedInUser = data.user;
+        const db = env.DB;
+
+        // Passo 1: Busca os dados básicos do usuário.
+        const userStmt = db.prepare(`
+            SELECT id, username, telegram_chat_id, telegram_username 
+            FROM users 
+            WHERE id = ?
+        `).bind(loggedInUser.userId);
+        const user = await userStmt.first();
 
         if (!user) {
-            return new Response(JSON.stringify({ message: 'Usuário não encontrado' }), { status: 404 });
+            return new Response(JSON.stringify({ message: 'Usuário não encontrado.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
         }
-        
-        // Renomeamos a propriedade no objeto de resposta para corresponder ao que o frontend espera
-        // (A API de login retorna 'role', então esta também deve)
-        user.role = user.role_name;
-        delete user.role_name;
 
-        return new Response(JSON.stringify(user));
+        // Passo 2: Busca todos os cargos do usuário.
+        const rolesStmt = db.prepare(`
+            SELECT r.id as role_id, r.name as role_name, r.level 
+            FROM roles r 
+            JOIN user_roles ur ON r.id = ur.role_id 
+            WHERE ur.user_id = ? 
+            ORDER BY r.level ASC
+        `).bind(loggedInUser.userId);
+        const { results: roles } = await rolesStmt.all();
+
+        // Adiciona os cargos encontrados ao objeto de resposta.
+        user.roles = roles || [];
+        // Adiciona o cargo principal para consistência com a UI.
+        user.role_name = loggedInUser.role;
+
+        return new Response(JSON.stringify(user), { headers: { 'Content-Type': 'application/json' } });
 
     } catch (error) {
-        console.error("Erro em /api/user/status:", error.stack);
-        return new Response(JSON.stringify({ message: error.message }), { status: 500 });
+        console.error("Erro ao buscar status do usuário:", error);
+        return new Response(JSON.stringify({ message: "Erro interno ao buscar status do usuário." }), { status: 500, headers: { 'Content-Type': 'application/json' } });
     }
 }

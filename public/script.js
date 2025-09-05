@@ -671,6 +671,20 @@ async function renderProfilePage() {
     showLoading();
     try {
         const userData = await apiCall('user/status', 'GET');
+        
+        // Seção de Cargos
+        let rolesHTML = '<h3>Meus Cargos</h3>';
+        if (userData.roles && userData.roles.length > 0) {
+            rolesHTML += '<p>Seu cargo principal (exibido no topo) é o de maior hierarquia.</p><div class="roles-list">';
+            userData.roles.forEach(role => {
+                rolesHTML += `<span class="role-tag">${role.role_name}</span>`;
+            });
+            rolesHTML += '</div>';
+        } else {
+            rolesHTML += '<p>Nenhum cargo atribuído.</p>';
+        }
+
+        // Seção do Telegram
         let telegramSectionHTML = '<h3>Vincular Conta do Telegram</h3>';
         if (hasPermission('can_receive_files')) {
             if (userData.telegram_chat_id) {
@@ -682,9 +696,20 @@ async function renderProfilePage() {
             telegramSectionHTML = '';
         }
 
-        mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${state.role || 'N/A'}</strong></p>
+        mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2>
+            <p>Usuário do Site: <strong>${userData.username}</strong></p>
+            <hr style="border-color: #6272a4; margin: 20px 0;">
+            ${rolesHTML}
             ${telegramSectionHTML ? `<hr style="border-color: #6272a4; margin: 20px 0;">${telegramSectionHTML}` : ''}
-            <hr style="border-color: #6272a4; margin: 20px 0;"><h3>Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit">Salvar Nova Senha</button></form></div>`;
+            <hr style="border-color: #6272a4; margin: 20px 0;">
+            <h3>Alterar Senha</h3>
+            <form id="password-form">
+                <div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div>
+                <div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div>
+                <div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div>
+                <button type="submit">Salvar Nova Senha</button>
+            </form>
+        </div>`;
         
         if (hasPermission('can_receive_files')) {
             if (userData.telegram_chat_id) {
