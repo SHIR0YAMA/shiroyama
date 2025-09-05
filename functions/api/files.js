@@ -12,13 +12,15 @@ export async function onRequestGet(context) {
     }
 
     try {
-        const [permsResult, kvListResult] = await Promise.all([
+        const [permsResult, kvListResult, userRolesResult] = await Promise.all([
             env.DB.prepare("SELECT role_id, folder_path FROM folder_permissions").all(),
-            env.ARQUIVOS_TELEGRAM.list({ limit: 1000 }) // Adicionar paginação aqui se tiver mais de 1000 chaves
+            env.ARQUIVOS_TELEGRAM.list({ limit: 1000 }), // Adicionar paginação se necessário
+            env.DB.prepare("SELECT role_id FROM user_roles WHERE user_id = ?").bind(loggedInUser.userId).all()
         ]);
 
         const folderPerms = permsResult.results;
         const allKeys = kvListResult.keys;
+        const userRoleIds = new Set(userRolesResult.results.map(r => r.role_id));
 
         const permissionMap = new Map();
         folderPerms.forEach(p => {
@@ -32,24 +34,23 @@ export async function onRequestGet(context) {
         
         const canAccessPath = (path) => {
             if (isOwner) return true;
-            if (!path) return true; // Raiz
+            if (!path) return true;
 
-            // Otimização: Se alguma subpasta tem permissão, a pasta pai é atravessável
             for (const [restrictedPath, allowedRoles] of permissionMap.entries()) {
-                if (restrictedPath.startsWith(path) && allowedRoles.has(loggedInUser.roleId)) {
+                if (restrictedPath.startsWith(path) && [...allowedRoles].some(roleId => userRoleIds.has(roleId))) {
                     return true;
                 }
             }
 
-            // Verifica a permissão da hierarquia de pastas, da mais específica para a mais geral
             const pathParts = path.split('/');
             for (let i = pathParts.length; i > 0; i--) {
                 const currentPath = pathParts.slice(0, i).join('/');
                 if (permissionMap.has(currentPath)) {
-                    return permissionMap.get(currentPath).has(loggedInUser.roleId);
+                    const allowedRoles = permissionMap.get(currentPath);
+                    return [...allowedRoles].some(roleId => userRoleIds.has(roleId));
                 }
             }
-            return true; // Se nenhum ancestral tem regra, é público
+            return true;
         };
 
         const allExistingFolders = [...new Set(allKeys.map(k => k.name.substring(0, k.name.lastIndexOf('/'))).filter(Boolean))];
