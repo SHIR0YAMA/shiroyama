@@ -5,7 +5,7 @@ export async function onRequestGet(context) {
     const loggedInUser = data.user;
 
     if (!loggedInUser || !loggedInUser.permissions.includes('can_view_files')) {
-        return new Response(JSON.stringify({ message: 'Acesso negado.' }), { status: 403 });
+        return new Response(JSON.stringify({ message: 'Acesso negado.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
     }
 
     try {
@@ -29,10 +29,12 @@ export async function onRequestGet(context) {
 
         // --- CORREÇÃO DEFINITIVA NA DESCOBERTA DE PASTAS ---
         const allExistingFoldersSet = new Set();
-        allKeys.forEach(k => {
-            const pathParts = k.name.split('/');
-            pathParts.pop(); // Remove o nome do arquivo/placeholder
+        allKeys.forEach(key => {
+            const pathParts = key.name.split('/');
+            pathParts.pop(); // Remove o nome do arquivo ou .placeholder
             
+            // Adiciona todos os caminhos pais intermediários
+            // Ex: para 'a/b/c/file.txt', adiciona 'a', 'a/b', e 'a/b/c'
             for (let i = 1; i <= pathParts.length; i++) {
                 allExistingFoldersSet.add(pathParts.slice(0, i).join('/'));
             }
@@ -100,6 +102,6 @@ export async function onRequestGet(context) {
 
     } catch (error) {
         console.error("Erro ao listar arquivos:", error);
-        return new Response(JSON.stringify({ message: "Erro interno." }), { status: 500 });
+        return new Response(JSON.stringify({ message: "Erro interno." }), { status: 500, headers: { 'Content-Type': 'application/json' } });
     }
 }
