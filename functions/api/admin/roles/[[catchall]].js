@@ -1,6 +1,7 @@
-// /functions/api/admin/roles/[[catchall]].js (100% COMPLETO)
+// /functions/api/admin/roles/[[catchall]].js
 
 async function handleGet(context) {
+    // A verificação de permissão ('roles:view_list') já é feita pelo _middleware.js
     try {
         const stmt = context.env.DB.prepare(`
             SELECT r.id, r.name, r.level, GROUP_CONCAT(p.name) as permissions
@@ -24,6 +25,11 @@ async function handlePost(context) {
     const { request, env, data } = context;
     try {
         const loggedInUser = data.user;
+
+        if (!loggedInUser.permissions.includes('roles:create')) {
+             return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão para criar cargos.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+        
         const { name, level, permissions: requestedPermissionIds } = await request.json();
         const db = env.DB;
         if (!name || typeof level !== 'number' || !Array.isArray(requestedPermissionIds)) {
@@ -65,6 +71,11 @@ async function handlePut(context) {
     const { request, env, data, params } = context;
     try {
         const loggedInUser = data.user;
+
+        if (!loggedInUser.permissions.includes('roles:edit')) {
+             return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão para editar cargos.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+
         const roleIdToEdit = parseInt(params.catchall[0]);
         const { name, level, permissions: requestedPermissionIds } = await request.json();
         const db = env.DB;
@@ -123,7 +134,6 @@ async function handlePut(context) {
             await db.batch(permissionStmts);
         }
 
-        // Invalida a sessão de todos os usuários com este cargo
         await db.prepare("UPDATE users SET token_valid_after = CURRENT_TIMESTAMP WHERE role_id = ?").bind(roleIdToEdit).run();
 
         return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -140,9 +150,13 @@ async function handleDelete(context) {
     const { env, data, params } = context;
     try {
         const loggedInUser = data.user;
+
+        if (!loggedInUser.permissions.includes('roles:delete')) {
+             return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão para excluir cargos.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+        
         const roleIdToDelete = parseInt(params.catchall[0]);
         const db = env.DB;
-        
         if (isNaN(roleIdToDelete)) {
              return new Response(JSON.stringify({ message: 'ID de cargo inválido.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
