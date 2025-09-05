@@ -5,7 +5,7 @@ export async function onRequestGet(context) {
     const loggedInUser = data.user;
 
     if (!loggedInUser || !loggedInUser.permissions.includes('can_view_files')) {
-        return new Response(JSON.stringify({ message: 'Acesso negado.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ message: 'Acesso negado.' }), { status: 403 });
     }
 
     try {
@@ -27,32 +27,20 @@ export async function onRequestGet(context) {
 
         const isOwner = loggedInUser.level === 0;
 
-        // --- CORREÇÃO DEFINITIVA NA DESCOBERTA DE PASTAS ---
         const allExistingFoldersSet = new Set();
         allKeys.forEach(key => {
             const pathParts = key.name.split('/');
-            pathParts.pop(); // Remove o nome do arquivo ou .placeholder
-            
-            // Adiciona todos os caminhos pais intermediários
-            // Ex: para 'a/b/c/file.txt', adiciona 'a', 'a/b', e 'a/b/c'
+            pathParts.pop();
             for (let i = 1; i <= pathParts.length; i++) {
                 allExistingFoldersSet.add(pathParts.slice(0, i).join('/'));
             }
         });
         const allExistingFolders = Array.from(allExistingFoldersSet);
-        // --- FIM DA CORREÇÃO ---
-        
+
+        // --- LÓGICA DE PERMISSÃO EM CASCATA ---
         const canAccessPath = (path) => {
             if (isOwner) return true;
-            if (!path) return true; // Raiz
-
-            for (const [restrictedPath, allowedRoles] of permissionMap.entries()) {
-                if (path.startsWith(restrictedPath) || restrictedPath.startsWith(path)) {
-                    if (allowedRoles.has(loggedInUser.roleId)) {
-                        return true;
-                    }
-                }
-            }
+            if (!path) return true;
 
             const pathParts = path.split('/');
             for (let i = pathParts.length; i > 0; i--) {
@@ -64,9 +52,34 @@ export async function onRequestGet(context) {
             return true;
         };
 
-        const visibleFolders = allExistingFolders.filter(folderPath => canAccessPath(folderPath));
-        const accessibleKeys = allKeys.filter(key => canAccessPath(key.name.substring(0, key.name.lastIndexOf('/'))));
-        
+        const memo = {};
+        const canTraversePath = (path) => {
+            if (isOwner) return true;
+            if (!path) return true;
+            if (memo[path] !== undefined) return memo[path];
+
+            if (canAccessPath(path)) {
+                memo[path] = true;
+                return true;
+            }
+
+            for (const folder of allExistingFolders) {
+                if (folder.startsWith(path + '/') && canAccessPath(folder)) {
+                    memo[path] = true;
+                    return true;
+                }
+            }
+
+            memo[path] = false;
+            return false;
+        };
+
+        const visibleFolders = allExistingFolders.filter(folderPath => canTraversePath(folderPath));
+        const accessibleKeys = allKeys.filter(key => {
+            const folderPath = key.name.substring(0, key.name.lastIndexOf('/'));
+            return canTraversePath(folderPath);
+        });
+
         const filePromises = accessibleKeys.map(async (key) => {
             if (key.name.endsWith('/.placeholder')) {
                 return { name: key.name, isPlaceholder: true };
@@ -82,26 +95,25 @@ export async function onRequestGet(context) {
                     };
                 }
             } catch (e) {
-                console.error(`Chave '${key.name}' tem valor inválido:`, e);
                 return { name: key.name, file_size: 0, message_id: null };
             }
             return null;
         });
 
         const accessibleFilesWithMetadata = (await Promise.all(filePromises)).filter(Boolean);
-        
+
         const headers = new Headers({
             'Content-Type': 'application/json',
             'Cache-Control': 'no-cache, no-store, must-revalidate'
         });
 
-        return new Response(JSON.stringify({ 
+        return new Response(JSON.stringify({
             files: accessibleFilesWithMetadata,
-            allFolders: allExistingFolders // Envia TODAS as pastas para o frontend
-        }), { headers: headers });
+            allFolders: visibleFolders
+        }), { headers });
 
     } catch (error) {
         console.error("Erro ao listar arquivos:", error);
-        return new Response(JSON.stringify({ message: "Erro interno." }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ message: "Erro interno." }), { status: 500 });
     }
 }
