@@ -28,14 +28,15 @@ async function authMiddleware(context) {
     const { request, env, next } = context;
     const url = new URL(request.url);
 
-    const publicRoutes = ['/api/auth/login', '/api/auth/register', '/api/auth/change-password'];
+    // CORREÇÃO: A rota 'change-password' NÃO é pública.
+    const publicRoutes = ['/api/auth/login', '/api/auth/register'];
     if (publicRoutes.includes(url.pathname)) {
         return next();
     }
 
     const authorization = request.headers.get('Authorization');
     if (!authorization || !authorization.startsWith('Bearer ')) {
-        if (url.pathname.startsWith('/api/admin/') || url.pathname.startsWith('/api/user/')) {
+        if (url.pathname.startsWith('/api/admin/') || url.pathname.startsWith('/api/user/') || url.pathname === '/api/auth/change-password') {
             return new Response(JSON.stringify({ message: 'Token de autenticação não fornecido.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
         }
         return next();
@@ -47,7 +48,6 @@ async function authMiddleware(context) {
         return new Response(JSON.stringify({ message: 'Token inválido ou expirado.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
     }
     
-    // --- VERIFICAÇÃO DE INVALIDAÇÃO DE SESSÃO ---
     const userDbInfo = await env.DB.prepare("SELECT token_valid_after FROM users WHERE id = ?").bind(userData.userId).first();
     
     if (!userDbInfo) {
@@ -62,7 +62,6 @@ async function authMiddleware(context) {
             return new Response(JSON.stringify({ message: 'Sua sessão expirou devido a uma alteração de segurança. Por favor, faça login novamente.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
         }
     }
-    // --- FIM DA VERIFICAÇÃO ---
 
     if (!context.data) context.data = {};
     context.data.user = userData;
