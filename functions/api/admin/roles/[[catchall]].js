@@ -111,15 +111,10 @@ async function handlePut(context) {
             }
         }
         
-        // --- CORREÇÃO NA SINTAXE DO BATCH ---
-        // 1. Prepara as statements
-        const updateRoleStmt = db.prepare('UPDATE roles SET name = ?, level = ? WHERE id = ?').bind(name, level, roleIdToEdit);
-        const deletePermsStmt = db.prepare('DELETE FROM role_permissions WHERE role_id = ?').bind(roleIdToEdit);
-        
-        // 2. Executa o primeiro batch
-        await db.batch([updateRoleStmt, deletePermsStmt]);
-
-        // 3. Prepara e executa o segundo batch (se necessário)
+        await db.batch([
+            db.prepare('UPDATE roles SET name = ?, level = ? WHERE id = ?').bind(name, level, roleIdToEdit),
+            db.prepare('DELETE FROM role_permissions WHERE role_id = ?').bind(roleIdToEdit)
+        ]);
         if (requestedPermissionIds.length > 0) {
             const permissionStmts = requestedPermissionIds.map(permId =>
                 db.prepare('INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)').bind(roleIdToEdit, permId)
@@ -127,8 +122,13 @@ async function handlePut(context) {
             await db.batch(permissionStmts);
         }
 
-        // Invalida a sessão dos usuários afetados
-        await db.prepare("UPDATE users SET token_valid_after = CURRENT_TIMESTAMP WHERE role_id = ?").bind(roleIdToEdit).run();
+        // --- CORREÇÃO DEFINITIVA NA QUERY DE INVALIDAÇÃO ---
+        await db.prepare(`
+            UPDATE users 
+            SET token_valid_after = CURRENT_TIMESTAMP 
+            WHERE id IN (SELECT user_id FROM user_roles WHERE role_id = ?)
+        `).bind(roleIdToEdit).run();
+        // --- FIM DA CORREÇÃO ---
 
         return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
