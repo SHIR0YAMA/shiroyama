@@ -284,19 +284,11 @@ async function confirmMoveFile() {
     moveState.destinationPath = moveState.currentPath.join('/');
     showLoading();
     try {
-        const isFolder = moveState.isFolder;
-        const oldKey = moveState.oldKeys[0];
-        
-        // CORREÇÃO: Lógica para construir a newKey
-        const fileName = oldKey.split('/').pop();
-        const newKey = moveState.destinationPath ? `${moveState.destinationPath}/${fileName}` : fileName;
-
-        if (!isFolder) {
-            await apiCall('admin/bulk-move', 'POST', { oldKeys: moveState.oldKeys, destinationPath: moveState.destinationPath });
-        } else {
-            await apiCall('admin/rename', 'POST', { oldKey, newKey, isFolder: true, action: 'move' });
-        }
-        
+        const apiToCall = moveState.isFolder ? 'admin/rename' : 'admin/bulk-move';
+        const payload = moveState.isFolder ? 
+            { oldKey: moveState.oldKeys[0], newKey: `${moveState.destinationPath}/${moveState.oldKeys[0].split('/').pop()}`, isFolder: true, action: 'move' } :
+            { oldKeys: moveState.oldKeys, destinationPath: moveState.destinationPath };
+        await apiCall(apiToCall, 'POST', payload);
         showNotification("Item(ns) movido(s) com sucesso!", "success");
         closeMoveModal();
         await refreshFiles();
@@ -575,7 +567,7 @@ async function openUserRolesModal(userId, username, userRoles) {
     document.getElementById('user-roles-username').textContent = username;
     const rolesContainer = document.getElementById('user-roles-container');
     rolesContainer.innerHTML = 'Carregando...';
-    document.getElementById('user-roles-modal').classList.add('show');
+    userRolesModal.classList.add('show');
 
     try {
         const allRoles = await apiCall('admin/roles');
@@ -679,20 +671,6 @@ async function renderProfilePage() {
     showLoading();
     try {
         const userData = await apiCall('user/status', 'GET');
-        
-        // Seção de Cargos
-        let rolesHTML = '<h3>Meus Cargos</h3>';
-        if (userData.roles && userData.roles.length > 0) {
-            rolesHTML += '<p>Seu cargo principal (exibido no topo) é o de maior hierarquia.</p><div class="roles-list">';
-            userData.roles.forEach(role => {
-                rolesHTML += `<span class="role-tag">${role.role_name}</span>`;
-            });
-            rolesHTML += '</div>';
-        } else {
-            rolesHTML += '<p>Nenhum cargo atribuído.</p>';
-        }
-
-        // Seção do Telegram
         let telegramSectionHTML = '<h3>Vincular Conta do Telegram</h3>';
         if (hasPermission('can_receive_files')) {
             if (userData.telegram_chat_id) {
@@ -704,20 +682,9 @@ async function renderProfilePage() {
             telegramSectionHTML = '';
         }
 
-        mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2>
-            <p>Usuário do Site: <strong>${userData.username}</strong></p>
-            <hr style="border-color: #6272a4; margin: 20px 0;">
-            ${rolesHTML}
+        mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${state.role || 'N/A'}</strong></p>
             ${telegramSectionHTML ? `<hr style="border-color: #6272a4; margin: 20px 0;">${telegramSectionHTML}` : ''}
-            <hr style="border-color: #6272a4; margin: 20px 0;">
-            <h3>Alterar Senha</h3>
-            <form id="password-form">
-                <div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div>
-                <div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div>
-                <div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div>
-                <button type="submit">Salvar Nova Senha</button>
-            </form>
-        </div>`;
+            <hr style="border-color: #6272a4; margin: 20px 0;"><h3>Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit">Salvar Nova Senha</button></form></div>`;
         
         if (hasPermission('can_receive_files')) {
             if (userData.telegram_chat_id) {
@@ -767,7 +734,7 @@ async function renderAdminPage(subpage) {
         else if (canViewRoles) subpage = 'roles';
     }
     
-    if (!canViewUsers && !canViewRoles) {
+    if (!canViewUsers && !canViewRoles && !hasPermission('roles:assign')) {
         mainContent.innerHTML = "<p>Você não tem permissões suficientes para visualizar o painel de administração.</p>";
         hideLoading();
         return;
@@ -787,6 +754,7 @@ async function renderAdminPage(subpage) {
         if (subpage === 'users' && canViewUsers) {
             const data = await apiCall('admin/users');
             const usersList = data.users;
+            const rolesList = data.roles;
             
             let tableHTML = `
                 <div class="table-container">
@@ -805,7 +773,6 @@ async function renderAdminPage(subpage) {
                 const isSuperiorOrEqual = state.level >= user.role_level;
                 const canActOnUser = !isSelf && !isSuperiorOrEqual;
                 const disabledAttribute = !canActOnUser ? 'disabled' : '';
-
                 const rolesAsTags = user.roles.map(r => `<span class="role-tag">${r.role_name}</span>`).join(' ');
 
                 tableHTML += `
@@ -813,31 +780,59 @@ async function renderAdminPage(subpage) {
                         <td>${user.username}</td>
                         <td class="roles-cell">
                             <div>${rolesAsTags || 'Nenhum'}</div>
-                            ${hasPermission('roles:assign') ? `<button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-edit"></i></button>` : ''}
+                            <button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-edit"></i></button>
                         </td>
                         <td class="chat-id-cell">
                             <div class="chat-id-cell-content">
-                            ${hasPermission('users:view_chat_id') ? `
-                                <span>${user.telegram_chat_id || 'N/A'}</span>
-                                ${user.telegram_chat_id && hasPermission('users:unlink_telegram') ? `<button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>` : ''}
-                            ` : '<span>-</span>'}
+                                <span>-</span>
+                                <button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>
                             </div>
                         </td>
                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
                         <td class="actions-cell">
-                            ${hasPermission('users:reset_password') ? `<button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>` : ''}
-                            ${hasPermission('users:delete') ? `<button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>` : ''}
+                            <button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>
+                            <button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>
                         </td>
                     </tr>`;
             }
 
             tableHTML += `</tbody></table></div>`;
             adminContent.innerHTML = tableHTML;
+            
+            adminContent.querySelectorAll('tr[data-user-id]').forEach((row, index) => {
+                const user = usersList[index];
+                if (!hasPermission('roles:assign')) {
+                    row.querySelector('.edit-user-roles-btn').style.display = 'none';
+                }
+                if (!hasPermission('users:view_chat_id')) {
+                    row.querySelector('.col-chat-id').style.display = 'none';
+                } else {
+                    const unlinkBtn = row.querySelector('.unlink-telegram-btn');
+                    const chatIdSpan = row.querySelector('.chat-id-cell-content span');
+                    if (chatIdSpan) chatIdSpan.textContent = user.telegram_chat_id || 'N/A';
+                    if (unlinkBtn && (!user.telegram_chat_id || !hasPermission('users:unlink_telegram'))) {
+                        unlinkBtn.style.display = 'none';
+                    }
+                }
+                if (!hasPermission('users:reset_password')) {
+                    const resetBtn = row.querySelector('.reset-password-btn');
+                    if (resetBtn) resetBtn.style.display = 'none';
+                }
+                if (!hasPermission('users:delete')) {
+                    const deleteBtn = row.querySelector('.delete-user-btn');
+                    if (deleteBtn) deleteBtn.style.display = 'none';
+                }
+                
+                const hasVisibleActions = hasPermission('users:reset_password') || hasPermission('users:delete');
+                if (!hasVisibleActions) {
+                     row.querySelector('.col-actions').style.display = 'none';
+                     adminContent.querySelector('th.col-actions').style.display = 'none';
+                }
+            });
 
         } else if (subpage === 'roles' && canViewRoles) {
             const [rolesData, permissionsData] = await Promise.all([apiCall('admin/roles'), apiCall('admin/permissions')]);
             const permMap = Object.fromEntries(permissionsData.map(p => [p.name, p.description]));
-            
             const hasRoleActions = hasPermission('roles:edit') || hasPermission('roles:delete');
 
             adminContent.innerHTML = `
@@ -856,7 +851,6 @@ async function renderAdminPage(subpage) {
                             ${rolesData.map(role => {
                                 const canActOnRole = state.level < role.level && (role.level !== 1000 || state.level === 0);
                                 const disabledAttribute = !canActOnRole ? 'disabled' : '';
-
                                 return `
                                 <tr>
                                     <td>${role.name}</td>
@@ -886,7 +880,7 @@ function renderFilesPage(path) {
     const currentPathStr = path.join('/');
     const content = getContentForPath(path);
     const folderExistsSystemWide = state.allFolders.includes(currentPathStr);
-    const userCanSeeFolderContent = Object.keys(content).length > 0 || (path.length > 0 && state.allFolders.includes(currentPathStr));
+    const userCanSeeFolderContent = Object.keys(content).length > 0;
 
     if (path.length > 0 && !folderExistsSystemWide) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Pasta Inexistente</h2><p>A pasta "${currentPathStr}" não foi encontrada no sistema.</p></div>`;
