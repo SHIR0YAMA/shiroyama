@@ -588,6 +588,10 @@ async function openUserRolesModal(userId, username, userRoles) {
 }
 async function confirmSaveUserRoles() {
     const selectedRoleIds = Array.from(document.querySelectorAll('#user-roles-container input:checked')).map(el => parseInt(el.value));
+    if (selectedRoleIds.length === 0) {
+        showNotification("Um usuário deve ter pelo menos um cargo.", "error");
+        return;
+    }
     showLoading();
     try {
         await apiCall('admin/users/update-roles', 'POST', {
@@ -753,17 +757,16 @@ async function renderAdminPage(subpage) {
         if (subpage === 'users' && canViewUsers) {
             const data = await apiCall('admin/users');
             const usersList = data.users;
-            const rolesList = data.roles;
             
             let tableHTML = `
                 <div class="table-container">
                     <table class="admin-table">
                         <thead><tr>
-                            <th class="col-user">Usuário</th>
-                            <th class="col-role">Cargos</th>
-                            <th class="col-chat-id">ID do Chat</th>
-                            <th class="col-created">Criado em</th>
-                            <th class="col-actions">Ações</th>
+                            <th data-label="Usuário">Usuário</th>
+                            <th data-label="Cargos">Cargos</th>
+                            <th data-label="ID do Chat">ID do Chat</th>
+                            <th data-label="Criado em">Criado em</th>
+                            <th data-label="Ações">Ações</th>
                         </tr></thead>
                         <tbody>`;
 
@@ -781,7 +784,7 @@ async function renderAdminPage(subpage) {
                             <div>${rolesAsTags || 'Nenhum'}</div>
                             <button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-edit"></i></button>
                         </td>
-                        <td data-label="ID do Chat" class="chat-id-cell">
+                        <td data-label="ID do Chat">
                             <div class="chat-id-cell-content">
                                 <span>${user.telegram_chat_id || 'N/A'}</span>
                                 <button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>
@@ -798,34 +801,27 @@ async function renderAdminPage(subpage) {
             tableHTML += `</tbody></table></div>`;
             adminContent.innerHTML = tableHTML;
             
-            // --- CORREÇÃO AQUI ---
-            // Lógica de pós-renderização para esconder colunas/botões
-            const adminTable = adminContent.querySelector('.admin-table');
-            if (!hasPermission('roles:assign')) {
-                adminTable.querySelectorAll('.edit-user-roles-btn').forEach(el => el.style.display = 'none');
-            }
-            if (!hasPermission('users:view_chat_id')) {
-                adminTable.querySelectorAll('.col-chat-id').forEach(el => el.style.display = 'none');
-            }
-            if (!hasPermission('users:unlink_telegram')) {
-                adminTable.querySelectorAll('.unlink-telegram-btn').forEach(el => el.style.display = 'none');
-            }
-            if (!hasPermission('users:reset_password')) {
-                adminTable.querySelectorAll('.reset-password-btn').forEach(el => el.style.display = 'none');
-            }
-            if (!hasPermission('users:delete')) {
-                adminTable.querySelectorAll('.delete-user-btn').forEach(el => el.style.display = 'none');
-            }
-            
-            // Esconde a coluna de Ações inteira se nenhum botão de ação estiver visível
-            if (!hasPermission('users:reset_password') && !hasPermission('users:delete')) {
-                 adminTable.querySelectorAll('.col-actions').forEach(el => el.style.display = 'none');
-            }
+            adminContent.querySelectorAll('tr[data-user-id]').forEach((row, index) => {
+                const user = usersList[index];
+                if (!hasPermission('roles:assign')) row.querySelector('.edit-user-roles-btn').style.display = 'none';
+                if (!hasPermission('users:view_chat_id')) row.cells[2].innerHTML = '<span>-</span>';
+                else if (!user.telegram_chat_id || !hasPermission('users:unlink_telegram')) {
+                    const unlinkBtn = row.querySelector('.unlink-telegram-btn');
+                    if (unlinkBtn) unlinkBtn.style.display = 'none';
+                }
+                if (!hasPermission('users:reset_password')) {
+                    const resetBtn = row.querySelector('.reset-password-btn');
+                    if (resetBtn) resetBtn.style.display = 'none';
+                }
+                if (!hasPermission('users:delete')) {
+                    const deleteBtn = row.querySelector('.delete-user-btn');
+                    if (deleteBtn) deleteBtn.style.display = 'none';
+                }
+            });
 
         } else if (subpage === 'roles' && canViewRoles) {
             const [rolesData, permissionsData] = await Promise.all([apiCall('admin/roles'), apiCall('admin/permissions')]);
             const permMap = Object.fromEntries(permissionsData.map(p => [p.name, p.description]));
-            
             const hasRoleActions = hasPermission('roles:edit') || hasPermission('roles:delete');
 
             adminContent.innerHTML = `
@@ -835,9 +831,7 @@ async function renderAdminPage(subpage) {
                 <div class="table-container">
                     <table class="admin-table">
                         <thead><tr>
-                            <th>Cargo</th>
-                            <th>Nível</th>
-                            <th>Permissões</th>
+                            <th>Cargo</th><th>Nível</th><th>Permissões</th>
                             ${hasRoleActions ? '<th>Ações</th>' : ''}
                         </tr></thead>
                         <tbody>

@@ -35,7 +35,10 @@
         .form-group label { display: block; margin-bottom: 5px; }
         .form-group input { width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #6272a4; background-color: #282a36; color: #f8f8f2; box-sizing: border-box; font-size: 16px; }
         #bulk-actions-container { display: none; margin-bottom: 15px; padding: 10px; background-color: #3b3e50; border-radius: 5px; border: 1px solid #6272a4; align-items: center; gap: 10px; flex-wrap: wrap; }
-        .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
+        .search-container { display: flex; align-items: center; flex-grow: 1; min-width: 250px; }
+        #search-input { width: 100%; padding: 8px 12px; border-radius: 5px; border: 1px solid #6272a4; background-color: #282a36; color: #f8f8f2; font-size: 15px; }
+        #search-clear-btn { background: none; border: none; color: #ff5555; font-size: 24px; cursor: pointer; padding: 0 10px; margin-left: -40px; }
         .controls-buttons { display: flex; gap: 10px; }
         .file-list { display: flex; flex-direction: column; margin-top: 15px; }
         .file-list-header, .file-item { display: flex; align-items: center; padding: 12px 15px; border-bottom: 1px solid #3b3e50; }
@@ -147,6 +150,7 @@
             .admin-table .roles-cell > div { width: 100%; }
             .admin-table .actions-cell { flex-direction: row; justify-content: flex-start; }
             .admin-tabs { justify-content: center; }
+            .search-container { order: 1; width: 100%; margin: 10px 0; }
         }
     </style>
 </head>
