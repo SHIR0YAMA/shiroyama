@@ -87,7 +87,6 @@
         .admin-tabs button.active { border-bottom-color: #ff79c6; }
         .table-container { overflow-x: auto; }
 
-        /* --- ESTILOS ADICIONADOS PARA O PAINEL DE ADMIN --- */
         .admin-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         .admin-table th, .admin-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #3b3e50; vertical-align: middle; word-wrap: break-word; }
         .admin-table th { color: #50fa7b; font-size: 14px; text-transform: uppercase; }
@@ -108,9 +107,7 @@
         .permission-group summary:hover { background-color: #3b3e50; }
         .permission-list { padding-left: 35px; margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
         .permission-item { display: flex; align-items: center; gap: 8px; }
-        /* --- FIM DOS ESTILOS DO PAINEL DE ADMIN --- */
 
-        /* --- ESTILOS PARA O ÍCONE DE CARREGAMENTO --- */
         #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); display: flex; justify-content: center; align-items: center; z-index: 9999; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0s 0.3s; }
         #loading-overlay.show { opacity: 1; visibility: visible; transition-delay: 0s; }
         .spinner { width: var(--spinner-size); height: var(--spinner-size); position: relative; }
@@ -128,23 +125,28 @@
         .spinner div:nth-child(10) { transform: rotate(270deg) translate(0, -142%); animation-delay: -0.25s; }
         .spinner div:nth-child(11) { transform: rotate(300deg) translate(0, -142%); animation-delay: -0.1667s; }
         .spinner div:nth-child(12) { transform: rotate(330deg) translate(0, -142%); animation-delay: -0.0833s; }
-        /* --- FIM DOS ESTILOS DE CARREGAMENTO --- */
-
-        /* --- NOVOS ESTILOS PARA RESPONSIVIDADE --- */
+        
         @media (max-width: 768px) {
             body { padding: 10px; font-size: 14px; }
             .container { padding: 0; }
-            header { flex-direction: column; gap: 15px; }
+            header { flex-direction: column; gap: 15px; padding: 15px 10px; }
             main { padding: 15px; }
             .file-list-header { display: none; }
-            .file-item { flex-wrap: wrap; padding: 10px 5px; position: relative; }
-            .file-item > .file-checkbox, .file-item > .file-icon { flex-basis: 25px; }
-            .file-name { flex-basis: 100%; order: -1; margin-left: 50px; margin-bottom: 8px; font-weight: bold; }
-            .file-size { margin-left: 50px; text-align: left; flex-grow: 1; }
-            .file-actions { flex-basis: auto; justify-content: flex-end; }
-            .admin-table th, .admin-table td { padding: 8px 5px; white-space: normal; word-break: break-word; }
+            .file-item { flex-wrap: wrap; padding: 15px 10px; position: relative; align-items: flex-start; }
+            .file-item > .file-checkbox, .file-item > .file-icon { flex-basis: 30px; margin-top: 2px; }
+            .file-name { flex-basis: calc(100% - 35px); font-weight: bold; word-wrap: break-word; }
+            .file-size { display: none; }
+            .file-actions { flex-basis: 100%; margin-top: 10px; padding-left: 35px; justify-content: flex-start; gap: 15px; }
+            .admin-table { display: block; width: 100%; }
+            .admin-table thead, .admin-table tbody, .admin-table tr, .admin-table td { display: block; }
+            .admin-table thead { display: none; }
+            .admin-table tr { padding: 10px 0; border-bottom: 1px solid #3b3e50; }
+            .admin-table td { display: flex; justify-content: space-between; align-items: center; padding: 8px 5px; border-bottom: none; }
+            .admin-table td::before { content: attr(data-label); font-weight: bold; color: #50fa7b; margin-right: 10px; }
+            .admin-table .roles-cell { flex-direction: column; align-items: flex-start; gap: 10px; }
+            .admin-table .roles-cell > div { width: 100%; }
+            .admin-table .actions-cell { flex-direction: row; justify-content: flex-start; }
             .admin-tabs { justify-content: center; }
-            .admin-table .roles-cell { flex-direction: column; align-items: flex-start; }
         }
     </style>
 </head>
