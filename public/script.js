@@ -932,22 +932,14 @@ function renderFilesPage(path) {
     const currentPathStr = path.join('/');
     const content = getContentForPath(path);
     
-    if (state.allFiles.length === 0 && path.length > 0 && window.location.hash !== '#/') {
-        mainContent.innerHTML = '<h2>Carregando...</h2>';
-        return;
-    }
-
-    const folderExistsSystemWide = state.allFolders.includes(currentPathStr);
-    const userCanSeeFolderContent = Object.keys(content).length > 0;
-
-    if (path.length > 0 && !folderExistsSystemWide) {
-        mainContent.innerHTML = `<div class="auth-form"><h2>Pasta Inexistente</h2><p>A pasta "${currentPathStr}" não foi encontrada no sistema.</p></div>`;
-        hideLoading();
-        return;
-    }
+    // CORREÇÃO: A lógica para determinar se uma pasta existe para o usuário é simplificada.
+    // O backend já nos deu a lista 'allFolders' com apenas as pastas que o usuário pode ver.
+    const folderExistsForUser = path.length === 0 || state.allFolders.includes(currentPathStr);
     
-    if (path.length > 0 && folderExistsSystemWide && !userCanSeeFolderContent) {
-        mainContent.innerHTML = `<div class="auth-form"><h2>Acesso Negado</h2><p>Você não tem permissão para visualizar o conteúdo da pasta "${currentPathStr}".</p></div>`;
+    // Se a URL aponta para uma pasta que não está na lista de pastas visíveis do usuário, é acesso negado/inexistente.
+    if (path.length > 0 && !folderExistsForUser) {
+        // (Podemos aprimorar isso no futuro para diferenciar os dois casos se o backend enviar a lista completa de todas as pastas do sistema)
+        mainContent.innerHTML = `<div class="auth-form"><h2>Acesso Negado ou Pasta Inexistente</h2><p>A pasta "${currentPathStr}" não foi encontrada ou você não tem permissão para acessá-la.</p></div>`;
         hideLoading();
         return;
     }
@@ -1043,7 +1035,9 @@ function renderFilesPage(path) {
     }
     
     fileListBodyElement.innerHTML = '';
-    if (items.length === 0) fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Pasta vazia.</div>';
+    if (items.length === 0) {
+        fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Pasta vazia.</div>';
+    }
     
     items.forEach(([name, item]) => {
         const div = document.createElement('div');
