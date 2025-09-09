@@ -118,17 +118,35 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     }
     try {
         const response = await fetch(`/api/${finalEndpoint}`, { method, headers, body: body ? JSON.stringify(body) : null });
+        
+        // Primeiro, trata respostas sem conteúdo (sucesso)
         if (response.status === 204) return null;
-        const result = await response.json();
+
+        // Tenta ler o corpo da resposta. Se for erro, pode não ser JSON.
+        const responseText = await response.text();
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (e) {
+            // Se não for JSON, o texto do erro é a mensagem.
+            if (!response.ok) {
+                 throw new Error(responseText || response.statusText);
+            }
+            // Se era pra ser JSON mas não foi, é um erro de programação no backend.
+            throw new Error("Resposta do servidor mal formatada.");
+        }
+
         if (!response.ok) {
             if (response.status === 401 && endpoint !== 'auth/login') logout();
             throw new Error(result.message || response.statusText);
         }
         return result;
     } catch (error) {
+        console.error(`API Error on ${endpoint}:`, error.message);
         throw error;
     }
 }
+
 
 // --- 5. FUNÇÕES DE AUTENTICAÇÃO ---
 function login(token) {
