@@ -888,17 +888,57 @@ async function renderAdminPage(subpage) {
     }
 }
 
+function renderSearchResults(searchTerm) {
+    const fileListBodyElement = document.getElementById('file-list-body');
+    const lowerCaseSearchTerm = searchTerm.toLowerCase();
+    
+    const allItems = [
+        ...state.allFolders.map(p => ({ name: p, _isFolder: true })),
+        ...state.allFiles.filter(f => !f.isPlaceholder)
+    ];
+
+    const uniqueNames = new Set();
+    const filteredItems = allItems.filter(item => {
+        const itemName = item.name.toLowerCase();
+        if (itemName.includes(lowerCaseSearchTerm) && !uniqueNames.has(item.name)) {
+            uniqueNames.add(item.name);
+            return true;
+        }
+        return false;
+    });
+
+    fileListBodyElement.innerHTML = '';
+    document.querySelector('.file-list-header').style.display = 'none';
+    document.getElementById('breadcrumb').innerHTML = `<strong>Resultados da busca por "${searchTerm}"</strong>`;
+
+    if (filteredItems.length === 0) {
+        fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Nenhum resultado encontrado.</div>';
+        return;
+    }
+
+    filteredItems.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'file-item';
+        if (item._isFolder) {
+            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(item.name)}" class="file-name">${item.name}</a><span class="file-size"></span><div class="file-actions"></div>`;
+        } else {
+            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon">${getIconForFile(item.name)}</span><span class="file-name">${item.name}</span><span class="file-size">${formatFileSize(item.file_size)}</span><div class="file-actions"></div>`;
+        }
+        fileListBodyElement.appendChild(div);
+    });
+}
+
 function renderFilesPage(path) {
     const currentPathStr = path.join('/');
     const content = getContentForPath(path);
     
-    if (state.allFiles.length === 0 && path.length > 0) {
+    if (state.allFiles.length === 0 && path.length > 0 && window.location.hash !== '#/') {
         mainContent.innerHTML = '<h2>Carregando...</h2>';
         return;
     }
 
     const folderExistsSystemWide = state.allFolders.includes(currentPathStr);
-    const userCanSeeFolderContent = Object.keys(content).length > 0 || state.allFolders.includes(currentPathStr);
+    const userCanSeeFolderContent = Object.keys(content).length > 0;
 
     if (path.length > 0 && !folderExistsSystemWide) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Pasta Inexistente</h2><p>A pasta "${currentPathStr}" não foi encontrada no sistema.</p></div>`;
@@ -913,7 +953,13 @@ function renderFilesPage(path) {
     }
     
     let controlsHTML = `<div class="controls"><div id="breadcrumb"></div>`;
-    controlsHTML += `<div class="search-container"><input type="text" id="search-input" placeholder="Buscar..."><button id="search-clear-btn" style="display:none;">×</button></div>`;
+    controlsHTML += `<div class="search-container">
+                        <input type="text" id="search-input" placeholder="Buscar...">
+                        <div class="search-buttons">
+                            <button id="search-btn" title="Buscar"><i class="fas fa-search"></i></button>
+                            <button id="search-clear-btn" title="Limpar" style="display:none;">×</button>
+                        </div>
+                     </div>`;
     controlsHTML += `<div class="controls-buttons">`;
     if (hasPermission('can_create_folders')) controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`;
     controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div></div>`;
@@ -922,6 +968,34 @@ function renderFilesPage(path) {
     document.getElementById('refresh-files-btn').onclick = refreshFiles;
     if (hasPermission('can_create_folders')) document.getElementById('create-folder-btn').onclick = () => openCreateFolderModal(false);
     
+    const searchInput = document.getElementById('search-input');
+    const searchBtn = document.getElementById('search-btn');
+    const searchClearBtn = document.getElementById('search-clear-btn');
+
+    const performSearch = () => {
+        const searchTerm = searchInput.value.trim();
+        searchClearBtn.style.display = searchTerm ? 'block' : 'none';
+        if (searchTerm.length > 1) {
+            renderSearchResults(searchTerm);
+        } else if (searchTerm.length === 0) {
+            document.getElementById('breadcrumb').style.display = 'block';
+            document.querySelector('.file-list-header').style.display = 'flex';
+            router();
+        }
+    };
+
+    searchInput.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') {
+            performSearch();
+        }
+        searchClearBtn.style.display = searchInput.value ? 'block' : 'none';
+    });
+    searchBtn.addEventListener('click', performSearch);
+    searchClearBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        performSearch();
+    });
+
     const breadcrumbElement = document.getElementById('breadcrumb');
     breadcrumbElement.innerHTML = '';
     const homeLink = document.createElement('a');
@@ -1121,7 +1195,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const sortKey = target.dataset.sort;
             if (state.sort.key === sortKey) state.sort.order = state.sort.order === 'asc' ? 'desc' : 'asc';
             else { state.sort.key = sortKey; state.sort.order = 'asc'; }
-            await router();
+            router();
         }
 
         if (target.classList.contains('delete-user-btn')) {
