@@ -176,8 +176,16 @@ function parseJwt() {
 }
 
 // --- 6. FUNÇÕES DE LÓGICA DE ARQUIVOS ---
-function buildFileTree(files) {
+function buildFileTree(files, folders) {
     const tree = {};
+    folders.forEach(folderPath => {
+        const parts = folderPath.split('/').filter(p => p);
+        let currentLevel = tree;
+        parts.forEach(part => {
+            if (!currentLevel[part]) currentLevel[part] = {};
+            currentLevel = currentLevel[part];
+        });
+    });
     files.forEach(file => {
         if (file.isPlaceholder) return;
         const parts = file.name.split('/').filter(p => p);
@@ -186,17 +194,8 @@ function buildFileTree(files) {
             if (index === parts.length - 1) {
                 currentLevel[part] = { ...file, _isFile: true };
             } else {
-                if (!currentLevel[part]) currentLevel[part] = {};
                 currentLevel = currentLevel[part];
             }
-        });
-    });
-    state.allFolders.forEach(folderPath => {
-        const parts = folderPath.split('/').filter(p => p);
-        let currentLevel = tree;
-        parts.forEach(part => {
-            if (!currentLevel[part]) currentLevel[part] = {};
-            currentLevel = currentLevel[part];
         });
     });
     return tree;
@@ -734,7 +733,7 @@ async function renderAdminPage(subpage) {
         else if (canViewRoles) subpage = 'roles';
     }
     
-    if (!canViewUsers && !canViewRoles && !hasPermission('roles:assign')) {
+    if (!canViewUsers && !canViewRoles) {
         mainContent.innerHTML = "<p>Você não tem permissões suficientes para visualizar o painel de administração.</p>";
         hideLoading();
         return;
@@ -754,7 +753,6 @@ async function renderAdminPage(subpage) {
         if (subpage === 'users' && canViewUsers) {
             const data = await apiCall('admin/users');
             const usersList = data.users;
-            const rolesList = data.roles;
             
             let tableHTML = `
                 <div class="table-container">
@@ -777,19 +775,19 @@ async function renderAdminPage(subpage) {
 
                 tableHTML += `
                     <tr data-user-id="${user.id}">
-                        <td>${user.username}</td>
-                        <td class="roles-cell">
+                        <td data-label="Usuário">${user.username}</td>
+                        <td data-label="Cargos" class="roles-cell">
                             <div>${rolesAsTags || 'Nenhum'}</div>
                             <button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-edit"></i></button>
                         </td>
-                        <td class="chat-id-cell">
+                        <td data-label="ID do Chat" class="chat-id-cell">
                             <div class="chat-id-cell-content">
                                 <span>-</span>
                                 <button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>
                             </div>
                         </td>
-                        <td>${new Date(user.created_at).toLocaleDateString()}</td>
-                        <td class="actions-cell">
+                        <td data-label="Criado em">${new Date(user.created_at).toLocaleDateString()}</td>
+                        <td data-label="Ações" class="actions-cell">
                             <button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>
                             <button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>
                         </td>
@@ -853,11 +851,11 @@ async function renderAdminPage(subpage) {
                                 const disabledAttribute = !canActOnRole ? 'disabled' : '';
                                 return `
                                 <tr>
-                                    <td>${role.name}</td>
-                                    <td>${role.level}</td>
-                                    <td class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
+                                    <td data-label="Cargo">${role.name}</td>
+                                    <td data-label="Nível">${role.level}</td>
+                                    <td data-label="Permissões" class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
                                     ${hasRoleActions ? `
-                                    <td class="actions-cell">
+                                    <td data-label="Ações" class="actions-cell">
                                         ${hasPermission('roles:edit') ? `<button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${disabledAttribute}>Editar</button>` : ''}
                                         ${hasPermission('roles:delete') ? `<button class="delete-role-btn btn-danger" data-id="${role.id}" ${disabledAttribute}>Excluir</button>` : ''}
                                     </td>` : ''}
@@ -1014,7 +1012,7 @@ async function router(routeOverride) {
                     const data = await apiCall('files');
                     state.allFiles = data.files || [];
                     state.allFolders = data.allFolders || [];
-                    state.fileTree = buildFileTree(state.allFiles);
+                    state.fileTree = buildFileTree(state.allFiles, state.allFolders);
                 }
                 const currentPath = primaryRoute === 'home' ? [] : path;
                 renderFilesPage(currentPath);
