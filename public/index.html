@@ -36,9 +36,9 @@
         .form-group input { width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #6272a4; background-color: #282a36; color: #f8f8f2; box-sizing: border-box; font-size: 16px; }
         #bulk-actions-container { display: none; margin-bottom: 15px; padding: 10px; background-color: #3b3e50; border-radius: 5px; border: 1px solid #6272a4; align-items: center; gap: 10px; flex-wrap: wrap; }
         .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
-        .search-container { display: flex; align-items: center; flex-grow: 1; min-width: 250px; }
-        #search-input { width: 100%; padding: 8px 12px; border-radius: 5px; border: 1px solid #6272a4; background-color: #282a36; color: #f8f8f2; font-size: 15px; }
-        #search-clear-btn { background: none; border: none; color: #ff5555; font-size: 24px; cursor: pointer; padding: 0 10px; margin-left: -40px; }
+        .search-container { display: flex; align-items: center; flex-grow: 1; min-width: 250px; position: relative; }
+        #search-input { width: 100%; padding: 8px 35px 8px 12px; border-radius: 5px; border: 1px solid #6272a4; background-color: #282a36; color: #f8f8f2; font-size: 15px; }
+        #search-clear-btn { position: absolute; right: 0; top: 0; bottom: 0; background: none; border: none; color: #ff5555; font-size: 24px; cursor: pointer; padding: 0 10px; }
         .controls-buttons { display: flex; gap: 10px; }
         .file-list { display: flex; flex-direction: column; margin-top: 15px; }
         .file-list-header, .file-item { display: flex; align-items: center; padding: 12px 15px; border-bottom: 1px solid #3b3e50; }
@@ -145,12 +145,14 @@
             .admin-table thead { display: none; }
             .admin-table tr { padding: 10px 0; border-bottom: 1px solid #3b3e50; }
             .admin-table td { display: flex; justify-content: space-between; align-items: center; padding: 8px 5px; border-bottom: none; }
-            .admin-table td::before { content: attr(data-label); font-weight: bold; color: #50fa7b; margin-right: 10px; }
-            .admin-table .roles-cell { flex-direction: column; align-items: flex-start; gap: 10px; }
+            .admin-table td::before { content: attr(data-label); font-weight: bold; color: #50fa7b; margin-right: 10px; flex-shrink: 0; }
+            .admin-table .roles-cell, .admin-table .actions-cell { flex-direction: column; align-items: flex-start; gap: 10px; }
             .admin-table .roles-cell > div { width: 100%; }
             .admin-table .actions-cell { flex-direction: row; justify-content: flex-start; }
             .admin-tabs { justify-content: center; }
-            .search-container { order: 1; width: 100%; margin: 10px 0; }
+            .search-container { order: -1; width: 100%; margin-bottom: 15px; margin-left: 0; margin-right: 0; }
+            #breadcrumb { order: 0; }
+            .controls-buttons { order: 2; }
         }
     </style>
 </head>

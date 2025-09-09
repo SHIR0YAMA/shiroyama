@@ -784,7 +784,7 @@ async function renderAdminPage(subpage) {
                             <div>${rolesAsTags || 'Nenhum'}</div>
                             <button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-edit"></i></button>
                         </td>
-                        <td data-label="ID do Chat">
+                        <td data-label="ID do Chat" class="chat-id-cell">
                             <div class="chat-id-cell-content">
                                 <span>${user.telegram_chat_id || 'N/A'}</span>
                                 <button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>
@@ -803,11 +803,18 @@ async function renderAdminPage(subpage) {
             
             adminContent.querySelectorAll('tr[data-user-id]').forEach((row, index) => {
                 const user = usersList[index];
-                if (!hasPermission('roles:assign')) row.querySelector('.edit-user-roles-btn').style.display = 'none';
-                if (!hasPermission('users:view_chat_id')) row.cells[2].innerHTML = '<span>-</span>';
-                else if (!user.telegram_chat_id || !hasPermission('users:unlink_telegram')) {
+                if (!hasPermission('roles:assign')) {
+                    const editBtn = row.querySelector('.edit-user-roles-btn');
+                    if (editBtn) editBtn.style.display = 'none';
+                }
+                if (!hasPermission('users:view_chat_id')) {
+                    const cell = row.querySelector('.chat-id-cell');
+                    if (cell) cell.innerHTML = '<span>-</span>';
+                } else {
                     const unlinkBtn = row.querySelector('.unlink-telegram-btn');
-                    if (unlinkBtn) unlinkBtn.style.display = 'none';
+                    if (unlinkBtn && (!user.telegram_chat_id || !hasPermission('users:unlink_telegram'))) {
+                        unlinkBtn.style.display = 'none';
+                    }
                 }
                 if (!hasPermission('users:reset_password')) {
                     const resetBtn = row.querySelector('.reset-password-btn');
@@ -881,10 +888,12 @@ function renderFilesPage(path) {
         return;
     }
     
-    let controlsHTML = `<div class="controls-buttons">`;
+    let controlsHTML = `<div class="controls"><div id="breadcrumb"></div>`;
+    controlsHTML += `<div class="search-container"><input type="text" id="search-input" placeholder="Buscar..."><button id="search-clear-btn" style="display:none;">×</button></div>`;
+    controlsHTML += `<div class="controls-buttons">`;
     if (hasPermission('can_create_folders')) controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`;
-    controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div>`;
-    mainContent.innerHTML = `<div class="controls"><div id="breadcrumb"></div>${controlsHTML}</div><div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div>`;
+    controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div></div>`;
+    mainContent.innerHTML = `${controlsHTML}<div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div>`;
     
     document.getElementById('refresh-files-btn').onclick = refreshFiles;
     if (hasPermission('can_create_folders')) document.getElementById('create-folder-btn').onclick = () => openCreateFolderModal(false);
