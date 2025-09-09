@@ -891,8 +891,14 @@ async function renderAdminPage(subpage) {
 function renderFilesPage(path) {
     const currentPathStr = path.join('/');
     const content = getContentForPath(path);
+    
+    if (state.allFiles.length === 0 && path.length > 0) {
+        mainContent.innerHTML = '<h2>Carregando...</h2>';
+        return;
+    }
+
     const folderExistsSystemWide = state.allFolders.includes(currentPathStr);
-    const userCanSeeFolderContent = Object.keys(content).length > 0;
+    const userCanSeeFolderContent = Object.keys(content).length > 0 || state.allFolders.includes(currentPathStr);
 
     if (path.length > 0 && !folderExistsSystemWide) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Pasta Inexistente</h2><p>A pasta "${currentPathStr}" não foi encontrada no sistema.</p></div>`;
