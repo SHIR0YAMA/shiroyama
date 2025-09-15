@@ -24,10 +24,21 @@ export async function onRequestPost(context) {
         const { userId: targetUserId } = await request.json();
         const db = env.DB;
 
-        // A verificação de permissão 'users:reset_password' já foi feita pelo _middleware.js
-        // A verificação incorreta foi removida daqui.
+        // A verificação de permissão 'users:reset_password' é feita aqui
+        if (!loggedInUser.permissions.includes('users:reset_password')) {
+            return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão: users:reset_password' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
 
-        const targetUser = await db.prepare("SELECT u.id, u.username, r.level as role_level, (SELECT GROUP_CONCAT(p.name) FROM role_permissions rp JOIN permissions p ON rp.permission_id = p.id WHERE rp.role_id = u.role_id) as permissions FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?").bind(targetUserId).first();
+        // CORREÇÃO: Busca o nível do cargo do usuário alvo a partir da tabela user_roles
+        const targetUserStmt = db.prepare(`
+            SELECT u.id, u.username, MIN(r.level) as role_level 
+            FROM users u
+            JOIN user_roles ur ON u.id = ur.user_id
+            JOIN roles r ON ur.role_id = r.id
+            WHERE u.id = ?
+            GROUP BY u.id
+        `).bind(targetUserId);
+        const targetUser = await targetUserStmt.first();
 
         if (!targetUser) {
             return new Response(JSON.stringify({ message: 'Usuário alvo não encontrado.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
@@ -37,15 +48,11 @@ export async function onRequestPost(context) {
             return new Response(JSON.stringify({ message: 'Não é possível resetar a senha de um usuário com hierarquia igual ou superior à sua.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
 
-        targetUser.permissions = targetUser.permissions ? targetUser.permissions.split(',') : [];
-        if (targetUser.permissions.includes('roles:edit') && loggedInUser.role !== 'Dono') { // Usando uma permissão mais específica para a trava de segurança
-            return new Response(JSON.stringify({ message: 'Não é possível resetar a senha de um administrador de cargos.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
-        }
-
         const newPassword = generateRandomPassword(12);
         const newHashedPassword = await hashPassword(newPassword);
 
-        await db.prepare("UPDATE users SET password = ? WHERE id = ?").bind(newHashedPassword, targetUserId).run();
+        // Atualiza a senha e invalida os tokens antigos
+        await db.prepare("UPDATE users SET password = ?, token_valid_after = CURRENT_TIMESTAMP WHERE id = ?").bind(newHashedPassword, targetUserId).run();
 
         await db.prepare("INSERT INTO admin_logs (admin_user_id, admin_username, action, target_info) VALUES (?, ?, ?, ?)")
             .bind(loggedInUser.userId, loggedInUser.username, 'reset_password', `Usuário: ${targetUser.username} (ID: ${targetUserId})`)

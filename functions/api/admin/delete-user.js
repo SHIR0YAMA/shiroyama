@@ -7,7 +7,9 @@ export async function onRequestPost(context) {
         const { userId: targetUserId } = await request.json();
         const db = env.DB;
 
-        // O _middleware já garante que o usuário tem 'can_manage_users'
+        if (!loggedInUser.permissions.includes('users:delete')) {
+            return new Response(JSON.stringify({ message: 'Acesso negado. Requer permissão: users:delete' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
         
         if (typeof targetUserId !== 'number') {
             return new Response(JSON.stringify({ message: 'ID de usuário inválido.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
@@ -17,31 +19,31 @@ export async function onRequestPost(context) {
             return new Response(JSON.stringify({ message: 'Você não pode deletar sua própria conta.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
 
-        // --- CORREÇÃO CRÍTICA DE HIERARQUIA ---
-        // Busca o nível do cargo do usuário alvo para comparação
-        const targetUser = await db.prepare("SELECT r.level as role_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?").bind(targetUserId).first();
+        // CORREÇÃO: Busca o nível do cargo do usuário alvo a partir da tabela user_roles
+        const targetUserStmt = db.prepare(`
+            SELECT u.id, u.username, MIN(r.level) as role_level 
+            FROM users u
+            JOIN user_roles ur ON u.id = ur.user_id
+            JOIN roles r ON ur.role_id = r.id
+            WHERE u.id = ?
+            GROUP BY u.id
+        `).bind(targetUserId);
+        const targetUser = await targetUserStmt.first();
 
         if (!targetUser) {
             return new Response(JSON.stringify({ message: 'Usuário alvo não encontrado.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
         }
 
-        // Ação só é permitida se o nível do admin logado for MENOR (mais poder) que o do alvo
         if (loggedInUser.level >= targetUser.role_level) {
             return new Response(JSON.stringify({ message: 'Não é possível excluir um usuário com hierarquia igual ou superior à sua.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
-        // --- FIM DA CORREÇÃO ---
 
+        // A chave estrangeira com ON DELETE CASCADE cuidará de limpar a tabela user_roles
         const stmt = env.DB.prepare('DELETE FROM users WHERE id = ?');
-        const info = await stmt.bind(targetUserId).run();
+        await stmt.bind(targetUserId).run();
 
-        if (info.changes === 0) {
-            // Isso não deve acontecer por causa da verificação acima, mas é uma segurança extra.
-            return new Response(JSON.stringify({ message: 'Usuário não encontrado para exclusão.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
-        }
-
-        // Log da ação
         await db.prepare("INSERT INTO admin_logs (admin_user_id, admin_username, action, target_info) VALUES (?, ?, ?, ?)")
-            .bind(loggedInUser.userId, loggedInUser.username, 'delete_user', `Usuário ID: ${targetUserId}`)
+            .bind(loggedInUser.userId, loggedInUser.username, 'delete_user', `Usuário: ${targetUser.username} (ID: ${targetUserId})`)
             .run();
 
         return new Response(JSON.stringify({ success: true, message: 'Usuário deletado com sucesso!' }));
