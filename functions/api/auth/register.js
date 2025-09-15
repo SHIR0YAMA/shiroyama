@@ -20,28 +20,38 @@ export async function onRequestPost(context) {
         const hashedPassword = await hashPassword(password);
         const db = env.DB;
 
-        // Busca o ID do cargo "Membro"
         const memberRole = await db.prepare("SELECT id FROM roles WHERE name LIKE 'Membro'").first();
         if (!memberRole || !memberRole.id) {
             console.error("ERRO CRÍTICO: O cargo 'Membro' não foi encontrado no banco de dados.");
             return new Response(JSON.stringify({ message: 'Configuração do servidor incorreta: Cargo padrão não encontrado.' }), { status: 500 });
         }
         
-        // Insere o usuário
-        const userInsertResult = await db.prepare('INSERT INTO users (username, password) VALUES (?, ?)')
-            .bind(username, hashedPassword)
-            .run();
+        // D1 não suporta transações explícitas (BEGIN/COMMIT), mas `batch` é atômico.
+        // O problema é que não podemos obter o ID do usuário inserido dentro do mesmo batch.
+        // Vamos voltar à abordagem sequencial, mas com logs para depurar.
+
+        console.log(`Tentando registrar usuário: ${username}`);
         
+        const userInsertStmt = db.prepare('INSERT INTO users (username, password) VALUES (?, ?)').bind(username, hashedPassword);
+        const info = await userInsertStmt.run();
+        
+        // Log para ver o que a inserção retorna
+        console.log("Resultado da inserção do usuário:", JSON.stringify(info));
+
         // Busca o ID do usuário recém-criado
         const newUser = await db.prepare("SELECT id FROM users WHERE username = ?").bind(username).first();
+        
         if (!newUser || !newUser.id) {
+            console.error("Falha ao recuperar o ID do usuário recém-criado.");
             throw new Error("Falha ao criar o usuário ou recuperar seu ID.");
         }
         
+        console.log(`Usuário criado com ID: ${newUser.id}. Atribuindo cargo Membro (ID: ${memberRole.id})`);
+        
         // Atribui o cargo "Membro"
-        await db.prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)')
-            .bind(newUser.id, memberRole.id)
-            .run();
+        await db.prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)').bind(newUser.id, memberRole.id).run();
+        
+        console.log(`Cargo atribuído com sucesso ao usuário ID: ${newUser.id}`);
 
         return new Response(JSON.stringify({ message: 'Conta criada com sucesso! Agora você pode fazer login.' }), { status: 201 });
 
