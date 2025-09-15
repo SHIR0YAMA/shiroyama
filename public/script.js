@@ -816,19 +816,19 @@ async function renderAdminPage(subpage) {
 
                 tableHTML += `
                     <tr data-user-id="${user.id}">
-                        <td>${user.username}</td>
-                        <td class="roles-cell">
+                        <td data-label="Usuário">${user.username}</td>
+                        <td data-label="Cargos" class="roles-cell">
                             <div>${rolesAsTags || 'Nenhum'}</div>
                             <button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-edit"></i></button>
                         </td>
-                        <td class="chat-id-cell">
+                        <td data-label="ID do Chat" class="chat-id-cell">
                             <div class="chat-id-cell-content">
-                                <span>-</span>
+                                <span>${user.telegram_chat_id || 'N/A'}</span>
                                 <button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>
                             </div>
                         </td>
-                        <td>${new Date(user.created_at).toLocaleDateString()}</td>
-                        <td class="actions-cell">
+                        <td data-label="Criado em">${new Date(user.created_at).toLocaleDateString()}</td>
+                        <td data-label="Ações" class="actions-cell">
                             <button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>
                             <button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>
                         </td>
@@ -848,8 +848,6 @@ async function renderAdminPage(subpage) {
                     row.querySelector('.col-chat-id').innerHTML = '<span>-</span>';
                 } else {
                     const unlinkBtn = row.querySelector('.unlink-telegram-btn');
-                    const chatIdSpan = row.querySelector('.chat-id-cell-content span');
-                    if (chatIdSpan) chatIdSpan.textContent = user.telegram_chat_id || 'N/A';
                     if (unlinkBtn && (!user.telegram_chat_id || !hasPermission('users:unlink_telegram'))) {
                         unlinkBtn.style.display = 'none';
                     }
@@ -861,11 +859,6 @@ async function renderAdminPage(subpage) {
                 if (!hasPermission('users:delete')) {
                     const deleteBtn = row.querySelector('.delete-user-btn');
                     if (deleteBtn) deleteBtn.style.display = 'none';
-                }
-                
-                const hasVisibleActions = hasPermission('users:reset_password') || hasPermission('users:delete');
-                if (!hasVisibleActions) {
-                     row.querySelector('.col-actions').innerHTML = '';
                 }
             });
 
@@ -913,6 +906,46 @@ async function renderAdminPage(subpage) {
     } finally {
         hideLoading();
     }
+}
+
+function renderSearchResults(searchTerm) {
+    const fileListBodyElement = document.getElementById('file-list-body');
+    const lowerCaseSearchTerm = searchTerm.toLowerCase();
+    
+    const allItems = [
+        ...state.allFolders.map(p => ({ name: p, _isFolder: true })),
+        ...state.allFiles.filter(f => !f.isPlaceholder)
+    ];
+
+    const uniqueNames = new Set();
+    const filteredItems = allItems.filter(item => {
+        const itemName = item.name.toLowerCase();
+        if (itemName.includes(lowerCaseSearchTerm) && !uniqueNames.has(item.name)) {
+            uniqueNames.add(item.name);
+            return true;
+        }
+        return false;
+    });
+
+    fileListBodyElement.innerHTML = '';
+    document.querySelector('.file-list-header').style.display = 'none';
+    document.getElementById('breadcrumb').innerHTML = `<strong>Resultados da busca por "${searchTerm}"</strong>`;
+
+    if (filteredItems.length === 0) {
+        fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Nenhum resultado encontrado.</div>';
+        return;
+    }
+
+    filteredItems.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'file-item';
+        if (item._isFolder) {
+            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(item.name)}" class="file-name">${item.name}</a><span class="file-size"></span><div class="file-actions"></div>`;
+        } else {
+            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon">${getIconForFile(item.name)}</span><span class="file-name">${item.name}</span><span class="file-size">${formatFileSize(item.file_size)}</span><div class="file-actions"></div>`;
+        }
+        fileListBodyElement.appendChild(div);
+    });
 }
 
 function renderFilesPage(path) {
@@ -1037,12 +1070,13 @@ function renderFilesPage(path) {
             if (hasPermission('can_receive_files')) actionsHTML += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
             if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`;
         } else if (item.isGroup) {
-            // Ações para grupos
             if (hasPermission('can_group_items')) actionsHTML += `<button class="btn-icon btn-ungroup" data-group-id="${item.groupId}" title="Desagrupar"><i class="fas fa-unlink"></i></button>`;
             if (hasPermission('can_receive_files')) actionsHTML += `<button class="btn-icon btn-bulk-forward" data-message-ids="${item.message_ids.join(',')}" title="Receber Todas as Partes"><i class="fas fa-paper-plane"></i></button>`;
             if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete-group" data-group-id="${item.groupId}" data-group-items='${JSON.stringify(item.groupItems)}' title="Excluir Grupo"><i class="fas fa-trash"></i></button>`;
         } else { // Pastas
-            if (hasPermission('can_manage_folder_permissions')) actionsHTML += `<button class="btn-icon btn-folder-perms" data-path="${itemPath}" title="Gerenciar Permissões"><i class="fas fa-cog"></i></button>`;
+            if (hasPermission('can_manage_folder_permissions')) {
+                actionsHTML += `<button class="btn-icon btn-folder-perms" data-path="${itemPath}" title="Gerenciar Permissões"><i class="fas fa-cog"></i></button>`;
+            }
             if (hasPermission('can_rename_folders')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear Pasta"><i class="fas fa-edit"></i></button>`;
             if (hasPermission('can_move_folders')) actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-open"></i></button>`;
             if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir Pasta"><i class="fas fa-trash"></i></button>`;
@@ -1263,24 +1297,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    mmainContent.addEventListener('change', (e) => {
+    mainContent.addEventListener('change', (e) => {
         if (!e.target.classList.contains('file-checkbox')) return;
-        
         if (e.target.id === 'select-all-checkbox') {
             document.querySelectorAll('#file-list-body .file-checkbox:not([style*="visibility: hidden"])').forEach(cb => cb.checked = e.target.checked);
         }
-        
         const bulkActionsContainer = document.getElementById('bulk-actions-container');
         if (!bulkActionsContainer) return;
-
         const selected = Array.from(document.querySelectorAll('#file-list-body .file-checkbox:checked'));
-        
         if (selected.length === 0) {
             bulkActionsContainer.style.display = 'none';
             document.getElementById('select-all-checkbox').checked = false;
             return;
         }
-
         bulkActionsContainer.style.display = 'flex';
         const keys = selected.map(cb => cb.dataset.key);
         const messageIds = selected.map(cb => cb.dataset.messageId);
@@ -1297,7 +1326,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (document.getElementById('bulk-group-btn')) document.getElementById('bulk-group-btn').onclick = openGroupFilesModal;
         if (document.getElementById('bulk-receive-btn')) {
             document.getElementById('bulk-receive-btn').onclick = async () => {
-                // ... (lógica do bulk-receive)
+                if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
+                const btn = document.getElementById('bulk-receive-btn');
+                try {
+                    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+                    btn.disabled = true;
+                    await apiCall('bulk-forward', 'POST', { message_ids: messageIds.filter(Boolean).map(id => parseInt(id)) });
+                    showNotification("O bot começou a enviar os arquivos! Verifique seu Telegram.", 'success');
+                } catch (error) {
+                    showNotification(`Ocorreu um erro: ${error.message}`, 'error');
+                } finally {
+                    btn.innerHTML = `<i class="fas fa-paper-plane"></i>`;
+                    btn.disabled = false;
+                }
             };
         }
     });
