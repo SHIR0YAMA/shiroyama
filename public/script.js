@@ -57,7 +57,8 @@ function stopFaviconBlink() {
     document.title = originalTitle;
 }
 
-function getIconForFile(fileName) {
+function getIconForFile(fileName, isGroup = false) {
+    if (isGroup) return '<i class="fas fa-file-archive"></i>';
     const extension = fileName.split('.').pop().toLowerCase();
     const videoExts = ['mp4', 'mkv', 'avi', 'mov', 'webm'];
     const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
@@ -107,6 +108,7 @@ const roleModal = document.getElementById('role-modal');
 const passwordResetModal = document.getElementById('password-reset-modal');
 const folderPermsModal = document.getElementById('folder-perms-modal');
 const userRolesModal = document.getElementById('user-roles-modal');
+const groupFilesModal = document.getElementById('group-files-modal');
 
 // --- 4. FUNÇÃO CENTRAL DE API ---
 async function apiCall(endpoint, method = 'GET', body = null) {
@@ -118,35 +120,17 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     }
     try {
         const response = await fetch(`/api/${finalEndpoint}`, { method, headers, body: body ? JSON.stringify(body) : null });
-        
-        // Primeiro, trata respostas sem conteúdo (sucesso)
         if (response.status === 204) return null;
-
-        // Tenta ler o corpo da resposta. Se for erro, pode não ser JSON.
-        const responseText = await response.text();
-        let result;
-        try {
-            result = JSON.parse(responseText);
-        } catch (e) {
-            // Se não for JSON, o texto do erro é a mensagem.
-            if (!response.ok) {
-                 throw new Error(responseText || response.statusText);
-            }
-            // Se era pra ser JSON mas não foi, é um erro de programação no backend.
-            throw new Error("Resposta do servidor mal formatada.");
-        }
-
+        const result = await response.json();
         if (!response.ok) {
             if (response.status === 401 && endpoint !== 'auth/login') logout();
             throw new Error(result.message || response.statusText);
         }
         return result;
     } catch (error) {
-        console.error(`API Error on ${endpoint}:`, error.message);
         throw error;
     }
 }
-
 
 // --- 5. FUNÇÕES DE AUTENTICAÇÃO ---
 function login(token) {
@@ -626,6 +610,41 @@ async function confirmSaveUserRoles() {
     }
 }
 
+function openGroupFilesModal() {
+    document.getElementById('group-name').value = '';
+    groupFilesModal.classList.add('show');
+    document.getElementById('group-name').focus();
+}
+
+function closeGroupFilesModal() {
+    groupFilesModal.classList.remove('show');
+}
+
+async function confirmGroupFiles() {
+    const groupName = document.getElementById('group-name').value.trim();
+    if (!groupName) {
+        showNotification("O nome do agrupamento é obrigatório.", "error");
+        return;
+    }
+
+    const selected = Array.from(document.querySelectorAll('#file-list-body .file-checkbox:checked'));
+    const fileKeys = selected.map(cb => cb.dataset.key);
+    const path = (window.location.hash.slice(2) || '').split('/').filter(p => p);
+    const folderPath = path.join('/');
+
+    showLoading();
+    try {
+        await apiCall('admin/create-group', 'POST', { groupName, folderPath, fileKeys });
+        showNotification(`Arquivos agrupados como "${groupName}" com sucesso!`, 'success');
+        closeGroupFilesModal();
+        await refreshFiles();
+    } catch (error) {
+        showNotification(`Erro ao agrupar: ${error.message}`, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
 // --- 8. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
 function renderNav() {
     parseJwt();
@@ -780,11 +799,11 @@ async function renderAdminPage(subpage) {
                 <div class="table-container">
                     <table class="admin-table">
                         <thead><tr>
-                            <th data-label="Usuário">Usuário</th>
-                            <th data-label="Cargos">Cargos</th>
-                            <th data-label="ID do Chat">ID do Chat</th>
-                            <th data-label="Criado em">Criado em</th>
-                            <th data-label="Ações">Ações</th>
+                            <th class="col-user">Usuário</th>
+                            <th class="col-role">Cargos</th>
+                            <th class="col-chat-id">ID do Chat</th>
+                            <th class="col-created">Criado em</th>
+                            <th class="col-actions">Ações</th>
                         </tr></thead>
                         <tbody>`;
 
@@ -797,19 +816,19 @@ async function renderAdminPage(subpage) {
 
                 tableHTML += `
                     <tr data-user-id="${user.id}">
-                        <td data-label="Usuário">${user.username}</td>
-                        <td data-label="Cargos" class="roles-cell">
+                        <td>${user.username}</td>
+                        <td class="roles-cell">
                             <div>${rolesAsTags || 'Nenhum'}</div>
                             <button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-edit"></i></button>
                         </td>
-                        <td data-label="ID do Chat" class="chat-id-cell">
+                        <td class="chat-id-cell">
                             <div class="chat-id-cell-content">
-                                <span>${user.telegram_chat_id || 'N/A'}</span>
+                                <span>-</span>
                                 <button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>
                             </div>
                         </td>
-                        <td data-label="Criado em">${new Date(user.created_at).toLocaleDateString()}</td>
-                        <td data-label="Ações" class="actions-cell">
+                        <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                        <td class="actions-cell">
                             <button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>
                             <button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>
                         </td>
@@ -826,10 +845,11 @@ async function renderAdminPage(subpage) {
                     if (editBtn) editBtn.style.display = 'none';
                 }
                 if (!hasPermission('users:view_chat_id')) {
-                    const cell = row.querySelector('.chat-id-cell');
-                    if (cell) cell.innerHTML = '<span>-</span>';
+                    row.querySelector('.col-chat-id').innerHTML = '<span>-</span>';
                 } else {
                     const unlinkBtn = row.querySelector('.unlink-telegram-btn');
+                    const chatIdSpan = row.querySelector('.chat-id-cell-content span');
+                    if (chatIdSpan) chatIdSpan.textContent = user.telegram_chat_id || 'N/A';
                     if (unlinkBtn && (!user.telegram_chat_id || !hasPermission('users:unlink_telegram'))) {
                         unlinkBtn.style.display = 'none';
                     }
@@ -841,6 +861,11 @@ async function renderAdminPage(subpage) {
                 if (!hasPermission('users:delete')) {
                     const deleteBtn = row.querySelector('.delete-user-btn');
                     if (deleteBtn) deleteBtn.style.display = 'none';
+                }
+                
+                const hasVisibleActions = hasPermission('users:reset_password') || hasPermission('users:delete');
+                if (!hasVisibleActions) {
+                     row.querySelector('.col-actions').innerHTML = '';
                 }
             });
 
@@ -856,7 +881,9 @@ async function renderAdminPage(subpage) {
                 <div class="table-container">
                     <table class="admin-table">
                         <thead><tr>
-                            <th>Cargo</th><th>Nível</th><th>Permissões</th>
+                            <th>Cargo</th>
+                            <th>Nível</th>
+                            <th>Permissões</th>
                             ${hasRoleActions ? '<th>Ações</th>' : ''}
                         </tr></thead>
                         <tbody>
@@ -888,58 +915,20 @@ async function renderAdminPage(subpage) {
     }
 }
 
-function renderSearchResults(searchTerm) {
-    const fileListBodyElement = document.getElementById('file-list-body');
-    const lowerCaseSearchTerm = searchTerm.toLowerCase();
-    
-    const allItems = [
-        ...state.allFolders.map(p => ({ name: p, _isFolder: true })),
-        ...state.allFiles.filter(f => !f.isPlaceholder)
-    ];
-
-    const uniqueNames = new Set();
-    const filteredItems = allItems.filter(item => {
-        const itemName = item.name.toLowerCase();
-        if (itemName.includes(lowerCaseSearchTerm) && !uniqueNames.has(item.name)) {
-            uniqueNames.add(item.name);
-            return true;
-        }
-        return false;
-    });
-
-    fileListBodyElement.innerHTML = '';
-    document.querySelector('.file-list-header').style.display = 'none';
-    document.getElementById('breadcrumb').innerHTML = `<strong>Resultados da busca por "${searchTerm}"</strong>`;
-
-    if (filteredItems.length === 0) {
-        fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Nenhum resultado encontrado.</div>';
-        return;
-    }
-
-    filteredItems.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'file-item';
-        if (item._isFolder) {
-            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(item.name)}" class="file-name">${item.name}</a><span class="file-size"></span><div class="file-actions"></div>`;
-        } else {
-            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon">${getIconForFile(item.name)}</span><span class="file-name">${item.name}</span><span class="file-size">${formatFileSize(item.file_size)}</span><div class="file-actions"></div>`;
-        }
-        fileListBodyElement.appendChild(div);
-    });
-}
-
 function renderFilesPage(path) {
     const currentPathStr = path.join('/');
     const content = getContentForPath(path);
+    const folderExistsSystemWide = state.allFolders.includes(currentPathStr);
+    const userCanSeeFolderContent = Object.keys(content).length > 0;
+
+    if (path.length > 0 && !folderExistsSystemWide) {
+        mainContent.innerHTML = `<div class="auth-form"><h2>Pasta Inexistente</h2><p>A pasta "${currentPathStr}" não foi encontrada no sistema.</p></div>`;
+        hideLoading();
+        return;
+    }
     
-    // CORREÇÃO: A lógica para determinar se uma pasta existe para o usuário é simplificada.
-    // O backend já nos deu a lista 'allFolders' com apenas as pastas que o usuário pode ver.
-    const folderExistsForUser = path.length === 0 || state.allFolders.includes(currentPathStr);
-    
-    // Se a URL aponta para uma pasta que não está na lista de pastas visíveis do usuário, é acesso negado/inexistente.
-    if (path.length > 0 && !folderExistsForUser) {
-        // (Podemos aprimorar isso no futuro para diferenciar os dois casos se o backend enviar a lista completa de todas as pastas do sistema)
-        mainContent.innerHTML = `<div class="auth-form"><h2>Acesso Negado ou Pasta Inexistente</h2><p>A pasta "${currentPathStr}" não foi encontrada ou você não tem permissão para acessá-la.</p></div>`;
+    if (path.length > 0 && folderExistsSystemWide && !userCanSeeFolderContent) {
+        mainContent.innerHTML = `<div class="auth-form"><h2>Acesso Negado</h2><p>Você não tem permissão para visualizar o conteúdo da pasta "${currentPathStr}".</p></div>`;
         hideLoading();
         return;
     }
@@ -1035,31 +1024,36 @@ function renderFilesPage(path) {
     }
     
     fileListBodyElement.innerHTML = '';
-    if (items.length === 0) {
-        fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Pasta vazia.</div>';
-    }
+    if (items.length === 0) fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Pasta vazia.</div>';
     
     items.forEach(([name, item]) => {
         const div = document.createElement('div');
         div.className = 'file-item';
         const itemPath = [...path, name].join('/');
         let actionsHTML = '<div class="file-actions">';
-        if (item._isFile) {
+        if (item._isFile && !item.isGroup) {
             if (hasPermission('can_rename_items')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear Arquivo"><i class="fas fa-edit"></i></button>`;
             if (hasPermission('can_move_items')) actionsHTML += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover Arquivo"><i class="fas fa-folder-open"></i></button>`;
             if (hasPermission('can_receive_files')) actionsHTML += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
             if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`;
-        } else {
-            if (hasPermission('can_manage_folder_permissions')) {
-                actionsHTML += `<button class="btn-icon btn-folder-perms" data-path="${itemPath}" title="Gerenciar Permissões"><i class="fas fa-cog"></i></button>`;
-            }
+        } else if (item.isGroup) {
+            // Ações para grupos
+            if (hasPermission('can_group_items')) actionsHTML += `<button class="btn-icon btn-ungroup" data-group-id="${item.groupId}" title="Desagrupar"><i class="fas fa-unlink"></i></button>`;
+            if (hasPermission('can_receive_files')) actionsHTML += `<button class="btn-icon btn-bulk-forward" data-message-ids="${item.message_ids.join(',')}" title="Receber Todas as Partes"><i class="fas fa-paper-plane"></i></button>`;
+            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete-group" data-group-id="${item.groupId}" data-group-items='${JSON.stringify(item.groupItems)}' title="Excluir Grupo"><i class="fas fa-trash"></i></button>`;
+        } else { // Pastas
+            if (hasPermission('can_manage_folder_permissions')) actionsHTML += `<button class="btn-icon btn-folder-perms" data-path="${itemPath}" title="Gerenciar Permissões"><i class="fas fa-cog"></i></button>`;
             if (hasPermission('can_rename_folders')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear Pasta"><i class="fas fa-edit"></i></button>`;
             if (hasPermission('can_move_folders')) actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-open"></i></button>`;
             if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir Pasta"><i class="fas fa-trash"></i></button>`;
         }
         actionsHTML += '</div>';
+
+        const isGroup = !!item.isGroup;
+        const displayName = isGroup ? item.name.split('/').pop() : name;
+        
         if (item._isFile) {
-            div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}"><span class="file-icon">${getIconForFile(name)}</span><span class="file-name">${name}</span><span class="file-size">${formatFileSize(item.file_size)}</span>${actionsHTML}`;
+            div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}" data-is-group="${isGroup}" data-group-id="${item.groupId || ''}"><span class="file-icon">${getIconForFile(name, isGroup)}</span><span class="file-name">${displayName}</span><span class="file-size">${formatFileSize(item.file_size)}</span>${actionsHTML}`;
         } else {
             div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><span class="file-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(itemPath)}" class="file-name">${name}</a><span class="file-size"></span>${actionsHTML}`;
         }
@@ -1129,6 +1123,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('password-reset-close-btn').onclick = () => passwordResetModal.classList.remove('show');
     document.getElementById('folder-perms-close-btn').onclick = closeFolderPermsModal;
     document.getElementById('user-roles-close-btn').onclick = closeUserRolesModal;
+    document.getElementById('group-files-close-btn').onclick = closeGroupFilesModal;
     document.getElementById('modal-login-btn').onclick = () => window.location.hash = '/login';
     document.getElementById('modal-register-btn').onclick = () => window.location.hash = '/register';
     document.getElementById('move-file-cancel-btn').onclick = closeMoveModal;
@@ -1143,13 +1138,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('folder-perms-save-btn').onclick = confirmSaveFolderPerms;
     document.getElementById('user-roles-cancel-btn').onclick = closeUserRolesModal;
     document.getElementById('user-roles-save-btn').onclick = confirmSaveUserRoles;
+    document.getElementById('group-files-cancel-btn').onclick = closeGroupFilesModal;
+    document.getElementById('group-files-confirm-btn').onclick = confirmGroupFiles;
 
-    [authModal, whyLinkModal, moveFileModal, createFolderModal, renameModal, roleModal, passwordResetModal, folderPermsModal, userRolesModal].forEach(modal => {
+    [authModal, whyLinkModal, moveFileModal, createFolderModal, renameModal, roleModal, passwordResetModal, folderPermsModal, userRolesModal, groupFilesModal].forEach(modal => {
         if (modal) modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('show'); };
     });
 
     document.getElementById('new-folder-name').addEventListener('keyup', (e) => { if (e.key === 'Enter') confirmCreateFolder(); });
     document.getElementById('rename-new-name').addEventListener('keyup', (e) => { if (e.key === 'Enter') confirmRename(); });
+    document.getElementById('group-name').addEventListener('keyup', (e) => { if (e.key === 'Enter') confirmGroupFiles(); });
     
     document.getElementById('folder-navigation').addEventListener('click', e => {
         const li = e.target.closest('li');
@@ -1167,6 +1165,24 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!target) return;
 
         if (target.classList.contains('btn-single-forward')) await handleSingleForward(target.dataset.messageId);
+        if (target.classList.contains('btn-bulk-forward')) {
+            const messageIds = target.dataset.messageIds.split(',').map(id => parseInt(id));
+            await apiCall('bulk-forward', 'POST', { message_ids: messageIds });
+            showNotification('O bot começou a enviar os arquivos! Verifique seu Telegram.', 'success');
+        }
+        if (target.classList.contains('btn-ungroup')) {
+            if (confirm("Tem certeza que deseja desagrupar estes arquivos? Eles voltarão a ser exibidos individualmente.")) {
+                await apiCall('admin/ungroup', 'POST', { groupId: parseInt(target.dataset.groupId) });
+                await refreshFiles();
+            }
+        }
+        if (target.classList.contains('btn-delete-group')) {
+             if (confirm("Tem certeza que deseja excluir este grupo e todos os seus arquivos?")) {
+                const groupItems = JSON.parse(target.dataset.groupItems);
+                await deleteItems(groupItems);
+             }
+        }
+
         if (target.classList.contains('btn-move-file')) openMoveModal(target.dataset.key, false);
         if (target.classList.contains('btn-move-folder')) openMoveModal(target.dataset.key, true);
         if (target.classList.contains('btn-rename')) openRenameModal(target.dataset.key, target.dataset.isfolder === 'true');
@@ -1263,13 +1279,17 @@ document.addEventListener('DOMContentLoaded', () => {
         bulkActionsContainer.style.display = 'flex';
         const keys = selected.map(cb => cb.dataset.key);
         const messageIds = selected.map(cb => cb.dataset.messageId);
+        
         let buttonsHTML = `<span>${selected.length} item(ns) selecionado(s)</span>`;
         if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
         if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`;
+        if (hasPermission('can_group_items')) buttonsHTML += `<button id="bulk-group-btn" title="Agrupar"><i class="fas fa-cubes"></i></button>`;
         if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`;
         bulkActionsContainer.innerHTML = buttonsHTML;
+
         if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
-        if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys, false);
+        if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys);
+        if (document.getElementById('bulk-group-btn')) document.getElementById('bulk-group-btn').onclick = openGroupFilesModal;
         if (document.getElementById('bulk-receive-btn')) {
             document.getElementById('bulk-receive-btn').onclick = async () => {
                 if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
@@ -1277,7 +1297,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
                     btn.disabled = true;
-                    await apiCall('bulk-forward', 'POST', { message_ids: messageIds.map(id => parseInt(id)) });
+                    await apiCall('bulk-forward', 'POST', { message_ids: messageIds.filter(Boolean).map(id => parseInt(id)) });
                     showNotification("O bot começou a enviar os arquivos! Verifique seu Telegram.", 'success');
                 } catch (error) {
                     showNotification(`Ocorreu um erro: ${error.message}`, 'error');
