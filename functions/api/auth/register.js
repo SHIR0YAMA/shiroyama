@@ -27,22 +27,20 @@ export async function onRequestPost(context) {
             return new Response(JSON.stringify({ message: 'Configuração do servidor incorreta: Cargo padrão não encontrado.' }), { status: 500 });
         }
         
-        // Usa uma transação para garantir a atomicidade
-        let newUserId;
-        const [userInsertResult] = await db.batch([
-            db.prepare('INSERT INTO users (username, password) VALUES (?, ?)').bind(username, hashedPassword)
-        ]);
+        // Insere o usuário
+        const userInsertResult = await db.prepare('INSERT INTO users (username, password) VALUES (?, ?)')
+            .bind(username, hashedPassword)
+            .run();
         
-        // D1 não retorna last_row_id diretamente em batch, então buscamos o usuário recém-criado
+        // Busca o ID do usuário recém-criado
         const newUser = await db.prepare("SELECT id FROM users WHERE username = ?").bind(username).first();
         if (!newUser || !newUser.id) {
             throw new Error("Falha ao criar o usuário ou recuperar seu ID.");
         }
-        newUserId = newUser.id;
-
-        // Atribui o cargo "Membro" ao novo usuário
+        
+        // Atribui o cargo "Membro"
         await db.prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)')
-            .bind(newUserId, memberRole.id)
+            .bind(newUser.id, memberRole.id)
             .run();
 
         return new Response(JSON.stringify({ message: 'Conta criada com sucesso! Agora você pode fazer login.' }), { status: 201 });
