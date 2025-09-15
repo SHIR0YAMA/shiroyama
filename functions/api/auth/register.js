@@ -13,35 +13,43 @@ export async function onRequestPost(context) {
     try {
         const { username, password } = await request.json();
 
-        if (!username || !password || password.length < 6) {
-            return new Response(JSON.stringify({ success: false, message: 'Nome de usuário e senha (mínimo 6 caracteres) são obrigatórios.' }), { status: 400 });
+        if (!username || username.length < 3 || !password || password.length < 6) {
+            return new Response(JSON.stringify({ message: 'Nome de usuário (mínimo 3 caracteres) e senha (mínimo 6 caracteres) são obrigatórios.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
-
-        // --- ALTERAÇÃO PRINCIPAL AQUI ---
-        // 1. Busca o ID do cargo "Membro" no banco de dados.
-        const memberRoleStmt = env.DB.prepare('SELECT id FROM roles WHERE name = ?');
-        const memberRole = await memberRoleStmt.bind('Membro').first();
-
-        if (!memberRole) {
-            // Isso só aconteceria se o cargo "Membro" fosse deletado, é uma salvaguarda.
-            throw new Error('Cargo padrão "Membro" não encontrado. Contate o administrador.');
-        }
-        const defaultRoleId = memberRole.id;
-
-        const hashedPassword = await hashPassword(password);
         
-        // 2. Insere o novo usuário com o role_id padrão.
-        const stmt = env.DB.prepare('INSERT INTO users (username, password, role_id) VALUES (?, ?, ?)');
-        await stmt.bind(username, hashedPassword, defaultRoleId).run();
+        const hashedPassword = await hashPassword(password);
+        const db = env.DB;
 
-        return new Response(JSON.stringify({ success: true, message: 'Usuário registrado com sucesso! Você já pode fazer login.' }), { status: 201 });
+        // Passo 1: Busca o ID do cargo padrão "Membro"
+        const memberRole = await db.prepare("SELECT id FROM roles WHERE name = 'Membro'").first();
+        if (!memberRole) {
+            return new Response(JSON.stringify({ message: 'Cargo padrão "Membro" não encontrado. Contate um administrador.' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        }
+        
+        // Passo 2: Insere o novo usuário na tabela 'users' (sem a coluna role_id)
+        const userInsertStmt = db.prepare('INSERT INTO users (username, password) VALUES (?, ?)')
+            .bind(username, hashedPassword);
+        const { meta } = await userInsertStmt.run();
+        
+        const newUserId = meta.last_row_id;
+
+        // Passo 3: Insere a ligação na nova tabela 'user_roles'
+        if (newUserId) {
+            await db.prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)')
+                .bind(newUserId, memberRole.id)
+                .run();
+        } else {
+            // Lança um erro se a inserção do usuário falhou por algum motivo
+            throw new Error("Não foi possível obter o ID do novo usuário após a inserção.");
+        }
+
+        return new Response(JSON.stringify({ message: 'Conta criada com sucesso! Agora você pode fazer login.' }), { status: 201, headers: { 'Content-Type': 'application/json' } });
 
     } catch (error) {
-        // Trata o erro caso o nome de usuário já exista
-        if (error.message.includes('UNIQUE constraint failed: users.username')) {
-            return new Response(JSON.stringify({ success: false, message: 'Este nome de usuário já está em uso.' }), { status: 409 });
+        if (error.message && error.message.includes('UNIQUE constraint failed')) {
+            return new Response(JSON.stringify({ message: 'Este nome de usuário já está em uso.' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
         }
         console.error("Erro no registro:", error);
-        return new Response(JSON.stringify({ success: false, message: `Erro no servidor: ${error.message}` }), { status: 500 });
+        return new Response(JSON.stringify({ message: `Erro no servidor: ${error.message}` }), { status: 500, headers: { 'Content-Type': 'application/json' } });
     }
 }
