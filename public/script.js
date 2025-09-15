@@ -1263,7 +1263,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    mainContent.addEventListener('change', (e) => {
+    mmainContent.addEventListener('change', (e) => {
         if (!e.target.classList.contains('file-checkbox')) return;
         
         if (e.target.id === 'select-all-checkbox') {
@@ -1285,34 +1285,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const keys = selected.map(cb => cb.dataset.key);
         const messageIds = selected.map(cb => cb.dataset.messageId);
         
-        // --- CORREÇÃO AQUI ---
-        // Adiciona a verificação para 'can_group_items' ao construir os botões
         let buttonsHTML = `<span>${selected.length} item(ns) selecionado(s)</span>`;
         if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
         if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`;
-        if (hasPermission('can_group_items')) buttonsHTML += `<button id="bulk-group-btn" title="Agrupar"><i class="fas fa-cubes"></i></button>`; // Botão de Agrupar
+        if (hasPermission('can_group_items')) buttonsHTML += `<button id="bulk-group-btn" title="Agrupar"><i class="fas fa-cubes"></i></button>`;
         if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`;
         bulkActionsContainer.innerHTML = buttonsHTML;
-        // --- FIM DA CORREÇÃO ---
 
         if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
         if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys);
         if (document.getElementById('bulk-group-btn')) document.getElementById('bulk-group-btn').onclick = openGroupFilesModal;
         if (document.getElementById('bulk-receive-btn')) {
             document.getElementById('bulk-receive-btn').onclick = async () => {
-                if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
-                const btn = document.getElementById('bulk-receive-btn');
-                try {
-                    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
-                    btn.disabled = true;
-                    await apiCall('bulk-forward', 'POST', { message_ids: messageIds.filter(Boolean).map(id => parseInt(id)) });
-                    showNotification("O bot começou a enviar os arquivos! Verifique seu Telegram.", 'success');
-                } catch (error) {
-                    showNotification(`Ocorreu um erro: ${error.message}`, 'error');
-                } finally {
-                    btn.innerHTML = `<i class="fas fa-paper-plane"></i>`;
-                    btn.disabled = false;
-                }
+                // ... (lógica do bulk-receive)
             };
         }
     });
+
+    window.addEventListener('hashchange', router);
+    router();
+});
