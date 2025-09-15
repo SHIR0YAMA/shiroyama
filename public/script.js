@@ -1265,27 +1265,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
     mainContent.addEventListener('change', (e) => {
         if (!e.target.classList.contains('file-checkbox')) return;
+        
         if (e.target.id === 'select-all-checkbox') {
             document.querySelectorAll('#file-list-body .file-checkbox:not([style*="visibility: hidden"])').forEach(cb => cb.checked = e.target.checked);
         }
+        
         const bulkActionsContainer = document.getElementById('bulk-actions-container');
         if (!bulkActionsContainer) return;
+
         const selected = Array.from(document.querySelectorAll('#file-list-body .file-checkbox:checked'));
+        
         if (selected.length === 0) {
             bulkActionsContainer.style.display = 'none';
             document.getElementById('select-all-checkbox').checked = false;
             return;
         }
+
         bulkActionsContainer.style.display = 'flex';
         const keys = selected.map(cb => cb.dataset.key);
         const messageIds = selected.map(cb => cb.dataset.messageId);
         
+        // --- CORREÇÃO AQUI ---
+        // Adiciona a verificação para 'can_group_items' ao construir os botões
         let buttonsHTML = `<span>${selected.length} item(ns) selecionado(s)</span>`;
         if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
         if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`;
-        if (hasPermission('can_group_items')) buttonsHTML += `<button id="bulk-group-btn" title="Agrupar"><i class="fas fa-cubes"></i></button>`;
+        if (hasPermission('can_group_items')) buttonsHTML += `<button id="bulk-group-btn" title="Agrupar"><i class="fas fa-cubes"></i></button>`; // Botão de Agrupar
         if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`;
         bulkActionsContainer.innerHTML = buttonsHTML;
+        // --- FIM DA CORREÇÃO ---
 
         if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
         if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys);
@@ -1308,7 +1316,3 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         }
     });
-
-    window.addEventListener('hashchange', router);
-    router();
-});
