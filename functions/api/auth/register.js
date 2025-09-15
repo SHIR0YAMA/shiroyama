@@ -13,7 +13,7 @@ export async function onRequestPost(context) {
     try {
         const { username, password } = await request.json();
 
-        if (!username || !password) {
+        if (!username || password.length < 6) {
             return new Response(JSON.stringify({ message: 'Dados inválidos.' }), { status: 400 });
         }
         
