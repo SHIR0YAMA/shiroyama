@@ -20,26 +20,24 @@ export async function onRequestPost(context) {
         const hashedPassword = await hashPassword(password);
         const db = env.DB;
 
-        // Passo 1: Busca o ID do cargo padrão "Membro"
-        const memberRole = await db.prepare("SELECT id FROM roles WHERE name = 'Membro'").first();
-        if (!memberRole) {
-            return new Response(JSON.stringify({ message: 'Cargo padrão "Membro" não encontrado. Contate um administrador.' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        // CORREÇÃO: Usa a função aprimorada para buscar o cargo padrão
+        const memberRole = await db.prepare("SELECT id FROM roles WHERE name LIKE 'Membro'").first();
+
+        if (!memberRole || !memberRole.id) {
+            return new Response(JSON.stringify({ message: 'Configuração do servidor incorreta: Cargo padrão "Membro" não encontrado.' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
         }
         
-        // Passo 2: Insere o novo usuário na tabela 'users' (sem a coluna role_id)
         const userInsertStmt = db.prepare('INSERT INTO users (username, password) VALUES (?, ?)')
             .bind(username, hashedPassword);
         const { meta } = await userInsertStmt.run();
         
         const newUserId = meta.last_row_id;
 
-        // Passo 3: Insere a ligação na nova tabela 'user_roles'
         if (newUserId) {
             await db.prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)')
                 .bind(newUserId, memberRole.id)
                 .run();
         } else {
-            // Lança um erro se a inserção do usuário falhou por algum motivo
             throw new Error("Não foi possível obter o ID do novo usuário após a inserção.");
         }
 
