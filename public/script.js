@@ -58,16 +58,16 @@ function stopFaviconBlink() {
 }
 
 function getIconForFile(fileName, isGroup = false) {
-    if (isGroup) return '<i class="fas fa-file-archive"></i>';
+    if (isGroup) return '<i class="fas fa-file-archive filetype-icon archive"></i>';
     const extension = fileName.split('.').pop().toLowerCase();
     const videoExts = ['mp4', 'mkv', 'avi', 'mov', 'webm'];
     const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
     const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'flac'];
 
-    if (videoExts.includes(extension)) return '<i class="fas fa-file-video"></i>';
-    if (imageExts.includes(extension)) return '<i class="fas fa-file-image"></i>';
-    if (audioExts.includes(extension)) return '<i class="fas fa-file-audio"></i>';
-    return '<i class="fas fa-file-alt"></i>';
+    if (videoExts.includes(extension)) return '<i class="fas fa-film filetype-icon video"></i>';
+    if (imageExts.includes(extension)) return '<i class="fas fa-image filetype-icon image"></i>';
+    if (audioExts.includes(extension)) return '<i class="fas fa-wave-square filetype-icon audio"></i>';
+    return '<i class="fas fa-file-alt filetype-icon document"></i>';
 }
 
 // --- 2. ESTADO GLOBAL E FUNÇÕES RELACIONADAS ---
@@ -698,7 +698,7 @@ async function confirmGroupFiles() {
 // --- 8. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
 function renderNav() {
     parseJwt();
-    let greetingHTML = `<span>Olá, <a href="/#/profile"><strong>${state.username || 'Visitante'}</strong></a>`;
+    let greetingHTML = `<span><i class="fas fa-user-circle"></i> Olá, <a href="/#/profile"><strong>${state.username || 'Visitante'}</strong></a>`;
     if (state.role) {
         greetingHTML += `<span class="role-tag">${state.role}</span>`;
     }
@@ -707,9 +707,9 @@ function renderNav() {
     const canAccessAdmin = state.permissions.some(p => p.startsWith('users:') || p.startsWith('roles:'));
     if (state.token) {
         if (canAccessAdmin) {
-            navLinksHTML += `<button id="admin-btn" class="nav-button">Admin</button>`;
+            navLinksHTML += `<button id="admin-btn" class="nav-button"><i class="fas fa-cogs"></i>Admin</button>`;
         }
-        navLinksHTML += `<button id="logout-btn" class="nav-button">Sair</button>`;
+        navLinksHTML += `<button id="logout-btn" class="nav-button"><i class="fas fa-sign-out-alt"></i>Sair</button>`;
     } else {
         navLinksHTML += `<button id="login-btn" class="nav-button">Login</button>`;
         navLinksHTML += `<button id="register-btn" class="nav-button">Registrar</button>`;
@@ -770,20 +770,20 @@ async function renderProfilePage() {
     showLoading();
     try {
         const userData = await apiCall('user/status', 'GET');
-        let telegramSectionHTML = '<h3>Vincular Conta do Telegram</h3>';
+        let telegramSectionHTML = '<h3><i class="fas fa-paper-plane"></i> Vincular Conta do Telegram</h3>';
         if (hasPermission('can_receive_files')) {
             if (userData.telegram_chat_id) {
-                telegramSectionHTML += `<p>Usuário: <strong>@${userData.telegram_username || 'N/A'}</strong></p> <p>Chat ID: <strong>${userData.telegram_chat_id}</strong></p> <button id="unlink-btn">Desvincular Conta</button>`;
+                telegramSectionHTML += `<p>Usuário: <strong>@${userData.telegram_username || 'N/A'}</strong></p> <p>Chat ID: <strong>${userData.telegram_chat_id}</strong></p> <button id="unlink-btn"><i class="fas fa-unlink"></i> Desvincular Conta</button>`;
             } else {
-                telegramSectionHTML += `<p>Clique no botão abaixo para autorizar o bot no Telegram.</p> <button id="link-telegram-btn">Vincular com o Telegram</button> <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>`;
+                telegramSectionHTML += `<p>Clique no botão abaixo para autorizar o bot no Telegram.</p> <button id="link-telegram-btn"><i class="fas fa-link"></i> Vincular com o Telegram</button> <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>`;
             }
         } else {
             telegramSectionHTML = '';
         }
 
-        mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${state.role || 'N/A'}</strong></p>
+        mainContent.innerHTML = `<div class="auth-form profile-card"><h2><i class="fas fa-user-circle"></i> Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${state.role || 'N/A'}</strong></p>
             ${telegramSectionHTML ? `<hr style="border-color: #6272a4; margin: 20px 0;">${telegramSectionHTML}` : ''}
-            <hr style="border-color: #6272a4; margin: 20px 0;"><h3>Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit">Salvar Nova Senha</button></form></div>`;
+            <hr style="border-color: #3d3368; margin: 20px 0;"><h3><i class="fas fa-lock"></i> Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit"><i class="fas fa-save"></i> Salvar Nova Senha</button></form></div>`;
         
         if (hasPermission('can_receive_files')) {
             if (userData.telegram_chat_id) {
@@ -791,17 +791,17 @@ async function renderProfilePage() {
             } else {
                 document.getElementById('link-telegram-btn').onclick = (e) => {
                     const linkButton = e.target;
-                    linkButton.disabled = true; linkButton.textContent = 'Gerando...';
+                    linkButton.disabled = true; linkButton.innerHTML = '<i class=\"fas fa-spinner fa-spin\"></i> Gerando...';
                     const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
                     const linkCodeWithPrefix = `link_${randomCode}`;
                     apiCall('user/prepare-link-code', 'POST', { linkCode: linkCodeWithPrefix })
                         .then(async () => {
                             window.open(`https://t.me/ShiroyamaBot?start=${linkCodeWithPrefix}`, '_blank');
-                            linkButton.textContent = 'Verifique o Telegram!';
+                            linkButton.innerHTML = '<i class=\"fas fa-paper-plane\"></i> Verifique o Telegram!';
                             showNotification('Conclua o vínculo no Telegram.', 'info');
                             startFaviconBlink();
                             setTimeout(async () => await router(), 15000);
-                        }).catch(err => { showNotification(`Erro: ${err.message}`, 'error'); linkButton.disabled = false; linkButton.textContent = 'Vincular com o Telegram'; });
+                        }).catch(err => { showNotification(`Erro: ${err.message}`, 'error'); linkButton.disabled = false; linkButton.innerHTML = '<i class=\"fas fa-link\"></i> Vincular com o Telegram'; });
                 };
                 document.getElementById('why-link-q').onclick = (e) => { e.preventDefault(); whyLinkModal.classList.add('show'); };
             }
@@ -840,7 +840,7 @@ async function renderAdminPage(subpage) {
         return;
     }
 
-    mainContent.innerHTML = `<h2>Painel de Administrador</h2><div class="admin-tabs">${canViewUsers ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}">Gerenciar Usuários</button>` : ''}${canViewRoles ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}">Gerenciar Cargos</button>` : ''}</div><div id="admin-content"></div>`;
+    mainContent.innerHTML = `<h2><i class="fas fa-sliders"></i> Painel de Administrador</h2><div class="admin-tabs">${canViewUsers ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}"><i class="fas fa-users"></i> Gerenciar Usuários</button>` : ''}${canViewRoles ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}"><i class="fas fa-user-shield"></i> Gerenciar Cargos</button>` : ''}</div><div id="admin-content"></div>`;
     const adminContent = document.getElementById('admin-content');
     adminContent.innerHTML = '';
     showLoading();
@@ -879,7 +879,7 @@ async function renderAdminPage(subpage) {
                         <td data-label="Usuário">${user.username}</td>
                         <td data-label="Cargos" class="roles-cell">
                             <div>${rolesAsTags || 'Nenhum'}</div>
-                            <button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-edit"></i></button>
+                            <button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-user-edit"></i></button>
                         </td>
                         <td data-label="ID do Chat" class="chat-id-cell">
                             <div class="chat-id-cell-content">
@@ -890,7 +890,7 @@ async function renderAdminPage(subpage) {
                         <td data-label="Criado em">${new Date(user.created_at).toLocaleDateString()}</td>
                         <td data-label="Ações" class="actions-cell">
                             <button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>
-                            <button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>
+                            <button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}><i class="fas fa-trash-can"></i> Excluir</button>
                         </td>
                     </tr>`;
             }
@@ -929,7 +929,7 @@ async function renderAdminPage(subpage) {
 
             adminContent.innerHTML = `
                 <div style="text-align: right; margin-bottom: 10px;">
-                    ${hasPermission('roles:create') ? '<button id="create-new-role-btn">Criar Novo Cargo</button>' : ''}
+                    ${hasPermission('roles:create') ? '<button id="create-new-role-btn"><i class="fas fa-plus"></i> Criar Novo Cargo</button>' : ''}
                 </div>
                 <div class="table-container">
                     <table class="admin-table">
@@ -950,8 +950,8 @@ async function renderAdminPage(subpage) {
                                     <td data-label="Permissões" class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
                                     ${hasRoleActions ? `
                                     <td data-label="Ações" class="actions-cell">
-                                        ${hasPermission('roles:edit') ? `<button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${disabledAttribute}>Editar</button>` : ''}
-                                        ${hasPermission('roles:delete') ? `<button class="delete-role-btn btn-danger" data-id="${role.id}" ${disabledAttribute}>Excluir</button>` : ''}
+                                        ${hasPermission('roles:edit') ? `<button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${disabledAttribute}><i class="fas fa-pen"></i> Editar</button>` : ''}
+                                        ${hasPermission('roles:delete') ? `<button class="delete-role-btn btn-danger" data-id="${role.id}" ${disabledAttribute}><i class="fas fa-trash-can"></i> Excluir</button>` : ''}
                                     </td>` : ''}
                                 </tr>`;
                             }).join('')}
@@ -1050,8 +1050,8 @@ function renderFilesPage(path) {
                         </div>
                      </div>`;
     controlsHTML += `<div class="controls-buttons">`;
-    if (hasPermission('can_create_folders')) controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`;
-    controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div></div>`;
+    if (hasPermission('can_create_folders')) controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta"><i class="fas fa-folder-plus"></i></button>`;
+    controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos"><i class="fas fa-sync-alt"></i></button></div></div>`;
     mainContent.innerHTML = `${controlsHTML}<div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div>`;
     
     document.getElementById('refresh-files-btn').onclick = refreshFiles;
@@ -1148,14 +1148,14 @@ function renderFilesPage(path) {
         const itemPath = [...path, name].join('/');
         let actionsHTML = '<div class="file-actions">';
         if (item._isFile && !item.isGroup) {
-            if (hasPermission('can_rename_items')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear Arquivo"><i class="fas fa-edit"></i></button>`;
-            if (hasPermission('can_move_items')) actionsHTML += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover Arquivo"><i class="fas fa-folder-open"></i></button>`;
+            if (hasPermission('can_rename_items')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear Arquivo"><i class="fas fa-pen"></i></button>`;
+            if (hasPermission('can_move_items')) actionsHTML += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover Arquivo"><i class="fas fa-up-down-left-right"></i></button>`;
             if (hasPermission('can_receive_files')) actionsHTML += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
-            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`;
+            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash-can"></i></button>`;
         } else if (item.isGroup) {
             if (hasPermission('can_group_items')) actionsHTML += `<button class="btn-icon btn-ungroup" data-group-id="${item.groupId}" title="Desagrupar"><i class="fas fa-unlink"></i></button>`;
             if (hasPermission('can_receive_files')) actionsHTML += `<button class="btn-icon btn-bulk-forward" data-message-ids="${item.message_ids.join(',')}" title="Receber Todas as Partes"><i class="fas fa-paper-plane"></i></button>`;
-            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete-group" data-group-id="${item.groupId}" data-group-items='${JSON.stringify(item.groupItems)}' title="Excluir Grupo"><i class="fas fa-trash"></i></button>`;
+            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete-group" data-group-id="${item.groupId}" data-group-items='${JSON.stringify(item.groupItems)}' title="Excluir Grupo"><i class="fas fa-trash-can"></i></button>`;
         } else { // Pastas
             if (hasPermission('can_manage_folder_permissions')) {
                 actionsHTML += `<button class="btn-icon btn-folder-perms" data-path="${itemPath}" title="Permissões da Pasta"><i class="fas fa-user-shield"></i></button>`;
@@ -1401,9 +1401,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         let buttonsHTML = `<span>${selected.length} item(ns) selecionado(s)</span>`;
         if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
-        if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`;
+        if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-up-down-left-right"></i></button>`;
         if (hasPermission('can_group_items')) buttonsHTML += `<button id="bulk-group-btn" title="Agrupar"><i class="fas fa-cubes"></i></button>`;
-        if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`;
+        if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash-can"></i></button>`;
         bulkActionsContainer.innerHTML = buttonsHTML;
 
         if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
