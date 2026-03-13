@@ -302,57 +302,73 @@
         
         /* Reformulação estilo painel clean (referência print 2) */
         .container { max-width: 1380px; }
-        header { border-radius: 20px; padding: 14px 22px; }
-        header h1 { font-size: 46px; letter-spacing: 0.2px; }
-        header h1 a { display: inline-flex; align-items: center; gap: 14px; }
+        header { border-radius: 18px; padding: 10px 18px; }
+        header h1 { font-size: 24px; letter-spacing: 0.2px; }
+        header h1 a { display: inline-flex; align-items: center; gap: 10px; }
         header h1 a::before {
             content: '\f0c2';
             font-family: 'Font Awesome 6 Free';
             font-weight: 900;
-            width: 56px;
-            height: 56px;
-            border-radius: 18px;
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             background: linear-gradient(135deg, #c91b4a, #91153c);
             color: #fff;
-            box-shadow: 0 0 20px rgba(201, 27, 74, 0.45);
-            font-size: 24px;
+            box-shadow: 0 0 16px rgba(201, 27, 74, 0.35);
+            font-size: 16px;
         }
-        .storage-panel { padding: 4px 0 10px; }
+        .section-card {
+            border: 1px solid rgba(105, 90, 170, 0.35);
+            border-radius: 14px;
+            background: rgba(10, 10, 18, 0.75);
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+        .storage-panel { padding: 2px 0 8px; }
         .storage-topline {
             display: flex;
             justify-content: space-between;
             align-items: center;
             gap: 12px;
-            margin-bottom: 16px;
         }
         .storage-stat-group { display: flex; gap: 10px; flex-wrap: wrap; }
         .storage-stat {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 8px 14px;
+            padding: 8px 12px;
             border-radius: 999px;
             background: rgba(255,255,255,0.06);
             border: 1px solid rgba(255,255,255,0.08);
             color: #c8bdd8;
-            font-size: 15px;
+            font-size: 14px;
         }
-        .storage-search-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+        .directory-bar { border-radius: 14px; margin-bottom: 10px; padding: 10px 14px; }
+        .storage-search-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid rgba(105, 90, 170, 0.35);
+            border-radius: 14px;
+            background: rgba(10, 10, 18, 0.75);
+        }
         .storage-search-row .search-container { margin: 0; }
         .view-toggle {
             background: rgba(255,255,255,0.04);
             border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 14px;
+            border-radius: 12px;
             padding: 4px;
             display: inline-flex;
             gap: 4px;
         }
         .view-toggle-btn {
-            width: 42px;
-            height: 42px;
+            width: 40px;
+            height: 40px;
             border-radius: 10px;
             border: none;
             background: transparent;
@@ -363,31 +379,86 @@
         }
         .view-toggle-btn.active { background: linear-gradient(135deg,#c91b4a,#91153c); color: #fff; }
 
-        .directory-bar { border-radius: 16px; margin-bottom: 14px; padding: 14px 16px; }
-        .file-list-header { color: #bdb3cd; text-transform: none; }
-        .file-list-header .file-name { color: #f4ecff; font-size: 30px; }
-        .file-size { flex-basis: 160px; color: #8d829f; }
-        .file-date { flex-basis: 160px; color: #8d829f; }
-        .file-list-header .file-size, .file-list-header .file-date { font-size: 24px; }
-        .file-actions { flex-basis: 240px; }
-        .file-item { min-height: 74px; }
-        .file-name { font-size: 32px; }
-        .file-icon { font-size: 1.4em; }
+        .files-section {
+            border: 1px solid rgba(105, 90, 170, 0.35);
+            border-radius: 14px;
+            overflow: hidden;
+            background: rgba(10, 10, 18, 0.75);
+        }
+        .file-list-header { color: #bdb3cd; text-transform: none; padding: 10px 12px; }
+        .file-list-header .file-name { color: #f4ecff; font-size: 14px; }
+        .file-size { flex-basis: 120px; color: #8d829f; font-size: 13px; }
+        .file-date { flex-basis: 140px; color: #8d829f; font-size: 13px; }
+        .file-list-header .file-size, .file-list-header .file-date { font-size: 14px; }
+        .file-actions { flex-basis: 180px; }
+        .file-item { min-height: 56px; }
+        .file-name { font-size: 18px; }
+        .file-icon { font-size: 1.1em; }
+
+        .file-list.grid-mode {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 12px;
+            padding: 10px;
+        }
+        .file-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-height: 88px;
+            border: 1px solid rgba(105, 90, 170, 0.35);
+            border-radius: 14px;
+            padding: 10px 12px;
+            background: rgba(16, 16, 26, 0.9);
+            position: relative;
+        }
+        .file-card-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, rgba(201,27,74,.22), rgba(145,21,60,.36));
+            color: #ffd5e6;
+            font-size: 1.35rem;
+            flex-shrink: 0;
+        }
+        .file-card-content { min-width: 0; flex: 1; }
+        .file-card .file-name { font-size: 18px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .file-card-meta { color: #9085a4; font-size: 13px; margin-top: 4px; }
+        .card-checkbox { position: absolute; left: 10px; top: 10px; }
+        .file-card-actions { position: relative; }
+        .file-card-menu {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 38px;
+            background: #11111d;
+            border: 1px solid rgba(201, 137, 255, 0.25);
+            border-radius: 10px;
+            padding: 6px;
+            z-index: 20;
+            gap: 4px;
+        }
+        .file-card-actions.show .file-card-menu { display: inline-flex; }
 
         @media (max-width: 900px) {
-            header h1 { font-size: 30px; }
-            header h1 a::before { width: 44px; height: 44px; font-size: 18px; }
+            header h1 { font-size: 20px; }
+            header h1 a::before { width: 32px; height: 32px; font-size: 14px; }
             .file-date { display: none; }
-            .file-name, .file-list-header .file-name { font-size: 22px; }
+            .file-name { font-size: 16px; }
+            .storage-search-row { flex-wrap: wrap; }
+            .controls-buttons { margin-left: auto; }
         }
-@media (max-width: 640px) {
+        @media (max-width: 640px) {
             body { padding: 12px; }
             .login-screen { min-height: calc(100vh - 24px); padding: 10px 2px; }
             .login-card { padding: 28px 18px 22px; gap: 6px; }
             .brand { margin-bottom: 14px; }
             .directory-link, .directory-current { font-size: 16px; }
+            .file-list.grid-mode { grid-template-columns: 1fr; }
         }
-
     </style>
 </head>
 <body>
