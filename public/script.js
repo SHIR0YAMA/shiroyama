@@ -950,7 +950,7 @@ function renderSearchResults(searchTerm) {
         const div = document.createElement('div');
         div.className = 'file-item';
         if (item._isFolder) {
-            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(item.name)}" class="file-name">${item.name}</a><span class="file-size"></span><div class="file-actions"></div>`;
+            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(item.name)}" class="file-name">${item.name}</a><span class="file-size"></span><div class="file-actions"></div>`;
         } else {
             div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon">${getIconForFile(item.name)}</span><span class="file-name">${item.name}</span><span class="file-size">${formatFileSize(item.file_size)}</span><div class="file-actions"></div>`;
         }
@@ -959,32 +959,6 @@ function renderSearchResults(searchTerm) {
 }
 
 
-function renderSidebarTree(path) {
-    const root = {};
-    state.allFolders.forEach((folder) => {
-        if (!folder) return;
-        const parts = folder.split('/').filter(Boolean);
-        let node = root;
-        parts.forEach((part) => {
-            if (!node[part]) node[part] = {};
-            node = node[part];
-        });
-    });
-
-    const currentPath = path.join('/');
-    const renderNode = (node, prefix = '') => {
-        const entries = Object.keys(node).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-        if (!entries.length) return '';
-        return `<ul>${entries.map((name) => {
-            const full = prefix ? `${prefix}/${name}` : name;
-            const selected = full === currentPath ? 'selected' : '';
-            const child = renderNode(node[name], full);
-            return `<li><a href="#/${encodeURI(full)}" class="tree-link ${selected}"><i class="fas fa-folder"></i>${name}</a>${child}</li>`;
-        }).join('')}</ul>`;
-    };
-
-    return `<a href="#/" class="tree-link ${!currentPath ? 'selected' : ''}"><i class="fas fa-house"></i>Home</a>${renderNode(root)}`;
-}
 
 function renderFilesPage(path) {
     document.body.classList.remove('login-active');
@@ -1005,7 +979,7 @@ function renderFilesPage(path) {
         return;
     }
     
-    let controlsHTML = `<div class="controls"><div id="breadcrumb"></div>`;
+    let controlsHTML = `<div id="breadcrumb" class="breadcrumb-bar"></div><div class="controls">`;
     controlsHTML += `<div class="search-container">
                         <input type="text" id="search-input" placeholder="Buscar...">
                         <div class="search-buttons">
@@ -1016,7 +990,7 @@ function renderFilesPage(path) {
     controlsHTML += `<div class="controls-buttons">`;
     if (hasPermission('can_create_folders')) controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`;
     controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div></div>`;
-    mainContent.innerHTML = `<div class="storage-layout"><aside class="storage-sidebar"><h3>Pastas</h3><div id="folder-tree" class="folder-tree">${renderSidebarTree(path)}</div></aside><section class="storage-main">${controlsHTML}<div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div></section></div>`;
+    mainContent.innerHTML = `${controlsHTML}<div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div>`;
     
     document.getElementById('refresh-files-btn').onclick = refreshFiles;
     if (hasPermission('can_create_folders')) document.getElementById('create-folder-btn').onclick = () => openCreateFolderModal(false);
@@ -1104,21 +1078,21 @@ function renderFilesPage(path) {
         const itemPath = [...path, name].join('/');
         let actionsHTML = '<div class="file-actions">';
         if (item._isFile && !item.isGroup) {
-            if (hasPermission('can_rename_items')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear Arquivo"><i class="fas fa-edit"></i></button>`;
+            if (hasPermission('can_rename_items')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear Arquivo"><i class="fas fa-pen-to-square"></i></button>`;
             if (hasPermission('can_move_items')) actionsHTML += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover Arquivo"><i class="fas fa-folder-open"></i></button>`;
             if (hasPermission('can_receive_files')) actionsHTML += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
-            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`;
+            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash-can"></i></button>`;
         } else if (item.isGroup) {
             if (hasPermission('can_group_items')) actionsHTML += `<button class="btn-icon btn-ungroup" data-group-id="${item.groupId}" title="Desagrupar"><i class="fas fa-unlink"></i></button>`;
             if (hasPermission('can_receive_files')) actionsHTML += `<button class="btn-icon btn-bulk-forward" data-message-ids="${item.message_ids.join(',')}" title="Receber Todas as Partes"><i class="fas fa-paper-plane"></i></button>`;
-            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete-group" data-group-id="${item.groupId}" data-group-items='${JSON.stringify(item.groupItems)}' title="Excluir Grupo"><i class="fas fa-trash"></i></button>`;
+            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete-group" data-group-id="${item.groupId}" data-group-items='${JSON.stringify(item.groupItems)}' title="Excluir Grupo"><i class="fas fa-trash-can"></i></button>`;
         } else { // Pastas
             if (hasPermission('can_manage_folder_permissions')) {
-                actionsHTML += `<button class="btn-icon btn-folder-perms" data-path="${itemPath}" title="Gerenciar Permissões"><i class="fas fa-cog"></i></button>`;
+                actionsHTML += `<button class="btn-icon btn-folder-perms" data-path="${itemPath}" title="Gerenciar Permissões"><i class="fas fa-sliders"></i></button>`;
             }
-            if (hasPermission('can_rename_folders')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear Pasta"><i class="fas fa-edit"></i></button>`;
-            if (hasPermission('can_move_folders')) actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-open"></i></button>`;
-            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir Pasta"><i class="fas fa-trash"></i></button>`;
+            if (hasPermission('can_rename_folders')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear Pasta"><i class="fas fa-pen-to-square"></i></button>`;
+            if (hasPermission('can_move_folders')) actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-tree"></i></button>`;
+            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir Pasta"><i class="fas fa-trash-can"></i></button>`;
         }
         actionsHTML += '</div>';
 
@@ -1128,7 +1102,7 @@ function renderFilesPage(path) {
         if (item._isFile) {
             div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}" data-is-group="${isGroup}" data-group-id="${item.groupId || ''}"><span class="file-icon">${getIconForFile(name, isGroup)}</span><span class="file-name">${displayName}</span><span class="file-size">${formatFileSize(item.file_size)}</span>${actionsHTML}`;
         } else {
-            div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><span class="file-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(itemPath)}" class="file-name">${name}</a><span class="file-size"></span>${actionsHTML}`;
+            div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(itemPath)}" class="file-name">${name}</a><span class="file-size"></span>${actionsHTML}`;
         }
         fileListBodyElement.appendChild(div);
     });
@@ -1357,7 +1331,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
         if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`;
         if (hasPermission('can_group_items')) buttonsHTML += `<button id="bulk-group-btn" title="Agrupar"><i class="fas fa-cubes"></i></button>`;
-        if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`;
+        if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash-can"></i></button>`;
         bulkActionsContainer.innerHTML = buttonsHTML;
 
         if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
