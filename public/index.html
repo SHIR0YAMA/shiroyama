@@ -391,8 +391,8 @@
         .file-date { flex-basis: 140px; color: #8d829f; font-size: 13px; }
         .file-list-header .file-size, .file-list-header .file-date { font-size: 14px; }
         .file-actions { flex-basis: 180px; }
-        .file-item { min-height: 56px; }
-        .file-name { font-size: 18px; }
+        .file-item { min-height: 52px; }
+        .file-name { font-size: 16px; }
         .file-icon { font-size: 1.1em; }
 
         .file-list.grid-mode {
@@ -443,6 +443,65 @@
         }
         .file-card-actions.show .file-card-menu { display: inline-flex; }
 
+
+        /* refinamentos UX: checkbox, escala lista e barra de ações em lote */
+        .file-checkbox {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 6px;
+            border: 1px solid rgba(211, 188, 255, 0.5);
+            background: rgba(8, 8, 14, 0.92);
+            cursor: pointer;
+            position: relative;
+            flex-basis: 18px;
+        }
+        .file-checkbox:checked {
+            background: linear-gradient(135deg, #9f72ff, #cf6bff);
+            border-color: #d6b1ff;
+            box-shadow: 0 0 0 2px rgba(178, 115, 255, 0.25);
+        }
+        .file-checkbox:checked::after {
+            content: '\2713';
+            position: absolute;
+            color: #fff;
+            font-size: 12px;
+            left: 3px;
+            top: -1px;
+        }
+
+        #bulk-actions-container {
+            display: none;
+            margin-bottom: 12px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(154, 126, 230, 0.55);
+            background: linear-gradient(135deg, rgba(82, 82, 110, 0.75), rgba(58, 60, 86, 0.75));
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .bulk-count { color: #f3e8ff; font-weight: 600; margin-right: 8px; }
+        .bulk-btn {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(137, 159, 214, 0.45);
+        }
+
+        .file-name { font-size: 16px; word-break: break-word; }
+        .file-list-header .file-name { font-size: 13px; }
+        .file-item { min-height: 52px; }
+        .file-size { flex-basis: 108px; font-size: 12px; }
+        .file-date { flex-basis: 124px; font-size: 12px; }
+        .file-actions { flex-basis: 170px; }
+
+        .file-card.clickable-card { cursor: pointer; }
+        .file-card.clickable-card:hover { border-color: rgba(217, 168, 255, 0.5); background: rgba(22, 22, 34, 0.95); }
+        .file-card .file-name { word-break: normal; overflow-wrap: anywhere; }
         @media (max-width: 900px) {
             header h1 { font-size: 20px; }
             header h1 a::before { width: 32px; height: 32px; font-size: 14px; }

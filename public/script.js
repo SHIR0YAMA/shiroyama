@@ -980,7 +980,7 @@ async function renderAdminPage(subpage) {
 function renderSearchResults(searchTerm) {
     const fileListBodyElement = document.getElementById('file-list-body');
     const lowerCaseSearchTerm = searchTerm.toLowerCase();
-    
+
     const allItems = [
         ...state.allFolders.map(p => ({ name: p, _isFolder: true })),
         ...state.allFiles.filter(f => !f.isPlaceholder)
@@ -996,27 +996,43 @@ function renderSearchResults(searchTerm) {
         return false;
     });
 
-    fileListBodyElement.innerHTML = '';
-    document.querySelector('.file-list-header').style.display = 'none';
+    document.querySelector('.file-list-header').style.display = state.viewMode === 'grid' ? 'none' : 'flex';
     document.getElementById('breadcrumb').innerHTML = `<strong>Resultados da busca por "${searchTerm}"</strong>`;
 
     if (filteredItems.length === 0) {
+        fileListBodyElement.className = 'file-list list-mode';
         fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Nenhum resultado encontrado.</div>';
         return;
     }
 
+    fileListBodyElement.className = `file-list ${state.viewMode === 'grid' ? 'grid-mode' : 'list-mode'}`;
+    fileListBodyElement.innerHTML = '';
+
     filteredItems.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'file-item';
         const targetPath = item._isFolder ? item.name : item.name.split('/').slice(0, -1).join('/');
         const href = targetPath ? `#/${encodeURI(targetPath)}` : '#/';
 
-        if (item._isFolder) {
-            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="${href}" class="file-name search-result-file-link" data-target-name="${item.name}" data-is-folder="true">${item.name}</a><span class="file-size"></span><span class="file-date">—</span><div class="file-actions"></div>`;
+        if (state.viewMode === 'grid') {
+            const card = document.createElement('div');
+            card.className = 'file-card clickable-card';
+            card.dataset.href = href;
+            card.dataset.targetName = item.name;
+            card.dataset.isFolder = item._isFolder ? 'true' : 'false';
+
+            const iconHtml = item._isFolder ? '<i class="fas fa-folder"></i>' : getIconForFile(item.name);
+            const meta = item._isFolder ? `Pasta • —` : `${formatFileSize(item.file_size)} • ${formatModifiedDate(item)}`;
+            card.innerHTML = `<div class="file-card-icon ${item._isFolder ? 'folder-icon' : ''}">${iconHtml}</div><div class="file-card-content"><div class="file-name">${item.name}</div><div class="file-card-meta">${meta}</div></div>`;
+            fileListBodyElement.appendChild(card);
         } else {
-            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon">${getIconForFile(item.name)}</span><a href="${href}" class="file-name search-result-file-link" data-target-name="${item.name}" data-is-folder="false">${item.name}</a><span class="file-size">${formatFileSize(item.file_size)}</span><span class="file-date">${formatModifiedDate(item)}</span><div class="file-actions"></div>`;
+            const div = document.createElement('div');
+            div.className = 'file-item';
+            if (item._isFolder) {
+                div.innerHTML = `<div style="flex-basis: 18px;"></div><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="${href}" class="file-name search-result-file-link" data-target-name="${item.name}" data-is-folder="true">${item.name}</a><span class="file-size">—</span><span class="file-date">—</span><div class="file-actions"></div>`;
+            } else {
+                div.innerHTML = `<div style="flex-basis: 18px;"></div><span class="file-icon">${getIconForFile(item.name)}</span><a href="${href}" class="file-name search-result-file-link" data-target-name="${item.name}" data-is-folder="false">${item.name}</a><span class="file-size">${formatFileSize(item.file_size)}</span><span class="file-date">${formatModifiedDate(item)}</span><div class="file-actions"></div>`;
+            }
+            fileListBodyElement.appendChild(div);
         }
-        fileListBodyElement.appendChild(div);
     });
 
     document.querySelectorAll('.search-result-file-link').forEach(link => {
@@ -1194,9 +1210,17 @@ function renderFilesPage(path) {
 
         if (state.viewMode === 'grid') {
             if (item._isFile) {
+                div.dataset.href = `#/${encodeURI(path.join('/'))}`;
+                div.dataset.targetName = item.name;
+                div.dataset.isFolder = 'false';
+                div.classList.add('clickable-card');
                 div.innerHTML = `<input type="checkbox" class="file-checkbox card-checkbox" data-key="${item.name}" data-message-id="${item.message_id}" data-is-group="${isGroup}" data-group-id="${item.groupId || ''}"><div class="file-card-icon">${getIconForFile(name, isGroup)}</div><div class="file-card-content"><div class="file-name">${displayName}</div><div class="file-card-meta">${formatFileSize(item.file_size)} • ${formatModifiedDate(item)}</div></div>${cardActionsHTML}`;
             } else {
-                div.innerHTML = `<input type="checkbox" class="file-checkbox card-checkbox" style="visibility: hidden;"><div class="file-card-icon folder-icon"><i class="fas fa-folder"></i></div><div class="file-card-content"><a href="#/${encodeURI(itemPath)}" class="file-name">${name}</a><div class="file-card-meta">Pasta • ${formatModifiedDate(item)}</div></div>${cardActionsHTML}`;
+                div.dataset.href = `#/${encodeURI(itemPath)}`;
+                div.dataset.targetName = itemPath;
+                div.dataset.isFolder = 'true';
+                div.classList.add('clickable-card');
+                div.innerHTML = `<input type="checkbox" class="file-checkbox card-checkbox" style="visibility: hidden;"><div class="file-card-icon folder-icon"><i class="fas fa-folder"></i></div><div class="file-card-content"><div class="file-name">${name}</div><div class="file-card-meta">Pasta • ${formatModifiedDate(item)}</div></div>${cardActionsHTML}`;
             }
         } else {
             if (item._isFile) {
@@ -1328,6 +1352,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const clickableCard = e.target.closest('.clickable-card[data-href]');
+        if (clickableCard && !e.target.closest('button, input, a, .file-card-menu')) {
+            if (clickableCard.dataset.targetName) {
+                navigateToSearchResult({ name: clickableCard.dataset.targetName, _isFolder: clickableCard.dataset.isFolder === 'true' });
+            } else {
+                window.location.hash = clickableCard.dataset.href;
+            }
+            return;
+        }
+
         if (target.classList.contains('btn-single-forward')) await handleSingleForward(target.dataset.messageId);
         if (target.classList.contains('btn-bulk-forward')) {
             const messageIds = target.dataset.messageIds.split(',').map(id => parseInt(id));
@@ -1444,11 +1478,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const keys = selected.map(cb => cb.dataset.key);
         const messageIds = selected.map(cb => cb.dataset.messageId);
         
-        let buttonsHTML = `<span>${selected.length} item(ns) selecionado(s)</span>`;
-        if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
-        if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-up-down-left-right"></i></button>`;
-        if (hasPermission('can_group_items')) buttonsHTML += `<button id="bulk-group-btn" title="Agrupar"><i class="fas fa-cubes"></i></button>`;
-        if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash-can"></i></button>`;
+        let buttonsHTML = `<span class="bulk-count">${selected.length} item(ns) selecionado(s)</span>`;
+        if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" class="bulk-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
+        if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" class="bulk-btn" title="Mover"><i class="fas fa-up-down-left-right"></i></button>`;
+        if (hasPermission('can_group_items')) buttonsHTML += `<button id="bulk-group-btn" class="bulk-btn" title="Agrupar"><i class="fas fa-cubes"></i></button>`;
+        if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger bulk-btn" title="Excluir"><i class="fas fa-trash-can"></i></button>`;
         bulkActionsContainer.innerHTML = buttonsHTML;
 
         if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
