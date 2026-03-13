@@ -80,7 +80,9 @@ const state = {
     fileTree: {},
     allFiles: [],
     allFolders: [],
-    sort: { key: 'name', order: 'asc' }
+    sort: { key: 'name', order: 'asc' },
+    pendingHighlightKey: null,
+    highlightTimeout: null
 };
 
 async function refreshFiles() {
@@ -94,6 +96,54 @@ async function refreshFiles() {
 
 function hasPermission(perm) {
     return state.permissions.includes(perm);
+}
+
+function isOwnerUser() {
+    const roleName = (state.role || '').toLowerCase();
+    return roleName === 'dono' || state.level === 1;
+}
+
+function navigateToSearchResult(item) {
+    const targetPath = item._isFolder ? item.name : item.name.split('/').slice(0, -1).join('/');
+    state.pendingHighlightKey = item._isFolder ? null : item.name;
+    window.location.hash = targetPath ? `#/${encodeURI(targetPath)}` : '#/';
+}
+
+function focusPendingFileHighlight() {
+    if (!state.pendingHighlightKey) return;
+
+    const targetCheckbox = Array.from(document.querySelectorAll('#file-list-body .file-checkbox[data-key]'))
+        .find(cb => cb.dataset.key === state.pendingHighlightKey);
+
+    if (!targetCheckbox) return;
+
+    const row = targetCheckbox.closest('.file-item');
+    if (!row) return;
+
+    row.classList.add('pulse-highlight');
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    const clearHighlight = () => {
+        row.classList.remove('pulse-highlight');
+        state.pendingHighlightKey = null;
+        if (state.highlightTimeout) {
+            clearTimeout(state.highlightTimeout);
+            state.highlightTimeout = null;
+        }
+    };
+
+    if ('IntersectionObserver' in window) {
+        const observer = new IntersectionObserver((entries) => {
+            const visible = entries.some(entry => entry.isIntersecting && entry.intersectionRatio >= 0.6);
+            if (visible) {
+                clearHighlight();
+                observer.disconnect();
+            }
+        }, { threshold: [0.6] });
+        observer.observe(row);
+    }
+
+    state.highlightTimeout = setTimeout(clearHighlight, 15000);
 }
 
 // --- 3. ELEMENTOS DO DOM ---
@@ -676,7 +726,14 @@ function renderNav() {
 }
 
 function renderLoginPage() {
-    mainContent.innerHTML = `<form id="login-form" class="auth-form"><h2>Login</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required></div><button type="submit">Entrar</button></form>`;
+    document.body.classList.add('login-active');
+    mainContent.innerHTML = `<div class="login-screen"><form id="login-form" class="auth-form login-card"><div class="brand"><span class="brand-icon"><i class="fas fa-cloud"></i></span><h2>Shiroyama Archive</h2><p>Seu armazenamento em nuvem seguro e organizado.</p></div><div class="form-group"><label for="username">Email ou Nome de Usuário</label><input type="text" id="username" name="username" required autocomplete="username"></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required autocomplete="current-password"></div><button type="submit" class="primary-btn">Entrar</button><a href="#" class="forgot-link">Esqueci minha senha</a></form></div>`;
+
+    document.querySelector('.forgot-link').onclick = (e) => {
+        e.preventDefault();
+        showNotification('Recuperação de senha em breve. Fale com o administrador por enquanto.', 'info');
+    };
+
     document.getElementById('login-form').onsubmit = async (e) => {
         e.preventDefault();
         showLoading();
@@ -693,6 +750,7 @@ function renderLoginPage() {
 }
 
 function renderRegisterPage() {
+    document.body.classList.remove('login-active');
     mainContent.innerHTML = `<form id="register-form" class="auth-form"><h2>Registrar Nova Conta</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required minlength="3"></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required minlength="6"></div><button type="submit">Registrar</button></form>`;
     document.getElementById('register-form').onsubmit = async (e) => {
         e.preventDefault();
@@ -707,6 +765,7 @@ function renderRegisterPage() {
 }
 
 async function renderProfilePage() {
+    document.body.classList.remove('login-active');
     mainContent.innerHTML = '';
     showLoading();
     try {
@@ -766,6 +825,7 @@ async function renderProfilePage() {
 }
 
 async function renderAdminPage(subpage) {
+    document.body.classList.remove('login-active');
     const canViewUsers = hasPermission('users:view_list');
     const canViewRoles = hasPermission('roles:view_list');
 
@@ -939,16 +999,31 @@ function renderSearchResults(searchTerm) {
     filteredItems.forEach(item => {
         const div = document.createElement('div');
         div.className = 'file-item';
+        const targetPath = item._isFolder ? item.name : item.name.split('/').slice(0, -1).join('/');
+        const href = targetPath ? `#/${encodeURI(targetPath)}` : '#/';
+
         if (item._isFolder) {
-            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(item.name)}" class="file-name">${item.name}</a><span class="file-size"></span><div class="file-actions"></div>`;
+            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="${href}" class="file-name search-result-file-link" data-target-name="${item.name}" data-is-folder="true">${item.name}</a><span class="file-size"></span><div class="file-actions"></div>`;
         } else {
-            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon">${getIconForFile(item.name)}</span><span class="file-name">${item.name}</span><span class="file-size">${formatFileSize(item.file_size)}</span><div class="file-actions"></div>`;
+            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon">${getIconForFile(item.name)}</span><a href="${href}" class="file-name search-result-file-link" data-target-name="${item.name}" data-is-folder="false">${item.name}</a><span class="file-size">${formatFileSize(item.file_size)}</span><div class="file-actions"></div>`;
         }
         fileListBodyElement.appendChild(div);
     });
+
+    document.querySelectorAll('.search-result-file-link').forEach(link => {
+        link.onclick = (event) => {
+            event.preventDefault();
+            const targetName = link.dataset.targetName;
+            const isFolder = link.dataset.isFolder === 'true';
+            navigateToSearchResult({ name: targetName, _isFolder: isFolder });
+        };
+    });
 }
 
+
+
 function renderFilesPage(path) {
+    document.body.classList.remove('login-active');
     const currentPathStr = path.join('/');
     const content = getContentForPath(path);
     const folderExistsSystemWide = state.allFolders.includes(currentPathStr);
@@ -960,13 +1035,13 @@ function renderFilesPage(path) {
         return;
     }
     
-    if (path.length > 0 && folderExistsSystemWide && !userCanSeeFolderContent) {
+    if (path.length > 0 && folderExistsSystemWide && !userCanSeeFolderContent && !isOwnerUser()) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Acesso Negado</h2><p>Você não tem permissão para visualizar o conteúdo da pasta "${currentPathStr}".</p></div>`;
         hideLoading();
         return;
     }
     
-    let controlsHTML = `<div class="controls"><div id="breadcrumb"></div>`;
+    let controlsHTML = `<div id="breadcrumb" class="directory-bar"></div><div class="controls">`;
     controlsHTML += `<div class="search-container">
                         <input type="text" id="search-input" placeholder="Buscar...">
                         <div class="search-buttons">
@@ -1012,22 +1087,30 @@ function renderFilesPage(path) {
 
     const breadcrumbElement = document.getElementById('breadcrumb');
     breadcrumbElement.innerHTML = '';
+
     const homeLink = document.createElement('a');
     homeLink.href = '#/';
-    homeLink.textContent = 'Home';
+    homeLink.className = 'directory-link';
+    homeLink.innerHTML = '<i class="fas fa-house"></i><span>Home</span>';
     breadcrumbElement.appendChild(homeLink);
 
     let cumulativePath = '';
     path.forEach((part, index) => {
-        breadcrumbElement.innerHTML += ' &gt; ';
+        const separator = document.createElement('span');
+        separator.className = 'directory-sep';
+        separator.innerHTML = '<i class="fas fa-chevron-right"></i>';
+        breadcrumbElement.appendChild(separator);
+
         cumulativePath += `/${encodeURIComponent(part)}`;
         if (index < path.length - 1) {
             const a = document.createElement('a');
             a.href = `#${cumulativePath}`;
+            a.className = 'directory-link';
             a.textContent = part;
             breadcrumbElement.appendChild(a);
         } else {
             const span = document.createElement('span');
+            span.className = 'directory-current';
             span.textContent = part;
             breadcrumbElement.appendChild(span);
         }
@@ -1075,11 +1158,11 @@ function renderFilesPage(path) {
             if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete-group" data-group-id="${item.groupId}" data-group-items='${JSON.stringify(item.groupItems)}' title="Excluir Grupo"><i class="fas fa-trash"></i></button>`;
         } else { // Pastas
             if (hasPermission('can_manage_folder_permissions')) {
-                actionsHTML += `<button class="btn-icon btn-folder-perms" data-path="${itemPath}" title="Gerenciar Permissões"><i class="fas fa-cog"></i></button>`;
+                actionsHTML += `<button class="btn-icon btn-folder-perms" data-path="${itemPath}" title="Permissões da Pasta"><i class="fas fa-user-shield"></i></button>`;
             }
-            if (hasPermission('can_rename_folders')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear Pasta"><i class="fas fa-edit"></i></button>`;
-            if (hasPermission('can_move_folders')) actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-open"></i></button>`;
-            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir Pasta"><i class="fas fa-trash"></i></button>`;
+            if (hasPermission('can_rename_folders')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear Pasta"><i class="fas fa-pen"></i></button>`;
+            if (hasPermission('can_move_folders')) actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-up-down-left-right"></i></button>`;
+            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir Pasta"><i class="fas fa-trash-can"></i></button>`;
         }
         actionsHTML += '</div>';
 
@@ -1089,7 +1172,7 @@ function renderFilesPage(path) {
         if (item._isFile) {
             div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}" data-is-group="${isGroup}" data-group-id="${item.groupId || ''}"><span class="file-icon">${getIconForFile(name, isGroup)}</span><span class="file-name">${displayName}</span><span class="file-size">${formatFileSize(item.file_size)}</span>${actionsHTML}`;
         } else {
-            div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><span class="file-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(itemPath)}" class="file-name">${name}</a><span class="file-size"></span>${actionsHTML}`;
+            div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(itemPath)}" class="file-name">${name}</a><span class="file-size"></span>${actionsHTML}`;
         }
         fileListBodyElement.appendChild(div);
     });
@@ -1099,6 +1182,8 @@ function renderFilesPage(path) {
         indicator.className = 'sort-indicator';
         if (header.dataset.sort === state.sort.key) indicator.classList.add(state.sort.order);
     });
+
+    focusPendingFileHighlight();
 }
 
 // --- 9. ROTEADOR PRINCIPAL ---
