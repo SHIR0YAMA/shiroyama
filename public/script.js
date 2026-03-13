@@ -9,6 +9,14 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+function formatModifiedDate(item) {
+    const rawDate = item.updated_at || item.modified_at || item.created_at || item.last_modified || item.date;
+    if (!rawDate) return '—';
+    const date = new Date(rawDate);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 function showNotification(message, type = 'info') {
     const container = document.getElementById('notification-container');
     const toast = document.createElement('div');
@@ -1003,9 +1011,9 @@ function renderSearchResults(searchTerm) {
         const href = targetPath ? `#/${encodeURI(targetPath)}` : '#/';
 
         if (item._isFolder) {
-            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="${href}" class="file-name search-result-file-link" data-target-name="${item.name}" data-is-folder="true">${item.name}</a><span class="file-size"></span><div class="file-actions"></div>`;
+            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="${href}" class="file-name search-result-file-link" data-target-name="${item.name}" data-is-folder="true">${item.name}</a><span class="file-size"></span><span class="file-date">—</span><div class="file-actions"></div>`;
         } else {
-            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon">${getIconForFile(item.name)}</span><a href="${href}" class="file-name search-result-file-link" data-target-name="${item.name}" data-is-folder="false">${item.name}</a><span class="file-size">${formatFileSize(item.file_size)}</span><div class="file-actions"></div>`;
+            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon">${getIconForFile(item.name)}</span><a href="${href}" class="file-name search-result-file-link" data-target-name="${item.name}" data-is-folder="false">${item.name}</a><span class="file-size">${formatFileSize(item.file_size)}</span><span class="file-date">${formatModifiedDate(item)}</span><div class="file-actions"></div>`;
         }
         fileListBodyElement.appendChild(div);
     });
@@ -1041,18 +1049,20 @@ function renderFilesPage(path) {
         return;
     }
     
-    let controlsHTML = `<div id="breadcrumb" class="directory-bar"></div><div class="controls">`;
-    controlsHTML += `<div class="search-container">
-                        <input type="text" id="search-input" placeholder="Buscar...">
+    const contentEntries = Object.entries(content);
+    const folderCount = contentEntries.filter(([_, item]) => !item._isFile).length;
+    const fileCount = contentEntries.filter(([_, item]) => item._isFile).length;
+
+    let controlsHTML = `<div class="storage-panel"><div class="storage-topline"><div></div><div class="storage-stat-group"><span class="storage-stat"><i class="far fa-folder"></i> ${folderCount} pastas</span><span class="storage-stat"><i class="far fa-file"></i> ${fileCount} arquivos</span></div></div><div id="breadcrumb" class="directory-bar"></div><div class="storage-search-row"><div class="search-container">`;
+    controlsHTML += `<input type="text" id="search-input" placeholder="Buscar pastas...">
                         <div class="search-buttons">
                             <button id="search-btn" title="Buscar"><i class="fas fa-search"></i></button>
                             <button id="search-clear-btn" title="Limpar" style="display:none;">×</button>
                         </div>
-                     </div>`;
-    controlsHTML += `<div class="controls-buttons">`;
+                     </div><div class="view-toggle" aria-label="Modo de visualização"><button class="view-toggle-btn" title="Grade"><i class="fas fa-grip"></i></button><button class="view-toggle-btn active" title="Lista"><i class="fas fa-list"></i></button></div><div class="controls-buttons">`;
     if (hasPermission('can_create_folders')) controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta"><i class="fas fa-folder-plus"></i></button>`;
-    controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos"><i class="fas fa-sync-alt"></i></button></div></div>`;
-    mainContent.innerHTML = `${controlsHTML}<div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div>`;
+    controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos"><i class="fas fa-sync-alt"></i></button></div></div></div>`;
+    mainContent.innerHTML = `${controlsHTML}<div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-date">Modificado</span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div>`;
     
     document.getElementById('refresh-files-btn').onclick = refreshFiles;
     if (hasPermission('can_create_folders')) document.getElementById('create-folder-btn').onclick = () => openCreateFolderModal(false);
@@ -1170,9 +1180,9 @@ function renderFilesPage(path) {
         const displayName = isGroup ? item.name.split('/').pop() : name;
         
         if (item._isFile) {
-            div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}" data-is-group="${isGroup}" data-group-id="${item.groupId || ''}"><span class="file-icon">${getIconForFile(name, isGroup)}</span><span class="file-name">${displayName}</span><span class="file-size">${formatFileSize(item.file_size)}</span>${actionsHTML}`;
+            div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}" data-is-group="${isGroup}" data-group-id="${item.groupId || ''}"><span class="file-icon">${getIconForFile(name, isGroup)}</span><span class="file-name">${displayName}</span><span class="file-size">${formatFileSize(item.file_size)}</span><span class="file-date">${formatModifiedDate(item)}</span>${actionsHTML}`;
         } else {
-            div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(itemPath)}" class="file-name">${name}</a><span class="file-size"></span>${actionsHTML}`;
+            div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(itemPath)}" class="file-name">${name}</a><span class="file-size">—</span><span class="file-date">${formatModifiedDate(item)}</span>${actionsHTML}`;
         }
         fileListBodyElement.appendChild(div);
     });
