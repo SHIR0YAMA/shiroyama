@@ -676,7 +676,14 @@ function renderNav() {
 }
 
 function renderLoginPage() {
-    mainContent.innerHTML = `<form id="login-form" class="auth-form"><h2>Login</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required></div><button type="submit">Entrar</button></form>`;
+    document.body.classList.add('login-active');
+    mainContent.innerHTML = `<div class="login-screen"><form id="login-form" class="auth-form login-card"><div class="brand"><span class="brand-icon"><i class="fas fa-cloud"></i></span><h2>Shiroyama Archive</h2><p>Seu armazenamento em nuvem seguro e organizado.</p></div><div class="form-group"><label for="username">Email ou Nome de Usuário</label><input type="text" id="username" name="username" required autocomplete="username"></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required autocomplete="current-password"></div><button type="submit" class="primary-btn">Entrar</button><a href="#" class="forgot-link">Esqueci minha senha</a></form></div>`;
+
+    document.querySelector('.forgot-link').onclick = (e) => {
+        e.preventDefault();
+        showNotification('Recuperação de senha em breve. Fale com o administrador por enquanto.', 'info');
+    };
+
     document.getElementById('login-form').onsubmit = async (e) => {
         e.preventDefault();
         showLoading();
@@ -693,6 +700,7 @@ function renderLoginPage() {
 }
 
 function renderRegisterPage() {
+    document.body.classList.remove('login-active');
     mainContent.innerHTML = `<form id="register-form" class="auth-form"><h2>Registrar Nova Conta</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required minlength="3"></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required minlength="6"></div><button type="submit">Registrar</button></form>`;
     document.getElementById('register-form').onsubmit = async (e) => {
         e.preventDefault();
@@ -707,6 +715,7 @@ function renderRegisterPage() {
 }
 
 async function renderProfilePage() {
+    document.body.classList.remove('login-active');
     mainContent.innerHTML = '';
     showLoading();
     try {
@@ -766,6 +775,7 @@ async function renderProfilePage() {
 }
 
 async function renderAdminPage(subpage) {
+    document.body.classList.remove('login-active');
     const canViewUsers = hasPermission('users:view_list');
     const canViewRoles = hasPermission('roles:view_list');
 
@@ -948,7 +958,36 @@ function renderSearchResults(searchTerm) {
     });
 }
 
+
+function renderSidebarTree(path) {
+    const root = {};
+    state.allFolders.forEach((folder) => {
+        if (!folder) return;
+        const parts = folder.split('/').filter(Boolean);
+        let node = root;
+        parts.forEach((part) => {
+            if (!node[part]) node[part] = {};
+            node = node[part];
+        });
+    });
+
+    const currentPath = path.join('/');
+    const renderNode = (node, prefix = '') => {
+        const entries = Object.keys(node).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        if (!entries.length) return '';
+        return `<ul>${entries.map((name) => {
+            const full = prefix ? `${prefix}/${name}` : name;
+            const selected = full === currentPath ? 'selected' : '';
+            const child = renderNode(node[name], full);
+            return `<li><a href="#/${encodeURI(full)}" class="tree-link ${selected}"><i class="fas fa-folder"></i>${name}</a>${child}</li>`;
+        }).join('')}</ul>`;
+    };
+
+    return `<a href="#/" class="tree-link ${!currentPath ? 'selected' : ''}"><i class="fas fa-house"></i>Home</a>${renderNode(root)}`;
+}
+
 function renderFilesPage(path) {
+    document.body.classList.remove('login-active');
     const currentPathStr = path.join('/');
     const content = getContentForPath(path);
     const folderExistsSystemWide = state.allFolders.includes(currentPathStr);
@@ -977,7 +1016,7 @@ function renderFilesPage(path) {
     controlsHTML += `<div class="controls-buttons">`;
     if (hasPermission('can_create_folders')) controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`;
     controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div></div>`;
-    mainContent.innerHTML = `${controlsHTML}<div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div>`;
+    mainContent.innerHTML = `<div class="storage-layout"><aside class="storage-sidebar"><h3>Pastas</h3><div id="folder-tree" class="folder-tree">${renderSidebarTree(path)}</div></aside><section class="storage-main">${controlsHTML}<div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div></section></div>`;
     
     document.getElementById('refresh-files-btn').onclick = refreshFiles;
     if (hasPermission('can_create_folders')) document.getElementById('create-folder-btn').onclick = () => openCreateFolderModal(false);
