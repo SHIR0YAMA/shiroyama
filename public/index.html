@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shiroyama Files</title>
+    <title>Shiroyama Archive</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link id="favicon-normal" rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗂️</text></svg>">
     <link id="favicon-notif" rel="alternate icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📩</text></svg>">
@@ -56,6 +56,7 @@
         .file-list-header > * { padding: 0 5px; }
         .file-checkbox { flex-shrink: 0; flex-basis: 30px; }
         .file-icon { flex-shrink: 0; flex-basis: 30px; color: #8be9fd; text-align: center; font-size: 1.1em; }
+        .file-icon.folder-icon { color: #b99cff; }
         .file-name { flex-grow: 1; word-break: break-all; }
         a.file-name { display: inline-block; }
         .file-size { flex-shrink: 0; flex-basis: 100px; text-align: right; color: #bd93f9; }
@@ -97,8 +98,9 @@
         .admin-table th { color: #50fa7b; font-size: 14px; text-transform: uppercase; }
         .admin-table tr:hover { background-color: #3b3e50; }
         .admin-table td { font-size: 15px; }
-        .admin-table .roles-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .admin-table .actions-cell { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; }
+        .admin-table .roles-cell, .admin-table .actions-cell { display: table-cell; }
+        .roles-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .actions-wrap { display: inline-flex; gap: 8px; align-items: center; flex-wrap: nowrap; }
         .admin-table .actions-cell button { padding: 8px 12px; flex-shrink: 0; }
         .admin-table .actions-cell .btn-icon { font-size: 1em; padding: 8px; width: 36px; height: 36px; }
         .chat-id-cell-content { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; }
@@ -148,13 +150,417 @@
             .admin-table tr { padding: 10px 0; border-bottom: 1px solid #3b3e50; }
             .admin-table td { display: flex; justify-content: space-between; align-items: center; padding: 8px 5px; border-bottom: none; }
             .admin-table td::before { content: attr(data-label); font-weight: bold; color: #50fa7b; margin-right: 10px; flex-shrink: 0; }
-            .admin-table .roles-cell { flex-direction: column; align-items: flex-start; gap: 10px; }
-            .admin-table .roles-cell > div { width: 100%; }
-            .admin-table .actions-cell { flex-direction: row; justify-content: flex-start; }
+            .admin-table .roles-cell, .admin-table .actions-cell { display: flex; }
+            .roles-wrap { flex-direction: column; align-items: flex-start; gap: 10px; width: 100%; }
+            .roles-wrap > div { width: 100%; }
+            .actions-wrap { justify-content: flex-start; flex-wrap: wrap; }
             .admin-tabs { justify-content: center; }
             .search-container { order: -1; width: 100%; margin-bottom: 15px; margin-left: 0; margin-right: 0; }
             #breadcrumb { order: 0; }
             .controls-buttons { order: 2; }
+        }
+    
+
+        /* --- Shiroyama Archive redesign --- */
+        :root {
+            --bg: #07070c;
+            --panel: #12121d;
+            --panel-soft: #191926;
+            --border: #2e2e46;
+            --text: #f2f2ff;
+            --muted: #a0a0bf;
+            --purple: #8b5cf6;
+            --purple-soft: #6d47c9;
+        }
+        body {
+            background: radial-gradient(circle at 10% 10%, #23133f 0%, #09090f 45%, #040407 100%);
+            color: var(--text);
+        }
+        .container { max-width: 1240px; }
+        header {
+            background: rgba(15, 15, 24, 0.92);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(8px);
+            border-radius: 16px;
+        }
+        header h1, header h1 a { color: #d4c2ff; }
+        main {
+            background: rgba(17,17,28,0.92);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            min-height: 72vh;
+        }
+        .primary-btn {
+            width: 100%;
+            background: linear-gradient(135deg, var(--purple), var(--purple-soft));
+            border-radius: 12px;
+            transition: all 0.25s ease;
+            margin-top: 8px;
+        }
+        .primary-btn:hover { box-shadow: 0 0 22px rgba(139,92,246,0.45); transform: translateY(-1px); }
+        .auth-form, .modal-content { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; }
+        .form-group input, #search-input { border-radius: 12px; border-color: #40346f; background: #0f0f1a; }
+
+        body.login-active header { display: none; }
+        body.login-active main {
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            min-height: calc(100vh - 40px);
+            display: grid;
+            place-items: center;
+            padding: 0;
+        }
+        .login-screen { width: 100%; min-height: calc(100vh - 40px); display: grid; place-items: center; padding: 24px 14px; }
+        .login-card { width: min(480px, 100%); margin: 0; padding: 40px 34px 30px; box-shadow: 0 20px 40px rgba(0,0,0,0.35); display: flex; flex-direction: column; gap: 8px; }
+        .brand { text-align: center; margin-bottom: 20px; }
+        .brand-icon { font-size: 2rem; color: #bf9aff; display: inline-flex; margin-bottom: 8px; }
+        .brand p { color: var(--muted); margin: 8px 0 0; line-height: 1.45; }
+        .login-card .form-group { margin-bottom: 0; }
+        .login-card .form-group + .form-group { margin-top: 4px; }
+        .login-card .form-group label { margin-bottom: 7px; }
+        .forgot-link { display: inline-block; margin: 16px auto 2px; color: #c5b4ff; font-size: 14px; }
+
+        .directory-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: rgba(12, 12, 20, 0.72);
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+        .directory-sep { color: #7566a6; opacity: 0.9; }
+        .directory-link, .directory-current {
+            color: #ccbfff;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 18px;
+        }
+        .directory-link:hover { color: #f4eeff; text-decoration: none; }
+        .directory-current { color: #f4eeff; font-weight: 600; }
+
+
+        .search-result-file-link { color: #9fe8ff; }
+        .search-result-file-link:hover { color: #d6f6ff; text-decoration: underline; }
+        .file-item.pulse-highlight {
+            animation: pulseHighlight 1.2s ease-in-out infinite;
+            box-shadow: inset 0 0 0 1px rgba(190, 155, 255, 0.6);
+            border-radius: 10px;
+        }
+        @keyframes pulseHighlight {
+            0%, 100% { background: rgba(96, 66, 170, 0.18); }
+            50% { background: rgba(143, 92, 246, 0.38); }
+        }
+        .file-list-header, .file-item { border-bottom: 1px solid #2c2c40; }
+        .file-item:hover { background: #171726; }
+
+
+        /* Iconografia modernizada e paleta sem azul */
+        a { color: #d8c8ff; }
+        .file-name, .search-result-file-link { color: #efe7ff; }
+        .search-result-file-link:hover { color: #ffd9f6; }
+        .file-size { color: #c8a4ff; }
+        .file-icon { color: #c7a0ff; }
+        .file-icon.folder-icon { color: #e2a9ff; }
+        .btn-icon { color: #d8b8ff; background: transparent; border: 1px solid transparent; }
+        .btn-icon:hover { background: rgba(168, 105, 255, 0.16); color: #ffe8ff; border-color: rgba(201, 137, 255, 0.42); }
+        .btn-icon.danger { color: #ff97b3; }
+        .btn-icon.danger:hover { background: rgba(255, 99, 132, 0.15); border-color: rgba(255, 126, 157, 0.5); color: #ffd7e3; }
+
+        .filetype-icon.video { color: #dca6ff; }
+        .filetype-icon.image { color: #ffb2e8; }
+        .filetype-icon.audio { color: #c3a1ff; }
+        .filetype-icon.document { color: #f0c8ff; }
+        .filetype-icon.archive { color: #e3a5ff; }
+
+        #search-btn, #search-clear-btn { color: #d8b8ff; }
+        #search-clear-btn { color: #ff9cbc; }
+        .controls-buttons button {
+            min-width: 56px;
+            height: 48px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.15rem;
+        }
+        #create-folder-btn { background: linear-gradient(135deg, #7f63d5, #9b6bff); }
+        #refresh-files-btn { background: linear-gradient(135deg, #a84cff, #d65cff); color: #fef5ff; }
+
+        .admin-tabs button { display: inline-flex; align-items: center; gap: 8px; }
+        .admin-table .roles-cell,
+        .admin-table .actions-cell { display: table-cell !important; vertical-align: middle; }
+        .roles-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .actions-wrap { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .admin-table .actions-cell button i,
+        .admin-table .roles-cell button i,
+        .profile-card h2 i,
+        .profile-card h3 i { margin-right: 8px; }
+        .profile-card h2 i { color: #d7abff; }
+        .profile-card h3 i { color: #c49aff; }
+
+        #main-nav .nav-button i { margin-right: 6px; }
+        
+        /* Reformulação estilo painel clean (referência print 2) */
+        .container { max-width: 1380px; }
+        header { border-radius: 18px; padding: 10px 18px; }
+        header h1 { font-size: 24px; letter-spacing: 0.2px; }
+        header h1 a { display: inline-flex; align-items: center; gap: 10px; }
+        header h1 a::before {
+            content: '\f0c2';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #c91b4a, #91153c);
+            color: #fff;
+            box-shadow: 0 0 16px rgba(201, 27, 74, 0.35);
+            font-size: 16px;
+        }
+        .section-card {
+            border: 1px solid rgba(105, 90, 170, 0.35);
+            border-radius: 14px;
+            background: rgba(10, 10, 18, 0.75);
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+        .storage-panel { padding: 2px 0 8px; }
+        .storage-topline {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+        .storage-stat-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        .storage-stat {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: #c8bdd8;
+            font-size: 14px;
+        }
+        .directory-bar { border-radius: 14px; margin-bottom: 10px; padding: 10px 14px; }
+        .storage-search-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid rgba(105, 90, 170, 0.35);
+            border-radius: 14px;
+            background: rgba(10, 10, 18, 0.75);
+        }
+        .storage-search-row .search-container { margin: 0; }
+        .view-toggle {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 4px;
+            display: inline-flex;
+            gap: 4px;
+        }
+        .view-toggle-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            border: none;
+            background: transparent;
+            color: #b8aec8;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .view-toggle-btn.active { background: linear-gradient(135deg,#c91b4a,#91153c); color: #fff; }
+
+        .files-section {
+            border: 1px solid rgba(105, 90, 170, 0.35);
+            border-radius: 14px;
+            overflow: hidden;
+            background: rgba(10, 10, 18, 0.75);
+        }
+        .file-list-header { color: #bdb3cd; text-transform: none; padding: 10px 12px; }
+        .file-list-header .file-name { color: #f4ecff; font-size: 14px; }
+        .file-size { flex-basis: 120px; color: #8d829f; font-size: 13px; }
+        .file-date { flex-basis: 140px; color: #8d829f; font-size: 13px; }
+        .file-list-header .file-size, .file-list-header .file-date { font-size: 14px; }
+        .file-actions { flex-basis: 180px; }
+        .file-item { min-height: 52px; }
+        .file-name { font-size: 16px; }
+        .file-icon { font-size: 1.1em; }
+
+        .file-list.grid-mode {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 12px;
+            padding: 10px;
+        }
+        .file-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-height: 88px;
+            border: 1px solid rgba(105, 90, 170, 0.35);
+            border-radius: 14px;
+            padding: 10px 12px 10px 56px;
+            background: rgba(16, 16, 26, 0.9);
+            position: relative;
+        }
+        .file-card-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, rgba(201,27,74,.22), rgba(145,21,60,.36));
+            color: #ffd5e6;
+            font-size: 1.35rem;
+            flex-shrink: 0;
+        }
+        .file-card-content { min-width: 0; flex: 1; display: flex; flex-direction: column; justify-content: center; }
+        .file-card .file-name { font-size: 18px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .file-card-meta { color: #9085a4; font-size: 13px; margin-top: 4px; }
+        .file-card .file-name { position: relative; width: 100%; }
+        .file-card .file-name-text { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .file-card .file-name-tooltip {
+            display: none;
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 0;
+            max-width: min(420px, 72vw);
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(220, 187, 255, 0.4);
+            background: rgba(11, 11, 20, 0.96);
+            color: #f6eaff;
+            font-size: 13px;
+            white-space: normal;
+            word-break: break-word;
+            z-index: 30;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+        }
+        .file-card .file-name:hover .file-name-tooltip { display: block; }
+        .card-checkbox { position: absolute; left: 28px; top: 50%; transform: translate(-50%, -50%); }
+        .file-card-actions { position: relative; }
+        .file-card-menu {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 38px;
+            background: #11111d;
+            border: 1px solid rgba(201, 137, 255, 0.25);
+            border-radius: 10px;
+            padding: 6px;
+            z-index: 20;
+            gap: 4px;
+        }
+        .file-card-actions.show .file-card-menu { display: inline-flex; }
+
+
+        /* refinamentos UX: checkbox, escala lista e barra de ações em lote */
+        .file-checkbox {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 6px;
+            border: 1px solid rgba(211, 188, 255, 0.5);
+            background: rgba(8, 8, 14, 0.92);
+            cursor: pointer;
+            position: relative;
+            flex-basis: 18px;
+        }
+        .file-checkbox:checked {
+            background: linear-gradient(135deg, #9f72ff, #cf6bff);
+            border-color: #d6b1ff;
+            box-shadow: 0 0 0 2px rgba(178, 115, 255, 0.25);
+        }
+        .file-checkbox:checked::after {
+            content: '\2713';
+            position: absolute;
+            color: #fff;
+            font-size: 12px;
+            left: 3px;
+            top: -1px;
+        }
+
+        #bulk-actions-container {
+            display: none;
+            margin-bottom: 12px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(154, 126, 230, 0.55);
+            background: linear-gradient(135deg, rgba(82, 82, 110, 0.75), rgba(58, 60, 86, 0.75));
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .bulk-count { color: #f3e8ff; font-weight: 600; margin-right: 8px; display: inline-flex; align-items: center; gap: 8px; }
+        .bulk-actions-group { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .bulk-btn {
+            min-width: 112px;
+            height: 40px;
+            padding: 0 12px;
+            border-radius: 11px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: linear-gradient(135deg, rgba(145, 124, 214, 0.82), rgba(113, 97, 177, 0.82));
+            border: 1px solid rgba(215, 198, 255, 0.22);
+            color: #f9f1ff;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        .bulk-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(106, 77, 184, 0.35); }
+        .bulk-btn.btn-danger {
+            background: linear-gradient(135deg, #ff6d8e, #f34b6f);
+            border-color: rgba(255, 205, 219, 0.28);
+        }
+        .bulk-btn i { font-size: 14px; }
+
+        .file-name { font-size: 16px; word-break: break-word; }
+        .file-list-header .file-name { font-size: 13px; }
+        .file-item { min-height: 52px; }
+        .file-size { flex-basis: 108px; font-size: 12px; }
+        .file-date { flex-basis: 124px; font-size: 12px; }
+        .file-actions { flex-basis: 170px; }
+
+        .file-card.clickable-card { cursor: pointer; }
+        .file-card.clickable-card:hover { border-color: rgba(217, 168, 255, 0.5); background: rgba(22, 22, 34, 0.95); }
+        .file-card .file-name { word-break: normal; overflow-wrap: anywhere; }
+        @media (max-width: 900px) {
+            header h1 { font-size: 20px; }
+            header h1 a::before { width: 32px; height: 32px; font-size: 14px; }
+            .file-date { display: none; }
+            .file-name { font-size: 16px; }
+            .storage-search-row { flex-wrap: wrap; }
+            .controls-buttons { margin-left: auto; }
+            .admin-table .roles-cell, .admin-table .actions-cell { display: flex !important; }
+            .roles-wrap { flex-direction: column; align-items: flex-start; width: 100%; }
+            .actions-wrap { width: 100%; justify-content: flex-start; }
+            #bulk-actions-container { justify-content: flex-start; }
+            .bulk-btn { min-width: 98px; }
+        }
+        @media (max-width: 640px) {
+            body { padding: 12px; }
+            .login-screen { min-height: calc(100vh - 24px); padding: 10px 2px; }
+            .login-card { padding: 28px 18px 22px; gap: 6px; }
+            .brand { margin-bottom: 14px; }
+            .directory-link, .directory-current { font-size: 16px; }
+            .file-list.grid-mode { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -168,7 +574,7 @@
 
     <div class="container">
         <header>
-            <h1><a href="/#/">Shiroyama Files</a></h1>
+            <h1><a href="/#/">Shiroyama Archive</a></h1>
             <nav id="main-nav"></nav>
         </header>
         <main id="main-content"></main>
@@ -200,7 +606,7 @@
             <span id="move-modal-close-btn" class="modal-close-btn">×</span>
             <h2>Mover Item(ns)</h2>
             <p>Selecione a pasta de destino para: <strong id="move-file-name"></strong></p>
-            <div style="margin-top: 10px;"><button id="create-folder-in-move-modal-btn">📁+ Criar Nova Pasta Aqui</button></div>
+            <div style="margin-top: 10px;"><button id="create-folder-in-move-modal-btn"><i class="fas fa-folder-plus"></i> Criar Nova Pasta Aqui</button></div>
             <div id="folder-navigation"></div>
             <p style="margin-top: 15px;">Destino: <code id="move-file-path">/</code></p>
             <div class="modal-footer">

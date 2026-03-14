@@ -9,6 +9,14 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+function formatModifiedDate(item) {
+    const rawDate = item.updated_at || item.modified_at || item.created_at || item.last_modified || item.date;
+    if (!rawDate) return '—';
+    const date = new Date(rawDate);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 function showNotification(message, type = 'info') {
     const container = document.getElementById('notification-container');
     const toast = document.createElement('div');
@@ -58,16 +66,16 @@ function stopFaviconBlink() {
 }
 
 function getIconForFile(fileName, isGroup = false) {
-    if (isGroup) return '<i class="fas fa-file-archive"></i>';
+    if (isGroup) return '<i class="fas fa-file-archive filetype-icon archive"></i>';
     const extension = fileName.split('.').pop().toLowerCase();
     const videoExts = ['mp4', 'mkv', 'avi', 'mov', 'webm'];
     const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
     const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'flac'];
 
-    if (videoExts.includes(extension)) return '<i class="fas fa-file-video"></i>';
-    if (imageExts.includes(extension)) return '<i class="fas fa-file-image"></i>';
-    if (audioExts.includes(extension)) return '<i class="fas fa-file-audio"></i>';
-    return '<i class="fas fa-file-alt"></i>';
+    if (videoExts.includes(extension)) return '<i class="fas fa-film filetype-icon video"></i>';
+    if (imageExts.includes(extension)) return '<i class="fas fa-image filetype-icon image"></i>';
+    if (audioExts.includes(extension)) return '<i class="fas fa-wave-square filetype-icon audio"></i>';
+    return '<i class="fas fa-file-alt filetype-icon document"></i>';
 }
 
 // --- 2. ESTADO GLOBAL E FUNÇÕES RELACIONADAS ---
@@ -80,7 +88,10 @@ const state = {
     fileTree: {},
     allFiles: [],
     allFolders: [],
-    sort: { key: 'name', order: 'asc' }
+    sort: { key: 'name', order: 'asc' },
+    pendingHighlightKey: null,
+    highlightTimeout: null,
+    viewMode: 'list'
 };
 
 async function refreshFiles() {
@@ -94,6 +105,54 @@ async function refreshFiles() {
 
 function hasPermission(perm) {
     return state.permissions.includes(perm);
+}
+
+function isOwnerUser() {
+    const roleName = (state.role || '').toLowerCase();
+    return roleName === 'dono' || state.level === 1;
+}
+
+function navigateToSearchResult(item) {
+    const targetPath = item._isFolder ? item.name : item.name.split('/').slice(0, -1).join('/');
+    state.pendingHighlightKey = item._isFolder ? null : item.name;
+    window.location.hash = targetPath ? `#/${encodeURI(targetPath)}` : '#/';
+}
+
+function focusPendingFileHighlight() {
+    if (!state.pendingHighlightKey) return;
+
+    const targetCheckbox = Array.from(document.querySelectorAll('#file-list-body .file-checkbox[data-key]'))
+        .find(cb => cb.dataset.key === state.pendingHighlightKey);
+
+    if (!targetCheckbox) return;
+
+    const row = targetCheckbox.closest('.file-item');
+    if (!row) return;
+
+    row.classList.add('pulse-highlight');
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    const clearHighlight = () => {
+        row.classList.remove('pulse-highlight');
+        state.pendingHighlightKey = null;
+        if (state.highlightTimeout) {
+            clearTimeout(state.highlightTimeout);
+            state.highlightTimeout = null;
+        }
+    };
+
+    if ('IntersectionObserver' in window) {
+        const observer = new IntersectionObserver((entries) => {
+            const visible = entries.some(entry => entry.isIntersecting && entry.intersectionRatio >= 0.6);
+            if (visible) {
+                clearHighlight();
+                observer.disconnect();
+            }
+        }, { threshold: [0.6] });
+        observer.observe(row);
+    }
+
+    state.highlightTimeout = setTimeout(clearHighlight, 15000);
 }
 
 // --- 3. ELEMENTOS DO DOM ---
@@ -648,7 +707,7 @@ async function confirmGroupFiles() {
 // --- 8. FUNÇÕES DE RENDERIZAÇÃO DE PÁGINAS ("VIEWS") ---
 function renderNav() {
     parseJwt();
-    let greetingHTML = `<span>Olá, <a href="/#/profile"><strong>${state.username || 'Visitante'}</strong></a>`;
+    let greetingHTML = `<span><i class="fas fa-user-circle"></i> Olá, <a href="/#/profile"><strong>${state.username || 'Visitante'}</strong></a>`;
     if (state.role) {
         greetingHTML += `<span class="role-tag">${state.role}</span>`;
     }
@@ -657,9 +716,9 @@ function renderNav() {
     const canAccessAdmin = state.permissions.some(p => p.startsWith('users:') || p.startsWith('roles:'));
     if (state.token) {
         if (canAccessAdmin) {
-            navLinksHTML += `<button id="admin-btn" class="nav-button">Admin</button>`;
+            navLinksHTML += `<button id="admin-btn" class="nav-button"><i class="fas fa-cogs"></i>Admin</button>`;
         }
-        navLinksHTML += `<button id="logout-btn" class="nav-button">Sair</button>`;
+        navLinksHTML += `<button id="logout-btn" class="nav-button"><i class="fas fa-sign-out-alt"></i>Sair</button>`;
     } else {
         navLinksHTML += `<button id="login-btn" class="nav-button">Login</button>`;
         navLinksHTML += `<button id="register-btn" class="nav-button">Registrar</button>`;
@@ -676,7 +735,14 @@ function renderNav() {
 }
 
 function renderLoginPage() {
-    mainContent.innerHTML = `<form id="login-form" class="auth-form"><h2>Login</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required></div><button type="submit">Entrar</button></form>`;
+    document.body.classList.add('login-active');
+    mainContent.innerHTML = `<div class="login-screen"><form id="login-form" class="auth-form login-card"><div class="brand"><span class="brand-icon"><i class="fas fa-cloud"></i></span><h2>Shiroyama Archive</h2><p>Seu armazenamento em nuvem seguro e organizado.</p></div><div class="form-group"><label for="username">Email ou Nome de Usuário</label><input type="text" id="username" name="username" required autocomplete="username"></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required autocomplete="current-password"></div><button type="submit" class="primary-btn">Entrar</button><a href="#" class="forgot-link">Esqueci minha senha</a></form></div>`;
+
+    document.querySelector('.forgot-link').onclick = (e) => {
+        e.preventDefault();
+        showNotification('Recuperação de senha em breve. Fale com o administrador por enquanto.', 'info');
+    };
+
     document.getElementById('login-form').onsubmit = async (e) => {
         e.preventDefault();
         showLoading();
@@ -693,6 +759,7 @@ function renderLoginPage() {
 }
 
 function renderRegisterPage() {
+    document.body.classList.remove('login-active');
     mainContent.innerHTML = `<form id="register-form" class="auth-form"><h2>Registrar Nova Conta</h2><div class="form-group"><label for="username">Nome de Usuário</label><input type="text" id="username" name="username" required minlength="3"></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required minlength="6"></div><button type="submit">Registrar</button></form>`;
     document.getElementById('register-form').onsubmit = async (e) => {
         e.preventDefault();
@@ -707,24 +774,25 @@ function renderRegisterPage() {
 }
 
 async function renderProfilePage() {
+    document.body.classList.remove('login-active');
     mainContent.innerHTML = '';
     showLoading();
     try {
         const userData = await apiCall('user/status', 'GET');
-        let telegramSectionHTML = '<h3>Vincular Conta do Telegram</h3>';
+        let telegramSectionHTML = '<h3><i class="fas fa-paper-plane"></i> Vincular Conta do Telegram</h3>';
         if (hasPermission('can_receive_files')) {
             if (userData.telegram_chat_id) {
-                telegramSectionHTML += `<p>Usuário: <strong>@${userData.telegram_username || 'N/A'}</strong></p> <p>Chat ID: <strong>${userData.telegram_chat_id}</strong></p> <button id="unlink-btn">Desvincular Conta</button>`;
+                telegramSectionHTML += `<p>Usuário: <strong>@${userData.telegram_username || 'N/A'}</strong></p> <p>Chat ID: <strong>${userData.telegram_chat_id}</strong></p> <button id="unlink-btn"><i class="fas fa-unlink"></i> Desvincular Conta</button>`;
             } else {
-                telegramSectionHTML += `<p>Clique no botão abaixo para autorizar o bot no Telegram.</p> <button id="link-telegram-btn">Vincular com o Telegram</button> <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>`;
+                telegramSectionHTML += `<p>Clique no botão abaixo para autorizar o bot no Telegram.</p> <button id="link-telegram-btn"><i class="fas fa-link"></i> Vincular com o Telegram</button> <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>`;
             }
         } else {
             telegramSectionHTML = '';
         }
 
-        mainContent.innerHTML = `<div class="auth-form"><h2>Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${state.role || 'N/A'}</strong></p>
+        mainContent.innerHTML = `<div class="auth-form profile-card"><h2><i class="fas fa-user-circle"></i> Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${state.role || 'N/A'}</strong></p>
             ${telegramSectionHTML ? `<hr style="border-color: #6272a4; margin: 20px 0;">${telegramSectionHTML}` : ''}
-            <hr style="border-color: #6272a4; margin: 20px 0;"><h3>Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit">Salvar Nova Senha</button></form></div>`;
+            <hr style="border-color: #3d3368; margin: 20px 0;"><h3><i class="fas fa-lock"></i> Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit"><i class="fas fa-save"></i> Salvar Nova Senha</button></form></div>`;
         
         if (hasPermission('can_receive_files')) {
             if (userData.telegram_chat_id) {
@@ -732,17 +800,17 @@ async function renderProfilePage() {
             } else {
                 document.getElementById('link-telegram-btn').onclick = (e) => {
                     const linkButton = e.target;
-                    linkButton.disabled = true; linkButton.textContent = 'Gerando...';
+                    linkButton.disabled = true; linkButton.innerHTML = '<i class=\"fas fa-spinner fa-spin\"></i> Gerando...';
                     const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
                     const linkCodeWithPrefix = `link_${randomCode}`;
                     apiCall('user/prepare-link-code', 'POST', { linkCode: linkCodeWithPrefix })
                         .then(async () => {
                             window.open(`https://t.me/ShiroyamaBot?start=${linkCodeWithPrefix}`, '_blank');
-                            linkButton.textContent = 'Verifique o Telegram!';
+                            linkButton.innerHTML = '<i class=\"fas fa-paper-plane\"></i> Verifique o Telegram!';
                             showNotification('Conclua o vínculo no Telegram.', 'info');
                             startFaviconBlink();
                             setTimeout(async () => await router(), 15000);
-                        }).catch(err => { showNotification(`Erro: ${err.message}`, 'error'); linkButton.disabled = false; linkButton.textContent = 'Vincular com o Telegram'; });
+                        }).catch(err => { showNotification(`Erro: ${err.message}`, 'error'); linkButton.disabled = false; linkButton.innerHTML = '<i class=\"fas fa-link\"></i> Vincular com o Telegram'; });
                 };
                 document.getElementById('why-link-q').onclick = (e) => { e.preventDefault(); whyLinkModal.classList.add('show'); };
             }
@@ -766,6 +834,7 @@ async function renderProfilePage() {
 }
 
 async function renderAdminPage(subpage) {
+    document.body.classList.remove('login-active');
     const canViewUsers = hasPermission('users:view_list');
     const canViewRoles = hasPermission('roles:view_list');
 
@@ -780,7 +849,7 @@ async function renderAdminPage(subpage) {
         return;
     }
 
-    mainContent.innerHTML = `<h2>Painel de Administrador</h2><div class="admin-tabs">${canViewUsers ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}">Gerenciar Usuários</button>` : ''}${canViewRoles ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}">Gerenciar Cargos</button>` : ''}</div><div id="admin-content"></div>`;
+    mainContent.innerHTML = `<h2><i class="fas fa-sliders"></i> Painel de Administrador</h2><div class="admin-tabs">${canViewUsers ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}"><i class="fas fa-users"></i> Gerenciar Usuários</button>` : ''}${canViewRoles ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}"><i class="fas fa-user-shield"></i> Gerenciar Cargos</button>` : ''}</div><div id="admin-content"></div>`;
     const adminContent = document.getElementById('admin-content');
     adminContent.innerHTML = '';
     showLoading();
@@ -818,8 +887,7 @@ async function renderAdminPage(subpage) {
                     <tr data-user-id="${user.id}">
                         <td data-label="Usuário">${user.username}</td>
                         <td data-label="Cargos" class="roles-cell">
-                            <div>${rolesAsTags || 'Nenhum'}</div>
-                            <button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-edit"></i></button>
+                            <div class="roles-wrap"><div>${rolesAsTags || 'Nenhum'}</div><button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-user-edit"></i></button></div>
                         </td>
                         <td data-label="ID do Chat" class="chat-id-cell">
                             <div class="chat-id-cell-content">
@@ -829,8 +897,7 @@ async function renderAdminPage(subpage) {
                         </td>
                         <td data-label="Criado em">${new Date(user.created_at).toLocaleDateString()}</td>
                         <td data-label="Ações" class="actions-cell">
-                            <button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>
-                            <button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}>Excluir</button>
+                            <div class="actions-wrap"><button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button><button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}><i class="fas fa-trash-can"></i> Excluir</button></div>
                         </td>
                     </tr>`;
             }
@@ -869,7 +936,7 @@ async function renderAdminPage(subpage) {
 
             adminContent.innerHTML = `
                 <div style="text-align: right; margin-bottom: 10px;">
-                    ${hasPermission('roles:create') ? '<button id="create-new-role-btn">Criar Novo Cargo</button>' : ''}
+                    ${hasPermission('roles:create') ? '<button id="create-new-role-btn"><i class="fas fa-plus"></i> Criar Novo Cargo</button>' : ''}
                 </div>
                 <div class="table-container">
                     <table class="admin-table">
@@ -890,8 +957,7 @@ async function renderAdminPage(subpage) {
                                     <td data-label="Permissões" class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
                                     ${hasRoleActions ? `
                                     <td data-label="Ações" class="actions-cell">
-                                        ${hasPermission('roles:edit') ? `<button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${disabledAttribute}>Editar</button>` : ''}
-                                        ${hasPermission('roles:delete') ? `<button class="delete-role-btn btn-danger" data-id="${role.id}" ${disabledAttribute}>Excluir</button>` : ''}
+                                        <div class="actions-wrap">${hasPermission('roles:edit') ? `<button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${disabledAttribute}><i class="fas fa-pen"></i> Editar</button>` : ''}${hasPermission('roles:delete') ? `<button class="delete-role-btn btn-danger" data-id="${role.id}" ${disabledAttribute}><i class="fas fa-trash-can"></i> Excluir</button>` : ''}</div>
                                     </td>` : ''}
                                 </tr>`;
                             }).join('')}
@@ -911,7 +977,7 @@ async function renderAdminPage(subpage) {
 function renderSearchResults(searchTerm) {
     const fileListBodyElement = document.getElementById('file-list-body');
     const lowerCaseSearchTerm = searchTerm.toLowerCase();
-    
+
     const allItems = [
         ...state.allFolders.map(p => ({ name: p, _isFolder: true })),
         ...state.allFiles.filter(f => !f.isPlaceholder)
@@ -927,28 +993,59 @@ function renderSearchResults(searchTerm) {
         return false;
     });
 
-    fileListBodyElement.innerHTML = '';
-    document.querySelector('.file-list-header').style.display = 'none';
+    document.querySelector('.file-list-header').style.display = state.viewMode === 'grid' ? 'none' : 'flex';
     document.getElementById('breadcrumb').innerHTML = `<strong>Resultados da busca por "${searchTerm}"</strong>`;
 
     if (filteredItems.length === 0) {
+        fileListBodyElement.className = 'file-list list-mode';
         fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Nenhum resultado encontrado.</div>';
         return;
     }
 
+    fileListBodyElement.className = `file-list ${state.viewMode === 'grid' ? 'grid-mode' : 'list-mode'}`;
+    fileListBodyElement.innerHTML = '';
+
     filteredItems.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'file-item';
-        if (item._isFolder) {
-            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(item.name)}" class="file-name">${item.name}</a><span class="file-size"></span><div class="file-actions"></div>`;
+        const targetPath = item._isFolder ? item.name : item.name.split('/').slice(0, -1).join('/');
+        const href = targetPath ? `#/${encodeURI(targetPath)}` : '#/';
+
+        if (state.viewMode === 'grid') {
+            const card = document.createElement('div');
+            card.className = 'file-card clickable-card';
+            card.dataset.href = href;
+            card.dataset.targetName = item.name;
+            card.dataset.isFolder = item._isFolder ? 'true' : 'false';
+
+            const iconHtml = item._isFolder ? '<i class="fas fa-folder"></i>' : getIconForFile(item.name);
+            const meta = item._isFolder ? `Pasta • —` : `${formatFileSize(item.file_size)} • ${formatModifiedDate(item)}`;
+            card.innerHTML = `<div class="file-card-icon ${item._isFolder ? 'folder-icon' : ''}">${iconHtml}</div><div class="file-card-content"><div class="file-name"><span class="file-name-text">${item.name}</span><span class="file-name-tooltip">${item.name}</span></div><div class="file-card-meta">${meta}</div></div>`;
+            fileListBodyElement.appendChild(card);
         } else {
-            div.innerHTML = `<div style="flex-basis: 30px;"></div><span class="file-icon">${getIconForFile(item.name)}</span><span class="file-name">${item.name}</span><span class="file-size">${formatFileSize(item.file_size)}</span><div class="file-actions"></div>`;
+            const div = document.createElement('div');
+            div.className = 'file-item';
+            if (item._isFolder) {
+                div.innerHTML = `<div style="flex-basis: 18px;"></div><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="${href}" class="file-name search-result-file-link" data-target-name="${item.name}" data-is-folder="true">${item.name}</a><span class="file-size">—</span><span class="file-date">—</span><div class="file-actions"></div>`;
+            } else {
+                div.innerHTML = `<div style="flex-basis: 18px;"></div><span class="file-icon">${getIconForFile(item.name)}</span><a href="${href}" class="file-name search-result-file-link" data-target-name="${item.name}" data-is-folder="false">${item.name}</a><span class="file-size">${formatFileSize(item.file_size)}</span><span class="file-date">${formatModifiedDate(item)}</span><div class="file-actions"></div>`;
+            }
+            fileListBodyElement.appendChild(div);
         }
-        fileListBodyElement.appendChild(div);
+    });
+
+    document.querySelectorAll('.search-result-file-link').forEach(link => {
+        link.onclick = (event) => {
+            event.preventDefault();
+            const targetName = link.dataset.targetName;
+            const isFolder = link.dataset.isFolder === 'true';
+            navigateToSearchResult({ name: targetName, _isFolder: isFolder });
+        };
     });
 }
 
+
+
 function renderFilesPage(path) {
+    document.body.classList.remove('login-active');
     const currentPathStr = path.join('/');
     const content = getContentForPath(path);
     const folderExistsSystemWide = state.allFolders.includes(currentPathStr);
@@ -960,24 +1057,26 @@ function renderFilesPage(path) {
         return;
     }
     
-    if (path.length > 0 && folderExistsSystemWide && !userCanSeeFolderContent) {
+    if (path.length > 0 && folderExistsSystemWide && !userCanSeeFolderContent && !isOwnerUser()) {
         mainContent.innerHTML = `<div class="auth-form"><h2>Acesso Negado</h2><p>Você não tem permissão para visualizar o conteúdo da pasta "${currentPathStr}".</p></div>`;
         hideLoading();
         return;
     }
     
-    let controlsHTML = `<div class="controls"><div id="breadcrumb"></div>`;
-    controlsHTML += `<div class="search-container">
-                        <input type="text" id="search-input" placeholder="Buscar...">
+    const contentEntries = Object.entries(content);
+    const folderCount = contentEntries.filter(([_, item]) => !item._isFile).length;
+    const fileCount = contentEntries.filter(([_, item]) => item._isFile).length;
+
+    let controlsHTML = `<div class="storage-panel"><div class="storage-topline section-card"><div></div><div class="storage-stat-group"><span class="storage-stat"><i class="far fa-folder"></i> ${folderCount} pastas</span><span class="storage-stat"><i class="far fa-file"></i> ${fileCount} arquivos</span></div></div><div id="breadcrumb" class="directory-bar section-card"></div><div class="storage-search-row section-card"><div class="search-container">`;
+    controlsHTML += `<input type="text" id="search-input" placeholder="Buscar pastas...">
                         <div class="search-buttons">
                             <button id="search-btn" title="Buscar"><i class="fas fa-search"></i></button>
                             <button id="search-clear-btn" title="Limpar" style="display:none;">×</button>
                         </div>
-                     </div>`;
-    controlsHTML += `<div class="controls-buttons">`;
-    if (hasPermission('can_create_folders')) controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta">📁+</button>`;
-    controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos">🔄</button></div></div>`;
-    mainContent.innerHTML = `${controlsHTML}<div id="bulk-actions-container"></div><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div>`;
+                     </div><div class="view-toggle" aria-label="Modo de visualização"><button class="view-toggle-btn ${state.viewMode === 'grid' ? 'active' : ''}" data-view="grid" title="Grade"><i class="fas fa-grip"></i></button><button class="view-toggle-btn ${state.viewMode === 'list' ? 'active' : ''}" data-view="list" title="Lista"><i class="fas fa-list"></i></button></div><div class="controls-buttons">`;
+    if (hasPermission('can_create_folders')) controlsHTML += `<button id="create-folder-btn" title="Criar Nova Pasta"><i class="fas fa-folder-plus"></i></button>`;
+    controlsHTML += `<button id="refresh-files-btn" class="btn-refresh" title="Atualizar Lista de Arquivos"><i class="fas fa-sync-alt"></i></button></div></div></div>`;
+    mainContent.innerHTML = `${controlsHTML}<div id="bulk-actions-container"></div><div class="files-section section-card"><div class="file-list-header"><input type="checkbox" id="select-all-checkbox" class="file-checkbox"><span class="file-name sortable-header" data-sort="name">Nome<span class="sort-indicator"></span></span><span class="file-size sortable-header" data-sort="size">Tamanho<span class="sort-indicator"></span></span><span class="file-date">Modificado</span><span class="file-actions">Ações</span></div><div id="file-list-body" class="file-list"></div></div>`;
     
     document.getElementById('refresh-files-btn').onclick = refreshFiles;
     if (hasPermission('can_create_folders')) document.getElementById('create-folder-btn').onclick = () => openCreateFolderModal(false);
@@ -1010,24 +1109,42 @@ function renderFilesPage(path) {
         performSearch();
     });
 
+    document.querySelectorAll('.view-toggle-btn').forEach((btn) => {
+        btn.onclick = () => {
+            const mode = btn.dataset.view;
+            if (mode && mode !== state.viewMode) {
+                state.viewMode = mode;
+                renderFilesPage(path);
+            }
+        };
+    });
+
     const breadcrumbElement = document.getElementById('breadcrumb');
     breadcrumbElement.innerHTML = '';
+
     const homeLink = document.createElement('a');
     homeLink.href = '#/';
-    homeLink.textContent = 'Home';
+    homeLink.className = 'directory-link';
+    homeLink.innerHTML = '<i class="fas fa-house"></i><span>Home</span>';
     breadcrumbElement.appendChild(homeLink);
 
     let cumulativePath = '';
     path.forEach((part, index) => {
-        breadcrumbElement.innerHTML += ' &gt; ';
+        const separator = document.createElement('span');
+        separator.className = 'directory-sep';
+        separator.innerHTML = '<i class="fas fa-chevron-right"></i>';
+        breadcrumbElement.appendChild(separator);
+
         cumulativePath += `/${encodeURIComponent(part)}`;
         if (index < path.length - 1) {
             const a = document.createElement('a');
             a.href = `#${cumulativePath}`;
+            a.className = 'directory-link';
             a.textContent = part;
             breadcrumbElement.appendChild(a);
         } else {
             const span = document.createElement('span');
+            span.className = 'directory-current';
             span.textContent = part;
             breadcrumbElement.appendChild(span);
         }
@@ -1056,49 +1173,72 @@ function renderFilesPage(path) {
         document.getElementById('select-all-checkbox').style.visibility = 'visible';
     }
     
+    fileListBodyElement.className = `file-list ${state.viewMode === 'grid' ? 'grid-mode' : 'list-mode'}`;
     fileListBodyElement.innerHTML = '';
     if (items.length === 0) fileListBodyElement.innerHTML = '<div class="file-item empty-folder">Pasta vazia.</div>';
     
     items.forEach(([name, item]) => {
         const div = document.createElement('div');
-        div.className = 'file-item';
+        div.className = state.viewMode === 'grid' ? 'file-card' : 'file-item';
         const itemPath = [...path, name].join('/');
-        let actionsHTML = '<div class="file-actions">';
+
+        let actionButtons = '';
         if (item._isFile && !item.isGroup) {
-            if (hasPermission('can_rename_items')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear Arquivo"><i class="fas fa-edit"></i></button>`;
-            if (hasPermission('can_move_items')) actionsHTML += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover Arquivo"><i class="fas fa-folder-open"></i></button>`;
-            if (hasPermission('can_receive_files')) actionsHTML += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
-            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash"></i></button>`;
+            if (hasPermission('can_rename_items')) actionButtons += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear Arquivo"><i class="fas fa-pen"></i></button>`;
+            if (hasPermission('can_move_items')) actionButtons += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover Arquivo"><i class="fas fa-up-down-left-right"></i></button>`;
+            if (hasPermission('can_receive_files')) actionButtons += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
+            if (hasPermission('can_delete_items')) actionButtons += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash-can"></i></button>`;
         } else if (item.isGroup) {
-            if (hasPermission('can_group_items')) actionsHTML += `<button class="btn-icon btn-ungroup" data-group-id="${item.groupId}" title="Desagrupar"><i class="fas fa-unlink"></i></button>`;
-            if (hasPermission('can_receive_files')) actionsHTML += `<button class="btn-icon btn-bulk-forward" data-message-ids="${item.message_ids.join(',')}" title="Receber Todas as Partes"><i class="fas fa-paper-plane"></i></button>`;
-            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete-group" data-group-id="${item.groupId}" data-group-items='${JSON.stringify(item.groupItems)}' title="Excluir Grupo"><i class="fas fa-trash"></i></button>`;
-        } else { // Pastas
-            if (hasPermission('can_manage_folder_permissions')) {
-                actionsHTML += `<button class="btn-icon btn-folder-perms" data-path="${itemPath}" title="Gerenciar Permissões"><i class="fas fa-cog"></i></button>`;
-            }
-            if (hasPermission('can_rename_folders')) actionsHTML += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear Pasta"><i class="fas fa-edit"></i></button>`;
-            if (hasPermission('can_move_folders')) actionsHTML += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-folder-open"></i></button>`;
-            if (hasPermission('can_delete_items')) actionsHTML += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir Pasta"><i class="fas fa-trash"></i></button>`;
+            if (hasPermission('can_group_items')) actionButtons += `<button class="btn-icon btn-ungroup" data-group-id="${item.groupId}" title="Desagrupar"><i class="fas fa-unlink"></i></button>`;
+            if (hasPermission('can_receive_files')) actionButtons += `<button class="btn-icon btn-bulk-forward" data-message-ids="${item.message_ids.join(',')}" title="Receber Todas as Partes"><i class="fas fa-paper-plane"></i></button>`;
+            if (hasPermission('can_delete_items')) actionButtons += `<button class="btn-icon danger btn-delete-group" data-group-id="${item.groupId}" data-group-items='${JSON.stringify(item.groupItems)}' title="Excluir Grupo"><i class="fas fa-trash-can"></i></button>`;
+        } else {
+            if (hasPermission('can_manage_folder_permissions')) actionButtons += `<button class="btn-icon btn-folder-perms" data-path="${itemPath}" title="Permissões da Pasta"><i class="fas fa-user-shield"></i></button>`;
+            if (hasPermission('can_rename_folders')) actionButtons += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear Pasta"><i class="fas fa-pen"></i></button>`;
+            if (hasPermission('can_move_folders')) actionButtons += `<button class="btn-icon btn-move-folder" data-key="${itemPath}" data-isfolder="true" title="Mover Pasta"><i class="fas fa-up-down-left-right"></i></button>`;
+            if (hasPermission('can_delete_items')) actionButtons += `<button class="btn-icon danger btn-delete" data-key="${itemPath}" data-isfolder="true" title="Excluir Pasta"><i class="fas fa-trash-can"></i></button>`;
         }
-        actionsHTML += '</div>';
+
+        const actionsHTML = `<div class="file-actions">${actionButtons}</div>`;
+        const cardActionsHTML = `<div class="file-card-actions"><button class="btn-icon btn-card-actions" title="Ações"><i class="fas fa-ellipsis"></i></button><div class="file-card-menu">${actionButtons}</div></div>`;
 
         const isGroup = !!item.isGroup;
         const displayName = isGroup ? item.name.split('/').pop() : name;
-        
-        if (item._isFile) {
-            div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}" data-is-group="${isGroup}" data-group-id="${item.groupId || ''}"><span class="file-icon">${getIconForFile(name, isGroup)}</span><span class="file-name">${displayName}</span><span class="file-size">${formatFileSize(item.file_size)}</span>${actionsHTML}`;
+
+        if (state.viewMode === 'grid') {
+            if (item._isFile) {
+                div.dataset.href = `#/${encodeURI(path.join('/'))}`;
+                div.dataset.targetName = item.name;
+                div.dataset.isFolder = 'false';
+                div.classList.add('clickable-card');
+                div.innerHTML = `<input type="checkbox" class="file-checkbox card-checkbox" data-key="${item.name}" data-message-id="${item.message_id}" data-is-group="${isGroup}" data-group-id="${item.groupId || ''}"><div class="file-card-icon">${getIconForFile(name, isGroup)}</div><div class="file-card-content"><div class="file-name"><span class="file-name-text">${displayName}</span><span class="file-name-tooltip">${displayName}</span></div><div class="file-card-meta">${formatFileSize(item.file_size)} • ${formatModifiedDate(item)}</div></div>${cardActionsHTML}`;
+            } else {
+                div.dataset.href = `#/${encodeURI(itemPath)}`;
+                div.dataset.targetName = itemPath;
+                div.dataset.isFolder = 'true';
+                div.classList.add('clickable-card');
+                div.innerHTML = `<input type="checkbox" class="file-checkbox card-checkbox" style="visibility: hidden;"><div class="file-card-icon folder-icon"><i class="fas fa-folder"></i></div><div class="file-card-content"><div class="file-name"><span class="file-name-text">${name}</span><span class="file-name-tooltip">${name}</span></div><div class="file-card-meta">Pasta • ${formatModifiedDate(item)}</div></div>${cardActionsHTML}`;
+            }
         } else {
-            div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><span class="file-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(itemPath)}" class="file-name">${name}</a><span class="file-size"></span>${actionsHTML}`;
+            if (item._isFile) {
+                div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}" data-is-group="${isGroup}" data-group-id="${item.groupId || ''}"><span class="file-icon">${getIconForFile(name, isGroup)}</span><span class="file-name">${displayName}</span><span class="file-size">${formatFileSize(item.file_size)}</span><span class="file-date">${formatModifiedDate(item)}</span>${actionsHTML}`;
+            } else {
+                div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(itemPath)}" class="file-name">${name}</a><span class="file-size">—</span><span class="file-date">${formatModifiedDate(item)}</span>${actionsHTML}`;
+            }
         }
+
         fileListBodyElement.appendChild(div);
     });
+
+    document.querySelector('.file-list-header').style.display = state.viewMode === 'grid' ? 'none' : 'flex';
 
     document.querySelectorAll('.sortable-header').forEach(header => {
         const indicator = header.querySelector('.sort-indicator');
         indicator.className = 'sort-indicator';
         if (header.dataset.sort === state.sort.key) indicator.classList.add(state.sort.order);
     });
+
+    focusPendingFileHighlight();
 }
 
 // --- 9. ROTEADOR PRINCIPAL ---
@@ -1195,9 +1335,29 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('create-folder-in-move-modal-btn').onclick = () => { closeMoveModal(); openCreateFolderModal(true); };
 
     mainContent.addEventListener('click', async (e) => {
-        const target = e.target.closest('button, .sortable-header');
-        if (!target) return;
+        const clickableCard = e.target.closest('.clickable-card[data-href]');
+        if (clickableCard && !e.target.closest('button, input, a, .file-card-menu, .file-checkbox')) {
+            if (clickableCard.dataset.targetName) {
+                navigateToSearchResult({ name: clickableCard.dataset.targetName, _isFolder: clickableCard.dataset.isFolder === 'true' });
+            } else {
+                window.location.hash = clickableCard.dataset.href;
+            }
+            return;
+        }
 
+        const target = e.target.closest('button, .sortable-header');
+        if (!target) {
+            document.querySelectorAll('.file-card-actions.show').forEach(el => el.classList.remove('show'));
+            return;
+        }
+
+        if (target.classList.contains('btn-card-actions')) {
+            const card = target.closest('.file-card-actions');
+            if (!card) return;
+            document.querySelectorAll('.file-card-actions.show').forEach(el => { if (el !== card) el.classList.remove('show'); });
+            card.classList.toggle('show');
+            return;
+        }
         if (target.classList.contains('btn-single-forward')) await handleSingleForward(target.dataset.messageId);
         if (target.classList.contains('btn-bulk-forward')) {
             const messageIds = target.dataset.messageIds.split(',').map(id => parseInt(id));
@@ -1314,11 +1474,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const keys = selected.map(cb => cb.dataset.key);
         const messageIds = selected.map(cb => cb.dataset.messageId);
         
-        let buttonsHTML = `<span>${selected.length} item(ns) selecionado(s)</span>`;
-        if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
-        if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" title="Mover"><i class="fas fa-folder-open"></i></button>`;
-        if (hasPermission('can_group_items')) buttonsHTML += `<button id="bulk-group-btn" title="Agrupar"><i class="fas fa-cubes"></i></button>`;
-        if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger" title="Excluir"><i class="fas fa-trash"></i></button>`;
+        let buttonsHTML = `<span class="bulk-count"><i class="fas fa-check-double"></i> ${selected.length} item(ns) selecionado(s)</span><div class="bulk-actions-group">`;
+        if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" class="bulk-btn" title="Receber"><i class="fas fa-paper-plane"></i><span>Receber</span></button>`;
+        if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" class="bulk-btn" title="Mover"><i class="fas fa-up-down-left-right"></i><span>Mover</span></button>`;
+        if (hasPermission('can_group_items')) buttonsHTML += `<button id="bulk-group-btn" class="bulk-btn" title="Agrupar"><i class="fas fa-cubes"></i><span>Agrupar</span></button>`;
+        if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger bulk-btn" title="Excluir"><i class="fas fa-trash-can"></i><span>Excluir</span></button>`;
+        buttonsHTML += '</div>'; 
         bulkActionsContainer.innerHTML = buttonsHTML;
 
         if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
@@ -1329,14 +1490,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
                 const btn = document.getElementById('bulk-receive-btn');
                 try {
-                    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+                    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>Enviando</span>`;
                     btn.disabled = true;
                     await apiCall('bulk-forward', 'POST', { message_ids: messageIds.filter(Boolean).map(id => parseInt(id)) });
                     showNotification("O bot começou a enviar os arquivos! Verifique seu Telegram.", 'success');
                 } catch (error) {
                     showNotification(`Ocorreu um erro: ${error.message}`, 'error');
                 } finally {
-                    btn.innerHTML = `<i class="fas fa-paper-plane"></i>`;
+                    btn.innerHTML = `<i class="fas fa-paper-plane"></i><span>Receber</span>`;
                     btn.disabled = false;
                 }
             };
