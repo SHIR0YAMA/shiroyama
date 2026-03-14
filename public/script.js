@@ -1018,7 +1018,7 @@ function renderSearchResults(searchTerm) {
 
             const iconHtml = item._isFolder ? '<i class="fas fa-folder"></i>' : getIconForFile(item.name);
             const meta = item._isFolder ? `Pasta • —` : `${formatFileSize(item.file_size)} • ${formatModifiedDate(item)}`;
-            card.innerHTML = `<div class="file-card-icon ${item._isFolder ? 'folder-icon' : ''}">${iconHtml}</div><div class="file-card-content"><div class="file-name">${item.name}</div><div class="file-card-meta">${meta}</div></div>`;
+            card.innerHTML = `<div class="file-card-icon ${item._isFolder ? 'folder-icon' : ''}">${iconHtml}</div><div class="file-card-content"><div class="file-name"><span class="file-name-text">${item.name}</span><span class="file-name-tooltip">${item.name}</span></div><div class="file-card-meta">${meta}</div></div>`;
             fileListBodyElement.appendChild(card);
         } else {
             const div = document.createElement('div');
@@ -1211,13 +1211,13 @@ function renderFilesPage(path) {
                 div.dataset.targetName = item.name;
                 div.dataset.isFolder = 'false';
                 div.classList.add('clickable-card');
-                div.innerHTML = `<input type="checkbox" class="file-checkbox card-checkbox" data-key="${item.name}" data-message-id="${item.message_id}" data-is-group="${isGroup}" data-group-id="${item.groupId || ''}"><div class="file-card-icon">${getIconForFile(name, isGroup)}</div><div class="file-card-content"><div class="file-name">${displayName}</div><div class="file-card-meta">${formatFileSize(item.file_size)} • ${formatModifiedDate(item)}</div></div>${cardActionsHTML}`;
+                div.innerHTML = `<input type="checkbox" class="file-checkbox card-checkbox" data-key="${item.name}" data-message-id="${item.message_id}" data-is-group="${isGroup}" data-group-id="${item.groupId || ''}"><div class="file-card-icon">${getIconForFile(name, isGroup)}</div><div class="file-card-content"><div class="file-name"><span class="file-name-text">${displayName}</span><span class="file-name-tooltip">${displayName}</span></div><div class="file-card-meta">${formatFileSize(item.file_size)} • ${formatModifiedDate(item)}</div></div>${cardActionsHTML}`;
             } else {
                 div.dataset.href = `#/${encodeURI(itemPath)}`;
                 div.dataset.targetName = itemPath;
                 div.dataset.isFolder = 'true';
                 div.classList.add('clickable-card');
-                div.innerHTML = `<input type="checkbox" class="file-checkbox card-checkbox" style="visibility: hidden;"><div class="file-card-icon folder-icon"><i class="fas fa-folder"></i></div><div class="file-card-content"><div class="file-name">${name}</div><div class="file-card-meta">Pasta • ${formatModifiedDate(item)}</div></div>${cardActionsHTML}`;
+                div.innerHTML = `<input type="checkbox" class="file-checkbox card-checkbox" style="visibility: hidden;"><div class="file-card-icon folder-icon"><i class="fas fa-folder"></i></div><div class="file-card-content"><div class="file-name"><span class="file-name-text">${name}</span><span class="file-name-tooltip">${name}</span></div><div class="file-card-meta">Pasta • ${formatModifiedDate(item)}</div></div>${cardActionsHTML}`;
             }
         } else {
             if (item._isFile) {
@@ -1474,11 +1474,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const keys = selected.map(cb => cb.dataset.key);
         const messageIds = selected.map(cb => cb.dataset.messageId);
         
-        let buttonsHTML = `<span class="bulk-count">${selected.length} item(ns) selecionado(s)</span>`;
-        if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" class="bulk-btn" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
-        if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" class="bulk-btn" title="Mover"><i class="fas fa-up-down-left-right"></i></button>`;
-        if (hasPermission('can_group_items')) buttonsHTML += `<button id="bulk-group-btn" class="bulk-btn" title="Agrupar"><i class="fas fa-cubes"></i></button>`;
-        if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger bulk-btn" title="Excluir"><i class="fas fa-trash-can"></i></button>`;
+        let buttonsHTML = `<span class="bulk-count"><i class="fas fa-check-double"></i> ${selected.length} item(ns) selecionado(s)</span><div class="bulk-actions-group">`;
+        if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" class="bulk-btn" title="Receber"><i class="fas fa-paper-plane"></i><span>Receber</span></button>`;
+        if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" class="bulk-btn" title="Mover"><i class="fas fa-up-down-left-right"></i><span>Mover</span></button>`;
+        if (hasPermission('can_group_items')) buttonsHTML += `<button id="bulk-group-btn" class="bulk-btn" title="Agrupar"><i class="fas fa-cubes"></i><span>Agrupar</span></button>`;
+        if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger bulk-btn" title="Excluir"><i class="fas fa-trash-can"></i><span>Excluir</span></button>`;
+        buttonsHTML += '</div>'; 
         bulkActionsContainer.innerHTML = buttonsHTML;
 
         if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
@@ -1489,14 +1490,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
                 const btn = document.getElementById('bulk-receive-btn');
                 try {
-                    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+                    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>Enviando</span>`;
                     btn.disabled = true;
                     await apiCall('bulk-forward', 'POST', { message_ids: messageIds.filter(Boolean).map(id => parseInt(id)) });
                     showNotification("O bot começou a enviar os arquivos! Verifique seu Telegram.", 'success');
                 } catch (error) {
                     showNotification(`Ocorreu um erro: ${error.message}`, 'error');
                 } finally {
-                    btn.innerHTML = `<i class="fas fa-paper-plane"></i>`;
+                    btn.innerHTML = `<i class="fas fa-paper-plane"></i><span>Receber</span>`;
                     btn.disabled = false;
                 }
             };

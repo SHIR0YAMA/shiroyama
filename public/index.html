@@ -414,7 +414,7 @@
             min-height: 88px;
             border: 1px solid rgba(105, 90, 170, 0.35);
             border-radius: 14px;
-            padding: 10px 12px 10px 42px;
+            padding: 10px 12px 10px 56px;
             background: rgba(16, 16, 26, 0.9);
             position: relative;
         }
@@ -430,10 +430,30 @@
             font-size: 1.35rem;
             flex-shrink: 0;
         }
-        .file-card-content { min-width: 0; flex: 1; }
+        .file-card-content { min-width: 0; flex: 1; display: flex; flex-direction: column; justify-content: center; }
         .file-card .file-name { font-size: 18px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .file-card-meta { color: #9085a4; font-size: 13px; margin-top: 4px; }
-        .card-checkbox { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); }
+        .file-card .file-name { position: relative; width: 100%; }
+        .file-card .file-name-text { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .file-card .file-name-tooltip {
+            display: none;
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 0;
+            max-width: min(420px, 72vw);
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(220, 187, 255, 0.4);
+            background: rgba(11, 11, 20, 0.96);
+            color: #f6eaff;
+            font-size: 13px;
+            white-space: normal;
+            word-break: break-word;
+            z-index: 30;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+        }
+        .file-card .file-name:hover .file-name-tooltip { display: block; }
+        .card-checkbox { position: absolute; left: 28px; top: 50%; transform: translate(-50%, -50%); }
         .file-card-actions { position: relative; }
         .file-card-menu {
             display: none;
@@ -487,16 +507,29 @@
             gap: 8px;
             flex-wrap: wrap;
         }
-        .bulk-count { color: #f3e8ff; font-weight: 600; margin-right: 8px; }
+        .bulk-count { color: #f3e8ff; font-weight: 600; margin-right: 8px; display: inline-flex; align-items: center; gap: 8px; }
+        .bulk-actions-group { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .bulk-btn {
-            width: 42px;
-            height: 42px;
-            border-radius: 10px;
+            min-width: 112px;
+            height: 40px;
+            padding: 0 12px;
+            border-radius: 11px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            background: rgba(137, 159, 214, 0.45);
+            gap: 8px;
+            background: linear-gradient(135deg, rgba(145, 124, 214, 0.82), rgba(113, 97, 177, 0.82));
+            border: 1px solid rgba(215, 198, 255, 0.22);
+            color: #f9f1ff;
+            font-weight: 600;
+            font-size: 13px;
         }
+        .bulk-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(106, 77, 184, 0.35); }
+        .bulk-btn.btn-danger {
+            background: linear-gradient(135deg, #ff6d8e, #f34b6f);
+            border-color: rgba(255, 205, 219, 0.28);
+        }
+        .bulk-btn i { font-size: 14px; }
 
         .file-name { font-size: 16px; word-break: break-word; }
         .file-list-header .file-name { font-size: 13px; }
@@ -518,6 +551,8 @@
             .admin-table .roles-cell, .admin-table .actions-cell { display: flex !important; }
             .roles-wrap { flex-direction: column; align-items: flex-start; width: 100%; }
             .actions-wrap { width: 100%; justify-content: flex-start; }
+            #bulk-actions-container { justify-content: flex-start; }
+            .bulk-btn { min-width: 98px; }
         }
         @media (max-width: 640px) {
             body { padding: 12px; }
