@@ -887,8 +887,7 @@ async function renderAdminPage(subpage) {
                     <tr data-user-id="${user.id}">
                         <td data-label="Usuário">${user.username}</td>
                         <td data-label="Cargos" class="roles-cell">
-                            <div>${rolesAsTags || 'Nenhum'}</div>
-                            <button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-user-edit"></i></button>
+                            <div class="roles-wrap"><div>${rolesAsTags || 'Nenhum'}</div><button class="edit-user-roles-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" data-user-roles='${JSON.stringify(user.roles)}' ${disabledAttribute}><i class="fas fa-user-edit"></i></button></div>
                         </td>
                         <td data-label="ID do Chat" class="chat-id-cell">
                             <div class="chat-id-cell-content">
@@ -898,8 +897,7 @@ async function renderAdminPage(subpage) {
                         </td>
                         <td data-label="Criado em">${new Date(user.created_at).toLocaleDateString()}</td>
                         <td data-label="Ações" class="actions-cell">
-                            <button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button>
-                            <button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}><i class="fas fa-trash-can"></i> Excluir</button>
+                            <div class="actions-wrap"><button class="reset-password-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Resetar Senha" ${disabledAttribute}><i class="fas fa-key"></i></button><button class="delete-user-btn btn-danger" data-id="${user.id}" data-username="${user.username}" ${disabledAttribute}><i class="fas fa-trash-can"></i> Excluir</button></div>
                         </td>
                     </tr>`;
             }
@@ -959,8 +957,7 @@ async function renderAdminPage(subpage) {
                                     <td data-label="Permissões" class="permissions-cell">${role.permissions.map(pName => (permMap[pName] || pName)).join(',<br>')}</td>
                                     ${hasRoleActions ? `
                                     <td data-label="Ações" class="actions-cell">
-                                        ${hasPermission('roles:edit') ? `<button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${disabledAttribute}><i class="fas fa-pen"></i> Editar</button>` : ''}
-                                        ${hasPermission('roles:delete') ? `<button class="delete-role-btn btn-danger" data-id="${role.id}" ${disabledAttribute}><i class="fas fa-trash-can"></i> Excluir</button>` : ''}
+                                        <div class="actions-wrap">${hasPermission('roles:edit') ? `<button class="edit-role-btn" data-role='${JSON.stringify(role)}' ${disabledAttribute}><i class="fas fa-pen"></i> Editar</button>` : ''}${hasPermission('roles:delete') ? `<button class="delete-role-btn btn-danger" data-id="${role.id}" ${disabledAttribute}><i class="fas fa-trash-can"></i> Excluir</button>` : ''}</div>
                                     </td>` : ''}
                                 </tr>`;
                             }).join('')}
@@ -1338,6 +1335,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('create-folder-in-move-modal-btn').onclick = () => { closeMoveModal(); openCreateFolderModal(true); };
 
     mainContent.addEventListener('click', async (e) => {
+        const clickableCard = e.target.closest('.clickable-card[data-href]');
+        if (clickableCard && !e.target.closest('button, input, a, .file-card-menu, .file-checkbox')) {
+            if (clickableCard.dataset.targetName) {
+                navigateToSearchResult({ name: clickableCard.dataset.targetName, _isFolder: clickableCard.dataset.isFolder === 'true' });
+            } else {
+                window.location.hash = clickableCard.dataset.href;
+            }
+            return;
+        }
+
         const target = e.target.closest('button, .sortable-header');
         if (!target) {
             document.querySelectorAll('.file-card-actions.show').forEach(el => el.classList.remove('show'));
@@ -1351,17 +1358,6 @@ document.addEventListener('DOMContentLoaded', () => {
             card.classList.toggle('show');
             return;
         }
-
-        const clickableCard = e.target.closest('.clickable-card[data-href]');
-        if (clickableCard && !e.target.closest('button, input, a, .file-card-menu')) {
-            if (clickableCard.dataset.targetName) {
-                navigateToSearchResult({ name: clickableCard.dataset.targetName, _isFolder: clickableCard.dataset.isFolder === 'true' });
-            } else {
-                window.location.hash = clickableCard.dataset.href;
-            }
-            return;
-        }
-
         if (target.classList.contains('btn-single-forward')) await handleSingleForward(target.dataset.messageId);
         if (target.classList.contains('btn-bulk-forward')) {
             const messageIds = target.dataset.messageIds.split(',').map(id => parseInt(id));

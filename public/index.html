@@ -98,8 +98,9 @@
         .admin-table th { color: #50fa7b; font-size: 14px; text-transform: uppercase; }
         .admin-table tr:hover { background-color: #3b3e50; }
         .admin-table td { font-size: 15px; }
-        .admin-table .roles-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .admin-table .actions-cell { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; }
+        .admin-table .roles-cell, .admin-table .actions-cell { display: table-cell; }
+        .roles-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .actions-wrap { display: inline-flex; gap: 8px; align-items: center; flex-wrap: nowrap; }
         .admin-table .actions-cell button { padding: 8px 12px; flex-shrink: 0; }
         .admin-table .actions-cell .btn-icon { font-size: 1em; padding: 8px; width: 36px; height: 36px; }
         .chat-id-cell-content { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; }
@@ -149,9 +150,10 @@
             .admin-table tr { padding: 10px 0; border-bottom: 1px solid #3b3e50; }
             .admin-table td { display: flex; justify-content: space-between; align-items: center; padding: 8px 5px; border-bottom: none; }
             .admin-table td::before { content: attr(data-label); font-weight: bold; color: #50fa7b; margin-right: 10px; flex-shrink: 0; }
-            .admin-table .roles-cell { flex-direction: column; align-items: flex-start; gap: 10px; }
-            .admin-table .roles-cell > div { width: 100%; }
-            .admin-table .actions-cell { flex-direction: row; justify-content: flex-start; }
+            .admin-table .roles-cell, .admin-table .actions-cell { display: flex; }
+            .roles-wrap { flex-direction: column; align-items: flex-start; gap: 10px; width: 100%; }
+            .roles-wrap > div { width: 100%; }
+            .actions-wrap { justify-content: flex-start; flex-wrap: wrap; }
             .admin-tabs { justify-content: center; }
             .search-container { order: -1; width: 100%; margin-bottom: 15px; margin-left: 0; margin-right: 0; }
             #breadcrumb { order: 0; }
@@ -291,6 +293,10 @@
         #refresh-files-btn { background: linear-gradient(135deg, #a84cff, #d65cff); color: #fef5ff; }
 
         .admin-tabs button { display: inline-flex; align-items: center; gap: 8px; }
+        .admin-table .roles-cell,
+        .admin-table .actions-cell { display: table-cell !important; vertical-align: middle; }
+        .roles-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .actions-wrap { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .admin-table .actions-cell button i,
         .admin-table .roles-cell button i,
         .profile-card h2 i,
@@ -408,7 +414,7 @@
             min-height: 88px;
             border: 1px solid rgba(105, 90, 170, 0.35);
             border-radius: 14px;
-            padding: 10px 12px;
+            padding: 10px 12px 10px 42px;
             background: rgba(16, 16, 26, 0.9);
             position: relative;
         }
@@ -427,7 +433,7 @@
         .file-card-content { min-width: 0; flex: 1; }
         .file-card .file-name { font-size: 18px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .file-card-meta { color: #9085a4; font-size: 13px; margin-top: 4px; }
-        .card-checkbox { position: absolute; left: 10px; top: 10px; }
+        .card-checkbox { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); }
         .file-card-actions { position: relative; }
         .file-card-menu {
             display: none;
@@ -509,6 +515,9 @@
             .file-name { font-size: 16px; }
             .storage-search-row { flex-wrap: wrap; }
             .controls-buttons { margin-left: auto; }
+            .admin-table .roles-cell, .admin-table .actions-cell { display: flex !important; }
+            .roles-wrap { flex-direction: column; align-items: flex-start; width: 100%; }
+            .actions-wrap { width: 100%; justify-content: flex-start; }
         }
         @media (max-width: 640px) {
             body { padding: 12px; }
