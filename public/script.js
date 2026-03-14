@@ -9,12 +9,26 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-function formatModifiedDate(item) {
-    const rawDate = item.updated_at || item.modified_at || item.created_at || item.last_modified || item.date;
+function getRawModifiedDate(item) {
+    if (!item || typeof item !== 'object') return null;
+    return item.updated_at || item.modified_at || item.created_at || item.last_modified || item.date || null;
+}
+
+function formatDateTime(rawDate) {
     if (!rawDate) return '—';
     const date = new Date(rawDate);
     if (Number.isNaN(date.getTime())) return '—';
-    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+    return date.toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function formatModifiedDate(item) {
+    return formatDateTime(getRawModifiedDate(item));
 }
 
 function showNotification(message, type = 'info') {
@@ -88,6 +102,7 @@ const state = {
     fileTree: {},
     allFiles: [],
     allFolders: [],
+    folderStats: {},
     sort: { key: 'name', order: 'asc' },
     pendingHighlightKey: null,
     highlightTimeout: null,
@@ -100,6 +115,7 @@ async function refreshFiles() {
     state.allFiles = [];
     state.allFolders = [];
     state.fileTree = {};
+    state.folderStats = {};
     await router();
 }
 
@@ -270,6 +286,46 @@ function getContentForPath(path) {
     }
     return currentLevel;
 }
+
+
+function buildFolderStats(files) {
+    const stats = {};
+    files.forEach(file => {
+        if (!file || file.isPlaceholder || !file.name) return;
+
+        const parts = file.name.split('/').filter(Boolean);
+        if (parts.length < 2) return;
+
+        const fileSize = Number(file.file_size) || 0;
+        const modifiedRaw = getRawModifiedDate(file);
+        const modifiedTime = modifiedRaw ? new Date(modifiedRaw).getTime() : NaN;
+
+        for (let i = 1; i < parts.length; i++) {
+            const folderPath = parts.slice(0, i).join('/');
+            if (!stats[folderPath]) {
+                stats[folderPath] = { totalBytes: 0, lastModified: null };
+            }
+            stats[folderPath].totalBytes += fileSize;
+
+            if (!Number.isNaN(modifiedTime)) {
+                const currentTime = stats[folderPath].lastModified ? new Date(stats[folderPath].lastModified).getTime() : NaN;
+                if (Number.isNaN(currentTime) || modifiedTime > currentTime) {
+                    stats[folderPath].lastModified = modifiedRaw;
+                }
+            }
+        }
+    });
+    return stats;
+}
+
+function getFolderStats(folderPath) {
+    const stats = state.folderStats[folderPath] || { totalBytes: 0, lastModified: null };
+    return {
+        totalBytesText: stats.totalBytes > 0 ? formatFileSize(stats.totalBytes) : '—',
+        lastModifiedText: formatDateTime(stats.lastModified)
+    };
+}
+
 
 async function handleSingleForward(messageId) {
     if (!hasPermission('can_receive_files')) {
@@ -1029,14 +1085,16 @@ function renderSearchResults(searchTerm) {
             card.dataset.isFolder = item._isFolder ? 'true' : 'false';
 
             const iconHtml = item._isFolder ? '<i class="fas fa-folder"></i>' : getIconForFile(item.name);
-            const meta = item._isFolder ? `Pasta • —` : `${formatFileSize(item.file_size)} • ${formatModifiedDate(item)}`;
+            const folderStats = item._isFolder ? getFolderStats(item.name) : null;
+            const meta = item._isFolder ? `Pasta • ${folderStats.lastModifiedText}` : `${formatFileSize(item.file_size)} • ${formatModifiedDate(item)}`;
             card.innerHTML = `<div class="file-card-icon ${item._isFolder ? 'folder-icon' : ''}">${iconHtml}</div><div class="file-card-content truncated-content"><div class="file-name">${item.name}</div><div class="file-card-meta">${meta}</div></div>`;
             fileListBodyElement.appendChild(card);
         } else {
             const div = document.createElement('div');
             div.className = 'file-item';
             if (item._isFolder) {
-                div.innerHTML = `<div style="flex-basis: 18px;"></div><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="${href}" class="file-name search-result-file-link" data-target-name="${item.name}" data-is-folder="true">${item.name}</a><span class="file-size">—</span><span class="file-date">—</span><div class="file-actions"></div>`;
+                const folderStats = getFolderStats(item.name);
+                div.innerHTML = `<div style="flex-basis: 18px;"></div><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="${href}" class="file-name search-result-file-link" data-target-name="${item.name}" data-is-folder="true">${item.name}</a><span class="file-size">${folderStats.totalBytesText}</span><span class="file-date">${folderStats.lastModifiedText}</span><div class="file-actions"></div>`;
             } else {
                 div.innerHTML = `<div style="flex-basis: 18px;"></div><span class="file-icon">${getIconForFile(item.name)}</span><a href="${href}" class="file-name search-result-file-link" data-target-name="${item.name}" data-is-folder="false">${item.name}</a><span class="file-size">${formatFileSize(item.file_size)}</span><span class="file-date">${formatModifiedDate(item)}</span><div class="file-actions"></div>`;
             }
@@ -1231,13 +1289,15 @@ function renderFilesPage(path) {
                 div.dataset.targetName = itemPath;
                 div.dataset.isFolder = 'true';
                 div.classList.add('clickable-card');
-                div.innerHTML = `<input type="checkbox" class="file-checkbox card-checkbox" style="visibility: hidden;"><div class="file-card-icon folder-icon"><i class="fas fa-folder"></i></div><div class="file-card-content truncated-content"><div class="file-name">${name}</div><div class="file-card-meta">Pasta • ${formatModifiedDate(item)}</div></div>${cardActionsHTML}`;
+                const folderStats = getFolderStats(itemPath);
+                div.innerHTML = `<input type="checkbox" class="file-checkbox card-checkbox" style="visibility: hidden;"><div class="file-card-icon folder-icon"><i class="fas fa-folder"></i></div><div class="file-card-content truncated-content"><div class="file-name">${name}</div><div class="file-card-meta">${folderStats.totalBytesText} • ${folderStats.lastModifiedText}</div></div>${cardActionsHTML}`;
             }
         } else {
             if (item._isFile) {
                 div.innerHTML = `<input type="checkbox" class="file-checkbox" data-key="${item.name}" data-message-id="${item.message_id}" data-is-group="${isGroup}" data-group-id="${item.groupId || ''}"><span class="file-icon">${getIconForFile(name, isGroup)}</span><span class="file-name">${displayName}</span><span class="file-size">${formatFileSize(item.file_size)}</span><span class="file-date">${formatModifiedDate(item)}</span>${actionsHTML}`;
             } else {
-                div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(itemPath)}" class="file-name">${name}</a><span class="file-size">—</span><span class="file-date">${formatModifiedDate(item)}</span>${actionsHTML}`;
+                const folderStats = getFolderStats(itemPath);
+                div.innerHTML = `<input type="checkbox" class="file-checkbox" style="visibility: hidden;"><span class="file-icon folder-icon"><i class="fas fa-folder"></i></span><a href="#/${encodeURI(itemPath)}" class="file-name">${name}</a><span class="file-size">${folderStats.totalBytesText}</span><span class="file-date">${folderStats.lastModifiedText}</span>${actionsHTML}`;
             }
         }
 
@@ -1286,6 +1346,7 @@ async function router(routeOverride) {
                     state.allFiles = data.files || [];
                     state.allFolders = data.allFolders || [];
                     state.fileTree = buildFileTree(state.allFiles, state.allFolders);
+                    state.folderStats = buildFolderStats(state.allFiles);
                 }
                 const currentPath = primaryRoute === 'home' ? [] : path;
                 renderFilesPage(currentPath);
