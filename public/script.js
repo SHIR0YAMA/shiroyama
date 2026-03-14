@@ -327,6 +327,75 @@ function getFolderStats(folderPath) {
 }
 
 
+
+function rebuildDerivedFileState() {
+    state.fileTree = buildFileTree(state.allFiles, state.allFolders);
+    state.folderStats = buildFolderStats(state.allFiles);
+}
+
+function getCurrentPathFromHash() {
+    const hashPath = window.location.hash.slice(2) || '';
+    return hashPath.split('/').filter(Boolean).map(decodeURIComponent);
+}
+
+function renderCurrentFilesView() {
+    if (!state.token || !hasPermission('can_view_files')) return;
+    const currentPath = getCurrentPathFromHash();
+    renderFilesPage(currentPath);
+}
+
+function upsertFolderPath(folderPath) {
+    if (!folderPath) return;
+    if (!state.allFolders.includes(folderPath)) state.allFolders.push(folderPath);
+}
+
+function renamePathInState(oldPath, newPath, isFolder = false) {
+    if (isFolder) {
+        state.allFolders = state.allFolders.map(folder => {
+            if (folder === oldPath) return newPath;
+            if (folder.startsWith(oldPath + '/')) return newPath + folder.slice(oldPath.length);
+            return folder;
+        });
+
+        state.allFiles = state.allFiles.map(file => {
+            if (!file?.name) return file;
+            if (file.name === oldPath || file.name.startsWith(oldPath + '/')) {
+                return { ...file, name: newPath + file.name.slice(oldPath.length) };
+            }
+            return file;
+        });
+    } else {
+        state.allFiles = state.allFiles.map(file =>
+            file?.name === oldPath ? { ...file, name: newPath } : file
+        );
+    }
+}
+
+function deletePathInState(keys, isFolder = false) {
+    const list = Array.isArray(keys) ? keys : [keys];
+    if (isFolder) {
+        const folderPath = list[0];
+        state.allFolders = state.allFolders.filter(folder => folder !== folderPath && !folder.startsWith(folderPath + '/'));
+        state.allFiles = state.allFiles.filter(file => file?.name && !file.name.startsWith(folderPath + '/'));
+        return;
+    }
+
+    const keysSet = new Set(list);
+    state.allFiles = state.allFiles.filter(file => !keysSet.has(file?.name));
+}
+
+function ensureCurrentPathExistsAfterMutation() {
+    const currentPath = getCurrentPathFromHash().join('/');
+    if (!currentPath) return;
+    const exists = state.allFolders.includes(currentPath);
+    if (!exists) {
+        const parentPath = currentPath.split('/').slice(0, -1).join('/');
+        window.location.hash = parentPath ? `#/${encodeURI(parentPath)}` : '#/';
+        return false;
+    }
+    return true;
+}
+
 async function handleSingleForward(messageId) {
     if (!hasPermission('can_receive_files')) {
         showNotification("Você não tem permissão para esta ação.", "error");
@@ -407,7 +476,22 @@ async function confirmMoveFile() {
         await apiCall(apiToCall, 'POST', payload);
         showNotification("Item(ns) movido(s) com sucesso!", "success");
         closeMoveModal();
-        await refreshFiles();
+
+        if (moveState.isFolder) {
+            const oldPath = moveState.oldKeys[0];
+            const movedName = oldPath.split('/').pop();
+            const destination = moveState.destinationPath ? `${moveState.destinationPath}/${movedName}` : movedName;
+            renamePathInState(oldPath, destination, true);
+        } else {
+            moveState.oldKeys.forEach(oldKey => {
+                const fileName = oldKey.split('/').pop();
+                const newKey = moveState.destinationPath ? `${moveState.destinationPath}/${fileName}` : fileName;
+                renamePathInState(oldKey, newKey, false);
+            });
+        }
+
+        rebuildDerivedFileState();
+        if (ensureCurrentPathExistsAfterMutation()) renderCurrentFilesView();
     } catch (error) {
         showNotification(`Erro ao mover: ${error.message}`, "error");
     } finally {
@@ -439,7 +523,10 @@ async function confirmCreateFolder() {
         await apiCall('admin/create-folder', 'POST', { folderPath: fullPath });
         showNotification(`Pasta "${newFolderName}" criada!`, "success");
         closeCreateFolderModal();
-        await refreshFiles();
+
+        upsertFolderPath(fullPath);
+        rebuildDerivedFileState();
+        renderCurrentFilesView();
         if (wasOpenedFromMoveModal) {
             moveState.currentPath = [...basePath, newFolderName];
             renderFolderNavigator();
@@ -481,7 +568,10 @@ async function confirmRename() {
         await apiCall('admin/rename', 'POST', { oldKey: renameState.oldKey, newKey, isFolder: renameState.isFolder });
         showNotification("Renomeado com sucesso!", "success");
         closeRenameModal();
-        await refreshFiles();
+
+        renamePathInState(renameState.oldKey, newKey, renameState.isFolder);
+        rebuildDerivedFileState();
+        if (ensureCurrentPathExistsAfterMutation()) renderCurrentFilesView();
     } catch (error) {
         showNotification(`Erro ao renomear: ${error.message}`, "error");
     } finally {
@@ -499,7 +589,10 @@ async function deleteItems(keys, isFolder = false, folderName = '') {
         const payload = isFolder ? { prefix: itemsToDelete[0] + '/' } : { keys: itemsToDelete };
         await apiCall('admin/bulk-delete', 'POST', payload);
         showNotification("Item(ns) excluído(s) com sucesso!", "success");
-        await refreshFiles();
+
+        deletePathInState(itemsToDelete, isFolder);
+        rebuildDerivedFileState();
+        if (ensureCurrentPathExistsAfterMutation()) renderCurrentFilesView();
     } catch (error) {
         showNotification(`Erro ao excluir: ${error.message}`, "error");
     } finally {
