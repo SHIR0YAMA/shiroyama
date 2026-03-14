@@ -928,55 +928,113 @@ async function renderProfilePage() {
     showLoading();
     try {
         const userData = await apiCall('user/status', 'GET');
-        let telegramSectionHTML = '<h3><i class="fas fa-paper-plane"></i> Vincular Conta do Telegram</h3>';
+
+        let telegramSectionHTML = '';
         if (hasPermission('can_receive_files')) {
             if (userData.telegram_chat_id) {
-                telegramSectionHTML += `<p>Usuário: <strong>@${userData.telegram_username || 'N/A'}</strong></p> <p>Chat ID: <strong>${userData.telegram_chat_id}</strong></p> <button id="unlink-btn"><i class="fas fa-unlink"></i> Desvincular Conta</button>`;
+                telegramSectionHTML = `
+                    <section class="profile-section">
+                        <h3><i class="fas fa-paper-plane"></i> Telegram</h3>
+                        <div class="profile-info-list">
+                            <div class="profile-info-item"><span class="label">Usuário</span><span class="value">@${userData.telegram_username || 'N/A'}</span></div>
+                            <div class="profile-info-item"><span class="label">Chat ID</span><span class="value">${userData.telegram_chat_id}</span></div>
+                        </div>
+                        <div class="profile-action-row">
+                            <button id="unlink-btn" class="profile-btn danger"><i class="fas fa-unlink"></i> Desvincular Conta</button>
+                        </div>
+                    </section>`;
             } else {
-                telegramSectionHTML += `<p>Clique no botão abaixo para autorizar o bot no Telegram.</p> <button id="link-telegram-btn"><i class="fas fa-link"></i> Vincular com o Telegram</button> <a href="#" id="why-link-q" style="display: block; margin-top: 15px; font-size: 14px;">Por que preciso fazer isso?</a>`;
+                telegramSectionHTML = `
+                    <section class="profile-section">
+                        <h3><i class="fas fa-paper-plane"></i> Telegram</h3>
+                        <p style="margin:0 0 12px; color:#cfc3e4; line-height:1.45;">Conecte sua conta para receber arquivos diretamente pelo bot do Telegram.</p>
+                        <div class="profile-action-row">
+                            <button id="link-telegram-btn" class="profile-btn primary"><i class="fas fa-link"></i> Vincular com o Telegram</button>
+                        </div>
+                        <a href="#" id="why-link-q" class="profile-helper-link"><i class="fas fa-circle-question"></i> Por que preciso fazer isso?</a>
+                    </section>`;
             }
-        } else {
-            telegramSectionHTML = '';
         }
 
-        mainContent.innerHTML = `<div class="auth-form profile-card"><h2><i class="fas fa-user-circle"></i> Meu Perfil</h2><p>Usuário do Site: <strong>${userData.username}</strong> | Cargo: <strong>${state.role || 'N/A'}</strong></p>
-            ${telegramSectionHTML ? `<hr style="border-color: #6272a4; margin: 20px 0;">${telegramSectionHTML}` : ''}
-            <hr style="border-color: #3d3368; margin: 20px 0;"><h3><i class="fas fa-lock"></i> Alterar Senha</h3><form id="password-form"><div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div><div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div><div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div><button type="submit"><i class="fas fa-save"></i> Salvar Nova Senha</button></form></div>`;
-        
+        mainContent.innerHTML = `
+            <div class="profile-shell">
+                <article class="profile-card">
+                    <header class="profile-header">
+                        <h2><i class="fas fa-user-circle"></i> Meu Perfil</h2>
+                        <div class="profile-meta">
+                            <div><strong>Usuário:</strong> ${userData.username}</div>
+                            <div style="margin-top:8px;"><span class="profile-role-badge"><i class="fas fa-shield-halved"></i> ${state.role || 'N/A'}</span></div>
+                        </div>
+                    </header>
+                    ${telegramSectionHTML || '<section class="profile-section"><h3><i class="fas fa-paper-plane"></i> Telegram</h3><p style="margin:0;color:#cfc3e4;">Sua conta não possui permissão para recebimento via Telegram.</p></section>'}
+                </article>
+
+                <article class="profile-card">
+                    <section class="profile-section">
+                        <h3><i class="fas fa-lock"></i> Alterar Senha</h3>
+                        <form id="password-form" class="profile-password-form">
+                            <div class="form-group"><label for="current-password">Senha Atual</label><input type="password" id="current-password" required></div>
+                            <div class="form-group"><label for="new-password">Nova Senha</label><input type="password" id="new-password" required minlength="6"></div>
+                            <div class="form-group"><label for="confirm-password">Confirmar Nova Senha</label><input type="password" id="confirm-password" required minlength="6"></div>
+                            <div class="profile-action-row"><button type="submit" class="profile-btn primary"><i class="fas fa-save"></i> Salvar Nova Senha</button></div>
+                        </form>
+                    </section>
+                </article>
+            </div>`;
+
         if (hasPermission('can_receive_files')) {
             if (userData.telegram_chat_id) {
-                document.getElementById('unlink-btn').onclick = async () => { if (confirm('Tem certeza?')) { await apiCall('user/unlink-telegram', 'POST'); showNotification('Conta desvinculada com sucesso.', 'success'); await router(); } };
+                document.getElementById('unlink-btn').onclick = async () => {
+                    if (confirm('Tem certeza?')) {
+                        await apiCall('user/unlink-telegram', 'POST');
+                        showNotification('Conta desvinculada com sucesso.', 'success');
+                        await router();
+                    }
+                };
             } else {
                 document.getElementById('link-telegram-btn').onclick = (e) => {
-                    const linkButton = e.target;
-                    linkButton.disabled = true; linkButton.innerHTML = '<i class=\"fas fa-spinner fa-spin\"></i> Gerando...';
+                    const linkButton = e.currentTarget;
+                    linkButton.disabled = true;
+                    linkButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando...';
                     const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
                     const linkCodeWithPrefix = `link_${randomCode}`;
                     apiCall('user/prepare-link-code', 'POST', { linkCode: linkCodeWithPrefix })
                         .then(async () => {
                             window.open(`https://t.me/ShiroyamaBot?start=${linkCodeWithPrefix}`, '_blank');
-                            linkButton.innerHTML = '<i class=\"fas fa-paper-plane\"></i> Verifique o Telegram!';
+                            linkButton.innerHTML = '<i class="fas fa-paper-plane"></i> Verifique o Telegram!';
                             showNotification('Conclua o vínculo no Telegram.', 'info');
                             startFaviconBlink();
                             setTimeout(async () => await router(), 15000);
-                        }).catch(err => { showNotification(`Erro: ${err.message}`, 'error'); linkButton.disabled = false; linkButton.innerHTML = '<i class=\"fas fa-link\"></i> Vincular com o Telegram'; });
+                        })
+                        .catch(err => {
+                            showNotification(`Erro: ${err.message}`, 'error');
+                            linkButton.disabled = false;
+                            linkButton.innerHTML = '<i class="fas fa-link"></i> Vincular com o Telegram';
+                        });
                 };
-                document.getElementById('why-link-q').onclick = (e) => { e.preventDefault(); whyLinkModal.classList.add('show'); };
+                const whyLink = document.getElementById('why-link-q');
+                if (whyLink) whyLink.onclick = (e) => { e.preventDefault(); whyLinkModal.classList.add('show'); };
             }
         }
+
         document.getElementById('password-form').onsubmit = async (e) => {
             e.preventDefault();
             const currentPassword = e.target['current-password'].value;
             const newPassword = e.target['new-password'].value;
-            if (newPassword !== e.target['confirm-password'].value) { showNotification("As senhas não coincidem.", 'error'); return; }
+            if (newPassword !== e.target['confirm-password'].value) {
+                showNotification("As senhas não coincidem.", 'error');
+                return;
+            }
             try {
                 const data = await apiCall('auth/change-password', 'POST', { currentPassword, newPassword });
                 showNotification(data.message, 'success');
                 logout();
-            } catch (error) { showNotification(`Erro: ${error.message}`, 'error'); }
+            } catch (error) {
+                showNotification(`Erro: ${error.message}`, 'error');
+            }
         };
     } catch (error) {
-        mainContent.innerHTML = `<div class="auth-form"><h2>Erro ao carregar perfil</h2><p style="color: #ff5555;">${error.message}</p></div>`;
+        mainContent.innerHTML = `<p style="color: #ff5555;">Erro ao carregar perfil: ${error.message}</p>`;
     } finally {
         hideLoading();
     }

@@ -305,6 +305,127 @@
         .profile-card h3 i { color: #c49aff; }
 
         #main-nav .nav-button i { margin-right: 6px; }
+
+        /* Perfil moderno e responsivo */
+        .profile-shell {
+            width: min(980px, 100%);
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+        .profile-card {
+            max-width: none;
+            margin: 0;
+            border: 1px solid rgba(135, 110, 215, 0.38);
+            border-radius: 18px;
+            background: linear-gradient(160deg, rgba(15,15,26,0.95), rgba(10,10,20,0.92));
+            padding: 0;
+            overflow: hidden;
+        }
+        .profile-header {
+            padding: 18px 20px;
+            border-bottom: 1px solid rgba(130, 105, 212, 0.3);
+            background: radial-gradient(circle at 10% 0%, rgba(155, 112, 255, 0.15), rgba(0,0,0,0));
+        }
+        .profile-header h2 {
+            margin: 0;
+            font-size: 34px;
+            color: #62ff9c;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .profile-meta {
+            margin-top: 10px;
+            color: #d2c7e7;
+            font-size: 18px;
+            line-height: 1.4;
+        }
+        .profile-role-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: rgba(122, 89, 216, 0.24);
+            border: 1px solid rgba(173, 142, 255, 0.4);
+            font-size: 14px;
+            color: #f2e9ff;
+        }
+        .profile-grid-col { display: grid; gap: 14px; }
+        .profile-section {
+            padding: 18px 20px;
+            border-bottom: 1px solid rgba(130, 105, 212, 0.22);
+        }
+        .profile-section:last-child { border-bottom: none; }
+        .profile-section h3 {
+            margin: 0 0 14px;
+            font-size: 30px;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .profile-info-list { display: grid; gap: 10px; margin-bottom: 14px; }
+        .profile-info-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .profile-info-item .label { color: #aa9dc5; min-width: 74px; font-size: 14px; }
+        .profile-info-item .value { color: #f6eeff; font-weight: 600; }
+        .profile-action-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+        .profile-btn {
+            border-radius: 12px;
+            padding: 10px 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            border: 1px solid rgba(193, 163, 255, 0.32);
+            background: rgba(128, 100, 210, 0.45);
+        }
+        .profile-btn:hover { background: rgba(150, 116, 235, 0.55); }
+        .profile-btn.primary {
+            background: linear-gradient(135deg, #8b5cf6, #6d47c9);
+            border-color: rgba(211, 187, 255, 0.35);
+        }
+        .profile-btn.danger {
+            background: rgba(255, 91, 131, 0.86);
+            border-color: rgba(255, 163, 189, 0.55);
+        }
+        .profile-btn.link-btn {
+            background: rgba(91, 80, 138, 0.5);
+        }
+        .profile-helper-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 10px;
+            color: #ccb9ff;
+            font-size: 14px;
+        }
+        .profile-password-form { display: grid; gap: 12px; }
+        .profile-password-form .form-group { margin-bottom: 0; }
+        .profile-password-form label { color: #c0b5d9; }
+
+        @media (max-width: 980px) {
+            .profile-shell { grid-template-columns: 1fr; }
+            .profile-header h2, .profile-section h3 { font-size: 30px; }
+        }
+        @media (max-width: 640px) {
+            .profile-header, .profile-section { padding: 14px; }
+            .profile-header h2, .profile-section h3 { font-size: 26px; }
+            .profile-meta { font-size: 16px; }
+            .profile-action-row { flex-direction: column; }
+            .profile-btn { width: 100%; justify-content: center; }
+            .profile-info-item { align-items: flex-start; flex-direction: column; gap: 4px; }
+            .profile-info-item .label { min-width: 0; }
+        }
         
         /* Reformulação estilo painel clean (referência print 2) */
         .container { max-width: 1380px; }
