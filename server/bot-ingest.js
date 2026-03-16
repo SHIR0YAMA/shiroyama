@@ -43,6 +43,7 @@ function normalizeEventPayload(rawPayload) {
     source_name: chat.title || chat.username || `chat_${chat.id}`,
     source_type: chat.type === 'channel' ? 'channel' : 'group',
     telegram_message_id: msgPayload.message_id,
+    telegram_file_id: media.file_id || null,
     telegram_file_ref: media.file_id || media.file_unique_id || null,
     file_name: media.file_name || `arquivo_${msgPayload.message_id}`,
     mime_type: media.mime_type || 'application/octet-stream',
@@ -112,7 +113,7 @@ export async function ingestBotPayload({ env, bot, rawPayload, source = 'webhook
     const insert = await env.DB.prepare(`
       INSERT INTO files (
         folder_path, file_name, mime_type, file_size, telegram_chat_id, telegram_message_id,
-        telegram_file_ref, metadata_json, origin, status, bot_id, source_id
+        telegram_file_id, telegram_file_ref, metadata_json, origin, status, bot_id, source_id
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'bot_sync', 'active', ?, ?)
     `).bind(
       folderPath,
@@ -121,6 +122,7 @@ export async function ingestBotPayload({ env, bot, rawPayload, source = 'webhook
       payload.file_size || 0,
       String(telegram_chat_id),
       payload.telegram_message_id,
+      payload.telegram_file_id || null,
       payload.telegram_file_ref || null,
       JSON.stringify(payload.metadata || {}),
       bot.id,

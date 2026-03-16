@@ -82,7 +82,7 @@ export async function onRequestGet(context) {
   try {
     const [file, permsResult, userRolesResult] = await Promise.all([
       env.DB.prepare(`
-        SELECT id, folder_path, file_name, mime_type, file_size, telegram_chat_id, telegram_message_id, telegram_file_ref
+        SELECT id, folder_path, file_name, mime_type, file_size, telegram_chat_id, telegram_message_id, telegram_file_id, telegram_file_ref
         FROM files
         WHERE id = ?
       `).bind(fileId).first(),
@@ -125,27 +125,28 @@ export async function onRequestGet(context) {
     }
 
     if (sizeMiB <= MAX_REDIRECT_MIB) {
-      logDownload({ fileId: file.id, mode: 'bot_api_redirect' });
+      if (file.telegram_file_id) {
+        logDownload({ fileId: file.id, mode: 'bot_api_redirect' });
 
-      const botToken = String(env.DOWNLOAD_BOT_TOKEN || '').trim();
-      const botApiBase = String(env.BOT_API_BASE || 'http://127.0.0.1:8081').trim();
-      if (!botToken) {
-        throw new Error('DOWNLOAD_BOT_TOKEN não configurado para modo bot_api_redirect.');
+        const botToken = String(env.DOWNLOAD_BOT_TOKEN || '').trim();
+        const botApiBase = String(env.BOT_API_BASE || 'http://127.0.0.1:8081').trim();
+        if (!botToken) {
+          throw new Error('DOWNLOAD_BOT_TOKEN não configurado para modo bot_api_redirect.');
+        }
+
+        const filePath = await fetchBotApiFilePath({ baseUrl: botApiBase, token: botToken, fileId: file.telegram_file_id });
+        const redirectUrl = new URL(`/file/bot${botToken}/${filePath}`, botApiBase).toString();
+
+        return new Response(null, {
+          status: 302,
+          headers: { Location: redirectUrl }
+        });
       }
-      if (!file.telegram_file_ref) {
-        throw new Error('telegram_file_ref ausente para arquivo em modo bot_api_redirect.');
-      }
 
-      const filePath = await fetchBotApiFilePath({ baseUrl: botApiBase, token: botToken, fileId: file.telegram_file_ref });
-      const redirectUrl = new URL(`/file/bot${botToken}/${filePath}`, botApiBase).toString();
-
-      return new Response(null, {
-        status: 302,
-        headers: { Location: redirectUrl }
-      });
+      logDownload({ fileId: file.id, mode: 'mtproto_stream', fallback: 'mtproto_missing_file_id' });
+    } else {
+      logDownload({ fileId: file.id, mode: 'mtproto_stream' });
     }
-
-    logDownload({ fileId: file.id, mode: 'mtproto_stream' });
     media = await downloadTelegramMedia({
       apiId: env.TELEGRAM_API_ID,
       apiHash: env.TELEGRAM_API_HASH,

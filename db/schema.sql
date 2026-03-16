@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS files (
   file_size INTEGER DEFAULT 0,
   telegram_chat_id TEXT NOT NULL,
   telegram_message_id INTEGER NOT NULL,
+  telegram_file_id TEXT,
   telegram_file_ref TEXT,
   metadata_json TEXT,
   origin TEXT NOT NULL DEFAULT 'bot_sync',

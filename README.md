@@ -101,11 +101,12 @@ npm run dev
 ### Download híbrido (`GET /api/files/:id/download`)
 - Auth JWT + validação de permissão por pasta
 - decisão por tamanho (`file_size`):
-  - `<= 2000 MiB`: `bot_api_redirect` (HTTP 302 para Bot API local, sem proxy no Node)
+  - `<= 2000 MiB` + `telegram_file_id` presente: `bot_api_redirect` (HTTP 302 para Bot API local, sem proxy no Node)
+  - `<= 2000 MiB` sem `telegram_file_id`: fallback `mtproto_stream` (`fallback=mtproto_missing_file_id`)
   - `> 2000 MiB` e `<= 4000 MiB`: `mtproto_stream` (stream Telegram -> servidor -> navegador)
   - `> 4000 MiB`: bloqueado com HTTP 413 (`Arquivo excede limite máximo de download (4000 MiB)`)
 - logs de decisão:
-  - `[download] fileId=... sizeMiB=... mode=...`
+  - `[download] fileId=... sizeMiB=... mode=...` (inclui fallback quando necessário)
   - `[download-auth]` para negativas de autorização
 
 ### Bots (eventos autenticados)
