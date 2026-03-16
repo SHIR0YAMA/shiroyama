@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { Readable } from 'node:stream';
 import { D1Database } from './d1-adapter.js';
 import { LocalKVStore } from './kv-store.js';
+import { startBotPolling } from './bot-polling.js';
 
 const projectRoot = path.resolve(process.cwd());
 const functionsDir = path.join(projectRoot, 'functions');
@@ -18,7 +19,9 @@ const env = {
   TELEGRAM_API_HASH: process.env.TELEGRAM_API_HASH ?? '',
   TELEGRAM_SESSION: process.env.TELEGRAM_SESSION ?? '',
   TELEGRAM_MOCK_DIR: process.env.TELEGRAM_MOCK_DIR ?? '',
-  TELEGRAM_USE_MOCK: process.env.TELEGRAM_USE_MOCK ?? 'false'
+  TELEGRAM_USE_MOCK: process.env.TELEGRAM_USE_MOCK ?? 'false',
+  BOT_WEBHOOK_BASE_URL: process.env.BOT_WEBHOOK_BASE_URL ?? '',
+  BOT_TOKEN_ENC_KEY: process.env.BOT_TOKEN_ENC_KEY ?? ''
 };
 
 const middlewareModule = await import(pathToFileURL(path.join(functionsDir, 'api/_middleware.js')).href);
@@ -177,4 +180,5 @@ const server = http.createServer(async (req, res) => {
 const port = Number(process.env.PORT ?? 3000);
 server.listen(port, '0.0.0.0', () => {
   console.log(`Servidor local ativo em http://localhost:${port}`);
+  startBotPolling(env);
 });

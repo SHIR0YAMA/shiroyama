@@ -183,6 +183,7 @@ const passwordResetModal = document.getElementById('password-reset-modal');
 const folderPermsModal = document.getElementById('folder-perms-modal');
 const userRolesModal = document.getElementById('user-roles-modal');
 const groupFilesModal = document.getElementById('group-files-modal');
+const botFolderPickerModal = document.getElementById('bot-folder-picker-modal');
 
 // --- 4. FUNÇÃO CENTRAL DE API ---
 async function apiCall(endpoint, method = 'GET', body = null) {
@@ -406,6 +407,7 @@ let renameState = { oldKey: null, newKey: null, isFolder: false };
 let roleState = { id: null, allPermissions: [] };
 let folderPermsState = { folderPath: null };
 let userRolesState = { userId: null };
+let botFolderPickerState = { currentPath: [], selectedPath: '' };
 
 function openMoveModal(keysToMove, isFolder = false) {
     moveState.oldKeys = Array.isArray(keysToMove) ? keysToMove : [keysToMove];
@@ -456,16 +458,13 @@ function renderFolderNavigator() {
             const fullPath = currentPathString ? `${currentPathString}/${name}` : name;
             const blocked = !!moveState.excludePath && (fullPath === moveState.excludePath || fullPath.startsWith(`${moveState.excludePath}/`));
             return { name, fullPath, blocked };
-        });
+        })
+        .filter(folder => !folder.blocked);
 
     let html = '<ul>';
     if (moveState.currentPath.length > 0) html += `<li data-action="up">⬅️ .. (Voltar)</li>`;
     subFolders.forEach(folder => {
-        if (folder.blocked) {
-            html += `<li class="disabled" data-action="blocked" title="Destino inválido para a pasta atual">🚫 ${folder.name}</li>`;
-        } else {
-            html += `<li data-action="down" data-folder="${folder.name}">📁 ${folder.name}</li>`;
-        }
+        html += `<li data-action="down" data-folder="${folder.name}">📁 ${folder.name}</li>`;
     });
     html += '</ul>';
     navContainer.innerHTML = html;
@@ -786,6 +785,66 @@ async function confirmSaveFolderPerms() {
     } finally {
         hideLoading();
     }
+}
+
+
+function closeBotFolderPickerModal() { botFolderPickerModal.classList.remove('show'); }
+
+function getValidDestinationFoldersForMove(excludePath = '') {
+    const cleanExclude = String(excludePath || '').replace(/^\/+|\/+$/g, '');
+    return (state.allFolders || [])
+        .map(path => String(path || '').replace(/^\/+|\/+$/g, ''))
+        .filter(path => path && path !== cleanExclude && !path.startsWith(`${cleanExclude}/`))
+        .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+function renderBotFolderPicker() {
+    const nav = document.getElementById('bot-folder-picker-navigation');
+    const pathLabel = document.getElementById('bot-folder-picker-path');
+    const selectedText = document.getElementById('bot-folder-picker-selected');
+    const current = botFolderPickerState.currentPath.join('/');
+    pathLabel.textContent = `/${current}`;
+    selectedText.textContent = botFolderPickerState.selectedPath ? `Pasta selecionada: ${botFolderPickerState.selectedPath}` : 'Pasta selecionada: Home (raiz)';
+
+    const validFolders = getValidDestinationFoldersForMove('');
+    const currentPrefix = current ? `${current}/` : '';
+    const children = [];
+    const seen = new Set();
+    for (const folder of validFolders) {
+        if (!folder.startsWith(currentPrefix)) continue;
+        const rest = folder.slice(currentPrefix.length);
+        if (!rest) continue;
+        const first = rest.split('/')[0];
+        if (!seen.has(first)) {
+            seen.add(first);
+            children.push(first);
+        }
+    }
+
+    let html = '<ul>';
+    if (botFolderPickerState.currentPath.length > 0) html += '<li data-action="up">⬅️ .. (Voltar)</li>';
+    for (const folder of children.sort((a,b)=>a.localeCompare(b,'pt-BR'))) {
+        html += `<li data-action="down" data-folder="${folder}">📁 ${folder}</li>`;
+    }
+    html += '</ul>';
+    nav.innerHTML = html;
+}
+
+function openBotFolderPickerModal() {
+    botFolderPickerState.currentPath = String(botFolderPickerState.selectedPath || '').split('/').filter(Boolean);
+    renderBotFolderPicker();
+    botFolderPickerModal.classList.add('show');
+}
+
+function confirmBotFolderSelection() {
+    botFolderPickerState.selectedPath = botFolderPickerState.currentPath.join('/');
+    const selectedLabel = document.getElementById('mapping-folder-selected-text');
+    if (selectedLabel) {
+        selectedLabel.textContent = botFolderPickerState.selectedPath
+            ? `Pasta selecionada: ${botFolderPickerState.selectedPath}`
+            : 'Pasta selecionada: Home (raiz)';
+    }
+    closeBotFolderPickerModal();
 }
 
 function closeUserRolesModal() { userRolesModal.classList.remove('show'); }
@@ -1125,11 +1184,10 @@ async function renderAdminPage(subpage) {
                         </select>
                         <input id="mapping-chat-id" type="text" placeholder="Chat ID (ex: -100123...)" style="min-width:220px;">
                         <input id="mapping-source-name" type="text" placeholder="Nome do canal/grupo" style="min-width:220px;">
-                        <input id="mapping-folder-path" type="text" readonly value="" placeholder="Home (raiz)" style="min-width:260px;">
                         <button id="mapping-select-folder-btn" type="button"><i class="fas fa-folder-open"></i> Selecionar pasta</button>
                         <button id="create-mapping-btn"><i class="fas fa-link"></i> Salvar vínculo</button>
                     </div>
-                    <small style="display:block;margin-top:8px;opacity:.85;">Pastas disponíveis: ${folderOptions.length + 1}</small>
+                    <small id="mapping-folder-selected-text" style="display:block;margin-top:8px;opacity:.95;">Pasta selecionada: Home (raiz)</small><small style="display:block;margin-top:4px;opacity:.75;">Pastas disponíveis: ${folderOptions.length + 1}</small>
                 </div>
                 <div class="table-container">
                     <h3>Vínculos bot / canal / pasta</h3>
@@ -1542,8 +1600,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('user-roles-save-btn').onclick = confirmSaveUserRoles;
     document.getElementById('group-files-cancel-btn').onclick = closeGroupFilesModal;
     document.getElementById('group-files-confirm-btn').onclick = confirmGroupFiles;
+    document.getElementById('bot-folder-picker-close-btn').onclick = closeBotFolderPickerModal;
+    document.getElementById('bot-folder-picker-cancel-btn').onclick = closeBotFolderPickerModal;
+    document.getElementById('bot-folder-picker-confirm-btn').onclick = confirmBotFolderSelection;
 
-    [authModal, moveFileModal, createFolderModal, renameModal, roleModal, passwordResetModal, folderPermsModal, userRolesModal, groupFilesModal].forEach(modal => {
+    [authModal, moveFileModal, createFolderModal, renameModal, roleModal, passwordResetModal, folderPermsModal, userRolesModal, groupFilesModal, botFolderPickerModal].forEach(modal => {
         if (modal) modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('show'); };
     });
 
@@ -1560,6 +1621,16 @@ document.addEventListener('DOMContentLoaded', () => {
         else return;
         renderFolderNavigator();
     });
+    document.getElementById('bot-folder-picker-navigation').addEventListener('click', (e) => {
+        const li = e.target.closest('li');
+        if (!li) return;
+        const action = li.dataset.action;
+        if (action === 'up') botFolderPickerState.currentPath.pop();
+        else if (action === 'down') botFolderPickerState.currentPath.push(li.dataset.folder);
+        else return;
+        renderBotFolderPicker();
+    });
+
     document.getElementById('create-folder-in-move-modal-btn').onclick = () => { closeMoveModal(); openCreateFolderModal(true); };
 
     mainContent.addEventListener('click', async (e) => {
@@ -1667,13 +1738,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (target.id === 'mapping-select-folder-btn') {
-            const current = document.getElementById('mapping-folder-path')?.value || '';
-            openFolderPickerModal(current, (pickedPath) => {
-                const input = document.getElementById('mapping-folder-path');
-                if (!input) return;
-                input.value = pickedPath;
-                input.placeholder = pickedPath || 'Home (raiz)';
-            });
+            openBotFolderPickerModal();
             return;
         }
 
@@ -1726,7 +1791,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const botId = parseInt(document.getElementById('mapping-bot-id')?.value || '0');
             const chatId = document.getElementById('mapping-chat-id')?.value?.trim();
             const sourceName = document.getElementById('mapping-source-name')?.value?.trim();
-            const folderPath = document.getElementById('mapping-folder-path')?.value?.trim();
+            const folderPath = String(botFolderPickerState.selectedPath || '').trim();
             if (!botId || !chatId) { showNotification('Preencha bot e chat_id.', 'error'); return; }
             try {
                 await apiCall('admin/bot-mappings', 'POST', {

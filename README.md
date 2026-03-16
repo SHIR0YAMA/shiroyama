@@ -47,7 +47,7 @@ Ou seja, transferências grandes de arquivo passam pelo perfil Telegram autentic
 - `KV_PATH` (legado)
 - `TELEGRAM_USE_MOCK` (`true|false`, default `false`)
 - `TELEGRAM_MOCK_DIR` (somente quando `TELEGRAM_USE_MOCK=true`)
-- `BOT_WEBHOOK_BASE_URL` (URL pública HTTPS do seu servidor para registrar webhook real)
+- `BOT_WEBHOOK_BASE_URL` (URL pública HTTPS do seu servidor para registrar webhook real; se ausente, bots ativos entram em polling `getUpdates`)
 - `BOT_TOKEN_ENC_KEY` (recomendado para criptografar token do bot no SQLite; 32 bytes em base64 ou 64 hex)
 
 ## Gerando e reutilizando sessão Telegram
@@ -110,6 +110,19 @@ npm run dev
 - `GET/POST /api/admin/bots`
 - `GET/POST /api/admin/bot-mappings`
 
+
+## Modos de ingestão de bots (webhook x polling)
+
+### Webhook (preferencial)
+- Requisito: `BOT_WEBHOOK_BASE_URL` configurado e acessível publicamente via HTTPS.
+- Ao cadastrar/ativar bot, o sistema tenta `setWebhook` e confirma com `getWebhookInfo`.
+- Se o webhook estiver confirmado para o bot, **polling não é usado** para esse bot.
+
+### Polling local (fallback automático)
+- Quando `BOT_WEBHOOK_BASE_URL` **não** está configurado, bots ativos usam `getUpdates` em loop no servidor local.
+- O polling também pode atuar como fallback por bot quando webhook não estiver confirmado.
+- O pipeline de persistência é o mesmo do webhook: update -> mapeamento bot/source/folder -> insert em `files`.
+
 ## Fluxo recomendado de bots
 
 1. Criar bot no BotFather.
@@ -126,8 +139,14 @@ Se `BOT_WEBHOOK_BASE_URL` estiver definido, ao cadastrar/ativar o bot o sistema 
 
 Para validar integração real:
 1. Rode `getWebhookInfo` do bot no Telegram API e confirme que `url` não está vazio.
-2. Envie arquivo no grupo/canal mapeado e acompanhe logs do Node (`[bots]` e `[bot-events]`).
+2. Envie arquivo no grupo/canal mapeado e acompanhe logs do Node (`[bots]`, `[bot-polling]` e `[bot-events]`).
 3. Verifique listagem em `/api/files` na pasta vinculada.
+
+### Teste rápido do modo polling
+1. Remova/ignore `BOT_WEBHOOK_BASE_URL`.
+2. Inicie servidor (`npm run start`/`npm run dev`).
+3. Confirme logs `[bot-polling] bot em polling`.
+4. Envie arquivo no grupo/canal mapeado e valide logs de ingestão + persistência.
 
 ## Fluxos legados de bot removidos do fluxo principal
 As rotas antigas retornam `410 Gone`:
