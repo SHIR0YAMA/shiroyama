@@ -1130,7 +1130,7 @@ async function renderAdminPage(subpage) {
         return;
     }
 
-    mainContent.innerHTML = `<h2><i class="fas fa-sliders"></i> Painel de Administrador</h2><div class="admin-tabs">${canViewUsers ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}"><i class="fas fa-users"></i> Gerenciar Usuários</button>` : ''}${canViewRoles ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}"><i class="fas fa-user-shield"></i> Gerenciar Cargos</button>` : ''}${canManageBots ? `<button id="admin-tab-bots" class="${subpage === 'bots' ? 'active' : ''}"><i class="fas fa-robot"></i> Bots & Canais</button>` : ''}</div><div id="admin-content"></div>`;
+    mainContent.innerHTML = `<h2><i class="fas fa-sliders"></i> Painel de Administrador</h2><div class="admin-tabs">${canViewUsers ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}"><i class="fas fa-users"></i> Gerenciar Usuários</button>` : ''}${canViewRoles ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}"><i class="fas fa-user-shield"></i> Gerenciar Cargos</button>` : ''}${canManageBots ? `<button id="admin-tab-bots" class="${subpage === 'bots' ? 'active' : ''}"><i class="fas fa-robot"></i> Fontes Telegram</button>` : ''}</div><div id="admin-content"></div>`;
     const adminContent = document.getElementById('admin-content');
     adminContent.innerHTML = '';
     showLoading();
@@ -1209,48 +1209,35 @@ async function renderAdminPage(subpage) {
 
 
         } else if (subpage === 'bots' && canManageBots) {
-            const [botsResp, mappingsResp, foldersResp] = await Promise.all([apiCall('admin/bots'), apiCall('admin/bot-mappings'), apiCall('admin/folders')]);
-            const bots = botsResp.bots || [];
+            const [mappingsResp, foldersResp] = await Promise.all([apiCall('admin/bot-mappings'), apiCall('admin/folders')]);
             const mappings = mappingsResp.mappings || [];
             const folderOptions = (foldersResp.folders || []);
 
             adminContent.innerHTML = `
                 <div class="table-container" style="margin-bottom:16px;">
-                    <h3>Cadastrar bot</h3>
+                    <h3>Adicionar/atualizar fonte monitorada</h3>
                     <div class="actions-wrap" style="gap:8px;flex-wrap:wrap;">
-                        <input id="bot-name-input" type="text" placeholder="Nome do bot (ex: animes_bot)" style="min-width:220px;">
-                        <input id="bot-token-input" type="password" placeholder="Token do bot (BotFather)" style="min-width:280px;">
-                        <button id="create-bot-btn"><i class="fas fa-plus"></i> Cadastrar bot existente</button>
-                    </div>
-                </div>
-                <div class="table-container" style="margin-bottom:16px;">
-                    <h3>Bots</h3>
-                    <table class="admin-table">
-                        <thead><tr><th>ID</th><th>Nome local</th><th>Token (ref)</th><th>Ativo</th><th>Mapeamentos</th><th>Ações</th></tr></thead>
-                        <tbody>${bots.map(b => `<tr><td>${b.id}</td><td>${b.bot_name}</td><td>${b.bot_token_ref || '-'}</td><td>${b.is_active ? 'Sim' : 'Não'}</td><td>${b.mapping_count}</td><td><button class="toggle-bot-btn btn-icon" data-id="${b.id}" data-name="${b.bot_name}" data-active="${b.is_active ? '1' : '0'}" title="Ativar/Desativar bot e webhook"><i class="fas fa-power-off"></i></button> <button class="delete-bot-btn btn-danger" data-id="${b.id}" title="Excluir"><i class="fas fa-trash-can"></i></button></td></tr>`).join('')}</tbody>
-                    </table>
-                </div>
-                <div class="table-container" style="margin-bottom:16px;">
-                    <h3>Criar vínculo bot / canal / pasta</h3>
-                    <div class="actions-wrap" style="gap:8px;flex-wrap:wrap;">
-                        <select id="mapping-bot-id" style="min-width:220px;">
-                            <option value="">Selecione um bot</option>
-                            ${bots.map(b => `<option value="${b.id}">${b.bot_name}</option>`).join('')}
-                        </select>
                         <input id="mapping-chat-id" type="text" placeholder="Chat ID (ex: -100123...)" style="min-width:220px;">
                         <input id="mapping-source-name" type="text" placeholder="Nome do canal/grupo" style="min-width:220px;">
+                        <input id="mapping-source-type" type="text" placeholder="Tipo (channel/group)" value="channel" style="min-width:180px;">
                         <button id="mapping-select-folder-btn" type="button"><i class="fas fa-folder-open"></i> Selecionar pasta</button>
                         <button id="create-mapping-btn"><i class="fas fa-link"></i> Salvar vínculo</button>
                     </div>
-                    <small id="mapping-folder-selected-text" style="display:block;margin-top:8px;opacity:.95;">Pasta selecionada: Home (raiz)</small><small style="display:block;margin-top:4px;opacity:.75;">Pastas disponíveis: ${folderOptions.length + 1}</small>
+                    <small id="mapping-folder-selected-text" style="display:block;margin-top:8px;opacity:.95;">Pasta selecionada: ${botFolderPickerState.selectedPath || 'Inbox'}</small>
+                    <small style="display:block;margin-top:4px;opacity:.75;">Bot único no backend (.env). O painel gerencia apenas chat_id -> pasta.</small>
                 </div>
                 <div class="table-container">
-                    <h3>Vínculos bot / canal / pasta</h3>
+                    <h3>Fontes monitoradas</h3>
                     <table class="admin-table">
-                        <thead><tr><th>Bot</th><th>Canal/Grupo</th><th>Chat ID</th><th>Pasta</th><th>Ativo</th><th>Ações</th></tr></thead>
-                        <tbody>${mappings.map(m => `<tr><td>${m.bot_name}</td><td>${m.source_name || '-'}</td><td>${m.telegram_chat_id}</td><td>${m.folder_path}</td><td>${m.is_active ? 'Sim' : 'Não'}</td><td><button class="delete-mapping-btn btn-danger" data-id="${m.id}" title="Excluir vínculo"><i class="fas fa-trash-can"></i></button></td></tr>`).join('')}</tbody>
+                        <thead><tr><th>Nome</th><th>Chat ID</th><th>Tipo</th><th>Pasta</th><th>Ativo</th><th>Ações</th></tr></thead>
+                        <tbody>${mappings.map(m => `<tr><td>${m.source_name || '-'}</td><td>${m.telegram_chat_id}</td><td>${m.source_type || '-'}</td><td>${m.folder_path || 'Inbox'}</td><td>${m.is_active ? 'Sim' : 'Não'}</td><td><button class="edit-source-btn btn-icon" data-id="${m.id}" data-name="${m.source_name || ''}" data-chat-id="${m.telegram_chat_id}" data-source-type="${m.source_type || 'channel'}" data-folder-path="${m.folder_path || 'Inbox'}"><i class="fas fa-pen"></i></button> <button class="toggle-source-btn btn-icon" data-id="${m.id}" data-name="${m.source_name || ''}" data-chat-id="${m.telegram_chat_id}" data-source-type="${m.source_type || 'channel'}" data-folder-path="${m.folder_path || 'Inbox'}" data-active="${m.is_active ? '1' : '0'}"><i class="fas fa-power-off"></i></button> <button class="delete-mapping-btn btn-danger" data-id="${m.id}" title="Excluir vínculo"><i class="fas fa-trash-can"></i></button></td></tr>`).join('')}</tbody>
                     </table>
                 </div>`;
+
+            renderBotFolderPickerModal(folderOptions, botFolderPickerState.selectedPath || 'Inbox');
+            const text = document.getElementById('mapping-folder-selected-text');
+            if (text) text.textContent = `Pasta selecionada: ${botFolderPickerState.selectedPath || 'Inbox'}`;
+
 
         } else if (subpage === 'roles' && canViewRoles) {
             const [rolesData, permissionsData] = await Promise.all([apiCall('admin/roles'), apiCall('admin/permissions')]);
@@ -1798,67 +1785,54 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if (target.id === 'create-bot-btn') {
-            const botName = document.getElementById('bot-name-input')?.value?.trim();
-            const botToken = document.getElementById('bot-token-input')?.value?.trim();
-            if (!botName) { showNotification('Informe o nome local do bot.', 'error'); return; }
-            if (!botToken) { showNotification('Informe o token do bot.', 'error'); return; }
-            try {
-                const created = await apiCall('admin/bots', 'POST', { action: 'create', bot_name: botName, bot_token: botToken, is_active: true });
-                showNotification(created.webhook?.configured ? `Bot cadastrado e webhook configurado com sucesso.` : `Bot cadastrado, mas webhook não foi confirmado: ${created.webhook?.reason || 'verifique BOT_WEBHOOK_BASE_URL/HTTPS público'}`, created.webhook?.configured ? 'success' : 'warning');
-                await router('admin/bots');
-            } catch (err) { showNotification(err.message, 'error'); }
-        }
-
-        if (target.classList.contains('toggle-bot-btn')) {
+        if (target.classList.contains('toggle-source-btn')) {
             const id = parseInt(target.dataset.id);
             const isActive = target.dataset.active === '1';
-            const payload = {
-                action: 'update',
-                id,
-                bot_name: target.dataset.name,
-                is_active: !isActive
-            };
-            try {
-                const updated = await apiCall('admin/bots', 'POST', payload);
-                if (payload.is_active) {
-                    const msg = updated.webhook?.configured
-                        ? 'Bot ativado e webhook confirmado no Telegram.'
-                        : `Bot ativado, mas webhook não confirmado: ${updated.webhook?.reason || 'verifique URL pública/HTTPS'}`;
-                    showNotification(msg, updated.webhook?.configured ? 'success' : 'warning');
-                } else {
-                    showNotification('Bot desativado. Webhook removido quando disponível.', 'success');
-                }
-                await router('admin/bots');
-            } catch (err) { showNotification(err.message, 'error'); }
-        }
-
-        if (target.classList.contains('delete-bot-btn')) {
-            const id = parseInt(target.dataset.id);
-            if (!confirm('Excluir este bot?')) return;
-            try {
-                await apiCall('admin/bots', 'POST', { action: 'delete', id });
-                showNotification('Bot removido.', 'success');
-                await router('admin/bots');
-            } catch (err) { showNotification(err.message, 'error'); }
-        }
-
-        if (target.id === 'create-mapping-btn') {
-            const botId = parseInt(document.getElementById('mapping-bot-id')?.value || '0');
-            const chatId = document.getElementById('mapping-chat-id')?.value?.trim();
-            const sourceName = document.getElementById('mapping-source-name')?.value?.trim();
-            const folderPath = String(botFolderPickerState.selectedPath || '').trim();
-            if (!botId || !chatId) { showNotification('Preencha bot e chat_id.', 'error'); return; }
             try {
                 await apiCall('admin/bot-mappings', 'POST', {
                     action: 'upsert',
-                    bot_id: botId,
+                    id,
+                    telegram_chat_id: target.dataset.chatId,
+                    source_name: target.dataset.name || '',
+                    source_type: target.dataset.sourceType || 'channel',
+                    folder_path: target.dataset.folderPath || 'Inbox',
+                    is_active: !isActive
+                });
+                showNotification('Status da fonte atualizado.', 'success');
+                await router('admin/bots');
+            } catch (err) { showNotification(err.message, 'error'); }
+        }
+
+        if (target.classList.contains('edit-source-btn')) {
+            document.getElementById('mapping-chat-id').value = target.dataset.chatId || '';
+            document.getElementById('mapping-source-name').value = target.dataset.name || '';
+            document.getElementById('mapping-source-type').value = target.dataset.sourceType || 'channel';
+            botFolderPickerState.selectedPath = target.dataset.folderPath || 'Inbox';
+            botFolderPickerState.editId = parseInt(target.dataset.id);
+            const text = document.getElementById('mapping-folder-selected-text');
+            if (text) text.textContent = `Pasta selecionada: ${botFolderPickerState.selectedPath}`;
+            showNotification('Modo edição habilitado para a fonte selecionada.', 'success');
+        }
+
+        if (target.id === 'create-mapping-btn') {
+            const editId = Number(botFolderPickerState.editId || 0);
+            const chatId = document.getElementById('mapping-chat-id')?.value?.trim();
+            const sourceName = document.getElementById('mapping-source-name')?.value?.trim();
+            const sourceType = document.getElementById('mapping-source-type')?.value?.trim() || 'channel';
+            const folderPath = String(botFolderPickerState.selectedPath || '').trim() || 'Inbox';
+            if (!chatId) { showNotification('Preencha chat_id.', 'error'); return; }
+            try {
+                await apiCall('admin/bot-mappings', 'POST', {
+                    action: 'upsert',
+                    id: editId || undefined,
                     telegram_chat_id: chatId,
-                    source_name: sourceName || (folderPath || 'Home'),
+                    source_name: sourceName || (folderPath || 'Inbox'),
+                    source_type: sourceType,
                     folder_path: folderPath,
                     is_active: true
                 });
-                showNotification('Vínculo salvo.', 'success');
+                showNotification(editId ? 'Fonte atualizada.' : 'Vínculo salvo.', 'success');
+                botFolderPickerState.editId = null;
                 await router('admin/bots');
             } catch (err) { showNotification(err.message, 'error'); }
         }

@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS telegram_sources (
   source_type TEXT NOT NULL DEFAULT 'channel',
   telegram_chat_id TEXT NOT NULL UNIQUE,
   source_name TEXT,
+  folder_path TEXT DEFAULT '',
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP

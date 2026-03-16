@@ -169,10 +169,10 @@ export async function onRequestGet(context) {
 
     if (sizeMiB <= MAX_REDIRECT_MIB) {
       if (file.telegram_file_id) {
-        const botToken = String(env.DOWNLOAD_BOT_TOKEN || '').trim();
+        const botToken = String(env.TELEGRAM_BOT_TOKEN || env.DOWNLOAD_BOT_TOKEN || '').trim();
         const botApiBase = String(env.BOT_API_BASE || 'http://127.0.0.1:8081').trim();
         if (!botToken) {
-          throw new Error('DOWNLOAD_BOT_TOKEN não configurado para modo bot_api_stream.');
+          throw new Error('TELEGRAM_BOT_TOKEN não configurado para modo bot_api_stream.');
         }
 
         try {

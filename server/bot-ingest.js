@@ -60,13 +60,17 @@ function normalizeEventPayload(rawPayload) {
 }
 
 export async function ingestBotPayload({ env, bot, rawPayload, source = 'webhook' }) {
+  const botContext = {
+    id: bot?.id || null,
+    bot_name: bot?.bot_name || 'single_bot'
+  };
   const updateType = rawPayload?.message ? 'message' : rawPayload?.channel_post ? 'channel_post' : rawPayload?.my_chat_member ? 'my_chat_member' : 'custom';
   const updateChatId = rawPayload?.message?.chat?.id || rawPayload?.channel_post?.chat?.id || rawPayload?.my_chat_member?.chat?.id || null;
-  console.log('[bot-events] update recebido', { source, bot: bot.bot_name, updateType, updateChatId, hasUpdateId: !!rawPayload?.update_id });
+  console.log('[bot-events] update recebido', { source, bot: botContext.bot_name, updateType, updateChatId, hasUpdateId: !!rawPayload?.update_id });
 
   const payload = normalizeEventPayload(rawPayload);
   if (!payload) {
-    console.log('[bot-events] update ignorado: sem evento suportado', { source, bot: bot.bot_name });
+    console.log('[bot-events] update ignorado: sem evento suportado', { source, bot: botContext.bot_name });
     return { success: true, ignored: true };
   }
 
@@ -78,24 +82,24 @@ export async function ingestBotPayload({ env, bot, rawPayload, source = 'webhook
 
   let dbSource = null;
   if (telegram_chat_id) {
-    dbSource = await env.DB.prepare('SELECT id, is_active FROM telegram_sources WHERE telegram_chat_id = ?').bind(String(telegram_chat_id)).first();
+    dbSource = await env.DB.prepare('SELECT id, is_active, folder_path FROM telegram_sources WHERE telegram_chat_id = ?').bind(String(telegram_chat_id)).first();
     if (!dbSource) {
       const { meta } = await env.DB.prepare(
-        'INSERT INTO telegram_sources (source_type, telegram_chat_id, source_name, is_active) VALUES (?, ?, ?, 1)'
-      ).bind(source_type, String(telegram_chat_id), source_name || `chat_${telegram_chat_id}`).run();
-      dbSource = { id: meta.last_row_id, is_active: 1 };
+        'INSERT INTO telegram_sources (source_type, telegram_chat_id, source_name, folder_path, is_active) VALUES (?, ?, ?, ?, 1)'
+      ).bind(source_type, String(telegram_chat_id), source_name || `chat_${telegram_chat_id}`, 'Inbox').run();
+      dbSource = { id: meta.last_row_id, is_active: 1, folder_path: 'Inbox' };
     }
   }
 
   if (event_type === 'source_joined' && dbSource) {
     await env.DB.prepare('UPDATE telegram_sources SET is_active = 1, source_name = COALESCE(?, source_name), updated_at = CURRENT_TIMESTAMP WHERE id = ?')
       .bind(source_name || null, dbSource.id).run();
-    console.log('[bot-events] source_joined processado', { source, bot: bot.bot_name, chatId: telegram_chat_id, sourceId: dbSource.id });
+    console.log('[bot-events] source_joined processado', { source, bot: botContext.bot_name, chatId: telegram_chat_id, sourceId: dbSource.id });
   }
 
   if (event_type === 'source_left' && dbSource) {
     await env.DB.prepare('UPDATE telegram_sources SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(dbSource.id).run();
-    console.log('[bot-events] source_left processado', { source, bot: bot.bot_name, chatId: telegram_chat_id, sourceId: dbSource.id });
+    console.log('[bot-events] source_left processado', { source, bot: botContext.bot_name, chatId: telegram_chat_id, sourceId: dbSource.id });
   }
 
   if (event_type === 'file_detected') {
@@ -103,12 +107,8 @@ export async function ingestBotPayload({ env, bot, rawPayload, source = 'webhook
       return { success: false, status: 400, message: 'telegram_chat_id e telegram_message_id são obrigatórios para file_detected.' };
     }
 
-    const mapping = dbSource ? await env.DB.prepare(
-      'SELECT id, folder_path FROM bot_source_mappings WHERE bot_id = ? AND source_id = ? AND is_active = 1'
-    ).bind(bot.id, dbSource.id).first() : null;
-
-    const folderPath = payload.folder_path || mapping?.folder_path || 'Inbox';
-    console.log('[bot-events] mapeamento aplicado', { source, bot: bot.bot_name, chatId: telegram_chat_id, sourceId: dbSource?.id || null, mappingId: mapping?.id || null, folderPath });
+    const folderPath = payload.folder_path || dbSource?.folder_path || 'Inbox';
+    console.log('[bot-events] mapeamento aplicado', { source, bot: botContext.bot_name, chatId: telegram_chat_id, sourceId: dbSource?.id || null, folderPath });
 
     const insertColumns = [
       'folder_path',
@@ -136,7 +136,7 @@ export async function ingestBotPayload({ env, bot, rawPayload, source = 'webhook
       payload.telegram_file_id || null,
       payload.telegram_file_ref || null,
       JSON.stringify(payload.metadata || {}),
-      bot.id,
+      botContext.id,
       dbSource?.id || null
     ];
 
@@ -160,11 +160,11 @@ export async function ingestBotPayload({ env, bot, rawPayload, source = 'webhook
 
     await env.DB.prepare(
       'INSERT INTO bot_events (bot_id, source_id, event_type, payload_json, status) VALUES (?, ?, ?, ?, ?)'
-    ).bind(bot.id, dbSource?.id || null, event_type, JSON.stringify(payload), 'processed').run();
+    ).bind(botContext.id, dbSource?.id || null, event_type, JSON.stringify(payload), 'processed').run();
 
     console.log('[bot-events] persistência concluída', {
       source,
-      bot: bot.bot_name,
+      bot: botContext.bot_name,
       chatId: telegram_chat_id,
       messageId: payload.telegram_message_id,
       fileId: insert.meta.last_row_id,
@@ -176,7 +176,7 @@ export async function ingestBotPayload({ env, bot, rawPayload, source = 'webhook
 
   await env.DB.prepare(
     'INSERT INTO bot_events (bot_id, source_id, event_type, payload_json, status) VALUES (?, ?, ?, ?, ?)'
-  ).bind(bot.id, dbSource?.id || null, event_type || 'unknown', JSON.stringify(payload), 'processed').run();
+  ).bind(botContext.id, dbSource?.id || null, event_type || 'unknown', JSON.stringify(payload), 'processed').run();
 
   return { success: true };
 }

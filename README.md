@@ -11,20 +11,20 @@ Esta versão roda localmente em Debian mantendo a estrutura do projeto:
 
 ## Arquitetura final
 
-### Bots Telegram (somente sync/eventos administrativos)
-Bots são usados apenas para:
+### Bot Telegram único (somente sync/eventos administrativos)
+Um único bot é usado no backend via `.env` (`TELEGRAM_BOT_TOKEN`) para:
 - ingestão/sincronização de grupos/canais
 - eventos de entrada/saída
-- notificação de metadados de mensagens/arquivos
-- organização da listagem por grupo/canal/pasta
+- metadados de mensagens/arquivos
+- download otimizado via Bot API local para arquivos menores
 
-**Bots não fazem upload/download real de arquivos grandes.**
+**O token do bot nunca passa pelo frontend e não é salvo no painel.**
 
-No painel admin (aba **Bots & Canais**) você consegue:
-- cadastrar bot existente (criado no BotFather)
-- ativar/desativar bot
-- remover bot
-- criar/remover vínculo bot -> canal/grupo -> pasta
+No painel admin (aba **Fontes Telegram**) você consegue:
+- cadastrar/editar fontes monitoradas
+- definir `telegram_chat_id` e `folder_path`
+- ativar/desativar cada fonte
+- excluir vínculo de monitoramento
 
 ### Conta/perfil Telegram autenticada (MTProto)
 Conta/perfil autenticado é usado para:
@@ -47,9 +47,8 @@ Ou seja, transferências grandes de arquivo passam pelo perfil Telegram autentic
 - `KV_PATH` (legado)
 - `TELEGRAM_USE_MOCK` (`true|false`, default `false`)
 - `TELEGRAM_MOCK_DIR` (somente quando `TELEGRAM_USE_MOCK=true`)
-- `BOT_WEBHOOK_BASE_URL` (URL pública HTTPS do seu servidor para registrar webhook real; se ausente, bots ativos entram em polling `getUpdates`)
-- `BOT_TOKEN_ENC_KEY` (recomendado para criptografar token do bot no SQLite; 32 bytes em base64 ou 64 hex)
-- `DOWNLOAD_BOT_TOKEN` (token do bot usado internamente no backend para stream de download <= 2000 MiB via Bot API local)
+- `BOT_WEBHOOK_BASE_URL` (URL pública HTTPS do seu servidor para registrar webhook real; se ausente, o bot único entra em polling `getUpdates`)
+- `TELEGRAM_BOT_TOKEN` (token do bot usado internamente no backend para stream de download <= 2000 MiB via Bot API local)
 - `BOT_API_BASE` (default: `http://127.0.0.1:8081`, endpoint do Bot API server local)
 
 ## Gerando e reutilizando sessão Telegram
@@ -109,75 +108,41 @@ npm run dev
   - `[download] fileId=... sizeMiB=... mode=...` (inclui `bot_api_local_file_stream`, `bot_api_http_stream` e fallbacks)
   - `[download-auth]` para negativas de autorização
 
-### Bots (eventos autenticados)
+### Bot único (eventos autenticados)
 `POST /api/bot/events`
-- autenticação por bot:
-  - headers `x-bot-name` + `x-bot-secret`
-  - ou query params `bot_name` + `bot_secret` (útil para webhook)
+- autenticação por secret opcional do webhook:
+  - header `x-telegram-bot-api-secret-token` (quando `BOT_WEBHOOK_SECRET` estiver configurado)
+  - sem `BOT_WEBHOOK_SECRET`, o endpoint aceita webhook sem header extra
 - eventos aceitos (`event_type`):
   - `source_joined`
   - `source_left`
   - `file_detected`
 
-### Admin (bots e mapeamentos)
-- `GET/POST /api/admin/bots`
+### Admin (fontes monitoradas)
 - `GET/POST /api/admin/bot-mappings`
 
 
-## Modos de ingestão de bots (webhook x polling)
+## Modo de ingestão do bot único (webhook x polling)
 
 ### Webhook (preferencial)
 - Requisito: `BOT_WEBHOOK_BASE_URL` configurado e acessível publicamente via HTTPS.
-- Ao cadastrar/ativar bot, o sistema tenta `setWebhook` e confirma com `getWebhookInfo`.
-- Se o webhook estiver confirmado para o bot, **polling não é usado** para esse bot.
+- Quando configurado, o backend registra webhook para o bot único e confirma com `getWebhookInfo`.
+- Se o webhook estiver confirmado, **polling não é usado**.
 
 ### Polling local (fallback automático)
-- Quando `BOT_WEBHOOK_BASE_URL` **não** está configurado, bots ativos usam `getUpdates` em loop no servidor local.
-- O polling também pode atuar como fallback por bot quando webhook não estiver confirmado.
-- O pipeline de persistência é o mesmo do webhook: update -> mapeamento bot/source/folder -> insert em `files`.
+- Quando `BOT_WEBHOOK_BASE_URL` **não** está configurado, o bot único usa `getUpdates` em loop no servidor local.
+- O pipeline de persistência é o mesmo do webhook: update -> resolução por `telegram_chat_id` -> insert em `files`.
 
-## Fluxo recomendado de bots
+## Fluxo recomendado (bot único)
 
-1. Criar bot no BotFather.
-2. Cadastrar no site informando:
-   - nome local (organizacional)
-   - token do bot
-3. Criar vínculo bot -> chat_id -> pasta (com seletor de pasta na UI).
-4. Se o bot estiver ativo, o sistema chama `setWebhook` automaticamente (quando `BOT_WEBHOOK_BASE_URL` estiver configurado).
-5. Bot envia updates para `/api/bot/events` autenticado.
+1. Configure `TELEGRAM_BOT_TOKEN` no backend.
+2. Configure `BOT_WEBHOOK_BASE_URL` (opcional) e `BOT_WEBHOOK_SECRET` (recomendado).
+3. No painel, abra **Fontes Telegram** e cadastre `chat_id -> pasta`.
+4. Adicione o bot único aos grupos/canais monitorados.
+5. Verifique ingestão por webhook/polling e downloads pelo endpoint `/api/files/:id/download`.
 
-### Webhook automático (recomendado)
-Se `BOT_WEBHOOK_BASE_URL` estiver definido, ao cadastrar/ativar o bot o sistema registra webhook no Telegram para:
-`<BASE_URL>/api/bot/events?bot_name=<...>&bot_secret=<...>`.
+## Arquitetura de Bot Único
 
-Para validar integração real:
-1. Rode `getWebhookInfo` do bot no Telegram API e confirme que `url` não está vazio.
-2. Envie arquivo no grupo/canal mapeado e acompanhe logs do Node (`[bots]`, `[bot-polling]` e `[bot-events]`).
-3. Verifique listagem em `/api/files` na pasta vinculada.
-
-### Teste rápido do modo polling
-1. Remova/ignore `BOT_WEBHOOK_BASE_URL`.
-2. Inicie servidor (`npm run start`/`npm run dev`).
-3. Confirme logs `[bot-polling] bot em polling`.
-4. Envie arquivo no grupo/canal mapeado e valide logs de ingestão + persistência.
-
-## Fluxos legados de bot removidos do fluxo principal
-As rotas antigas retornam `410 Gone`:
-- `/api/single-forward`
-- `/api/bulk-forward`
-- `/api/webhook`
-- `/api/download`
-- `/api/user/prepare-link-code`
-- `/api/user/unlink-telegram`
-- `/api/admin/unlink-user-telegram`
-
-
-## Logs de ingestão (debug)
-
-O servidor registra no stdout:
-- webhook recebido em `/api/bot/events`
-- source_joined/source_left processado
-- arquivo detectado
-- pasta mapeada aplicada (`mappingApplied`)
-
-Esses logs ajudam a validar rapidamente o pipeline bot -> evento -> arquivo em ambiente local.
+- O sistema usa apenas um bot configurado no backend (`TELEGRAM_BOT_TOKEN`).
+- O painel não cadastra token de bot; apenas configura fontes monitoradas (`telegram_chat_id -> folder_path`).
+- Se `BOT_WEBHOOK_BASE_URL` estiver definido e webhook ativo, polling fica em standby; sem webhook, usa polling.

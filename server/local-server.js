@@ -21,6 +21,8 @@ const env = {
   TELEGRAM_MOCK_DIR: process.env.TELEGRAM_MOCK_DIR ?? '',
   TELEGRAM_USE_MOCK: process.env.TELEGRAM_USE_MOCK ?? 'false',
   BOT_WEBHOOK_BASE_URL: process.env.BOT_WEBHOOK_BASE_URL ?? '',
+  TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN ?? '',
+  BOT_WEBHOOK_SECRET: process.env.BOT_WEBHOOK_SECRET ?? '',
   BOT_TOKEN_ENC_KEY: process.env.BOT_TOKEN_ENC_KEY ?? '',
   DOWNLOAD_BOT_TOKEN: process.env.DOWNLOAD_BOT_TOKEN ?? '',
   BOT_API_BASE: process.env.BOT_API_BASE ?? 'http://127.0.0.1:8081'
