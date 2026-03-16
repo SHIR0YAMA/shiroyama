@@ -32,6 +32,17 @@ export async function onRequestPost(context) {
             if (!oldPath || !newPath) {
                 return new Response(JSON.stringify({ message: 'Caminho de pasta inválido.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
             }
+            if (oldPath === newPath) {
+                return new Response(JSON.stringify({ message: 'A pasta já está neste destino.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+            }
+            if (newPath.startsWith(`${oldPath}/`)) {
+                return new Response(JSON.stringify({ message: 'Não é possível mover uma pasta para dentro dela mesma.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+            }
+
+            const destinationExists = await env.DB.prepare('SELECT id FROM folders WHERE folder_path = ? LIMIT 1').bind(newPath).first();
+            if (destinationExists) {
+                return new Response(JSON.stringify({ message: 'Já existe uma pasta com o destino informado.' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+            }
 
             const { results: folderRows } = await env.DB.prepare(
                 'SELECT id, folder_path FROM folders WHERE folder_path = ? OR folder_path LIKE ?'

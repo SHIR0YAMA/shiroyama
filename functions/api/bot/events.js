@@ -84,7 +84,9 @@ export async function onRequestPost(context) {
   if (!bot || bot.is_active !== 1) return json({ message: 'Bot não autorizado.' }, 401);
 
   const rawPayload = await request.json();
-  console.log('[bot-events] webhook recebido', { bot: botName, hasUpdateId: !!rawPayload?.update_id });
+  const updateType = rawPayload?.message ? 'message' : rawPayload?.channel_post ? 'channel_post' : rawPayload?.my_chat_member ? 'my_chat_member' : 'custom';
+  const updateChatId = rawPayload?.message?.chat?.id || rawPayload?.channel_post?.chat?.id || rawPayload?.my_chat_member?.chat?.id || null;
+  console.log('[bot-events] webhook recebido', { bot: botName, updateType, updateChatId, hasUpdateId: !!rawPayload?.update_id });
 
   const payload = normalizeTelegramUpdate(rawPayload);
   if (!payload) {
@@ -131,6 +133,7 @@ export async function onRequestPost(context) {
     ).bind(bot.id, source.id).first() : null;
 
     const folderPath = payload.folder_path || mapping?.folder_path || 'Inbox';
+    console.log('[bot-events] mapeamento resolvido', { bot: botName, chatId: telegram_chat_id, sourceId: source?.id || null, mappingId: mapping?.id || null, folderPath });
 
     const insert = await env.DB.prepare(`
       INSERT INTO files (

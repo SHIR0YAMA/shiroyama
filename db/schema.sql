@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS telegram_bots (
   bot_name TEXT NOT NULL UNIQUE,
   bot_username TEXT,
   bot_token_ref TEXT,
+  bot_token_enc TEXT,
   webhook_secret TEXT NOT NULL,
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,

@@ -401,7 +401,7 @@ async function handleFileDownload(fileId) {
 }
 
 // --- 7. OPERAÇÕES DE ARQUIVO E CARGOS (Modais) ---
-let moveState = { oldKeys: [], destinationPath: null, currentPath: [], isFolder: false };
+let moveState = { oldKeys: [], destinationPath: null, currentPath: [], isFolder: false, mode: "move", excludePath: null, onPickPath: null };
 let renameState = { oldKey: null, newKey: null, isFolder: false };
 let roleState = { id: null, allPermissions: [] };
 let folderPermsState = { folderPath: null };
@@ -410,10 +410,13 @@ let userRolesState = { userId: null };
 function openMoveModal(keysToMove, isFolder = false) {
     moveState.oldKeys = Array.isArray(keysToMove) ? keysToMove : [keysToMove];
     moveState.isFolder = isFolder;
+    moveState.mode = 'move';
+    moveState.onPickPath = null;
+    moveState.excludePath = isFolder ? String(moveState.oldKeys[0] || '').replace(/^\/+|\/+$/g, '') : null;
     const firstFileName = moveState.oldKeys[0].split('/').pop();
     const displayName = moveState.oldKeys.length > 1 ? `${moveState.oldKeys.length} itens` : firstFileName;
     document.getElementById('move-file-name').textContent = displayName;
-    
+
     const createFolderBtn = document.getElementById('create-folder-in-move-modal-btn');
     if (hasPermission('can_create_folders') && (hasPermission('can_move_items') || hasPermission('can_move_folders'))) {
         createFolderBtn.style.display = 'block';
@@ -421,41 +424,75 @@ function openMoveModal(keysToMove, isFolder = false) {
         createFolderBtn.style.display = 'none';
     }
     moveState.currentPath = [];
-    renderFolderNavigator(isFolder ? firstFileName : null);
+    renderFolderNavigator();
     moveFileModal.classList.add('show');
 }
 
-function closeMoveModal() { moveFileModal.classList.remove('show'); }
+function openFolderPickerModal(initialPath = '', onPickPath) {
+    moveState.oldKeys = [];
+    moveState.isFolder = false;
+    moveState.mode = 'pick-folder';
+    moveState.onPickPath = onPickPath;
+    moveState.excludePath = null;
+    moveState.currentPath = String(initialPath || '').split('/').filter(Boolean);
+    document.getElementById('move-file-name').textContent = 'Selecione a pasta de destino';
+    document.getElementById('create-folder-in-move-modal-btn').style.display = 'none';
+    renderFolderNavigator();
+    moveFileModal.classList.add('show');
+}
 
-function renderFolderNavigator(folderToExclude = null) {
+function closeMoveModal() { moveFileModal.classList.remove('show'); moveState.mode = 'move'; moveState.onPickPath = null; moveState.excludePath = null; }
+
+function renderFolderNavigator() {
     const navContainer = document.getElementById('folder-navigation');
     const pathDisplay = document.getElementById('move-file-path');
     const confirmBtn = document.getElementById('move-file-confirm-btn');
     const currentFolderContent = getContentForPath(moveState.currentPath);
+    const currentPathString = moveState.currentPath.join('/');
+
     const subFolders = Object.entries(currentFolderContent)
-        .filter(([_, item]) => !item._isFile && item.name !== folderToExclude)
-        .map(([name]) => name);
+        .filter(([_, item]) => !item._isFile)
+        .map(([name]) => {
+            const fullPath = currentPathString ? `${currentPathString}/${name}` : name;
+            const blocked = !!moveState.excludePath && (fullPath === moveState.excludePath || fullPath.startsWith(`${moveState.excludePath}/`));
+            return { name, fullPath, blocked };
+        });
 
     let html = '<ul>';
     if (moveState.currentPath.length > 0) html += `<li data-action="up">⬅️ .. (Voltar)</li>`;
-    subFolders.forEach(folder => { html += `<li data-action="down" data-folder="${folder}">📁 ${folder}</li>`; });
+    subFolders.forEach(folder => {
+        if (folder.blocked) {
+            html += `<li class="disabled" data-action="blocked" title="Destino inválido para a pasta atual">🚫 ${folder.name}</li>`;
+        } else {
+            html += `<li data-action="down" data-folder="${folder.name}">📁 ${folder.name}</li>`;
+        }
+    });
     html += '</ul>';
     navContainer.innerHTML = html;
-    const currentDisplayPath = `/${moveState.currentPath.join('/')}`;
-    pathDisplay.textContent = currentDisplayPath;
-    confirmBtn.disabled = false;
+    pathDisplay.textContent = `/${currentPathString}`;
+
+    const blockedCurrent = !!moveState.excludePath && (currentPathString === moveState.excludePath || currentPathString.startsWith(`${moveState.excludePath}/`));
+    confirmBtn.disabled = blockedCurrent;
 }
 
 async function confirmMoveFile() {
     moveState.destinationPath = moveState.currentPath.join('/');
+
+    if (moveState.mode === 'pick-folder') {
+        const picked = moveState.destinationPath;
+        closeMoveModal();
+        if (typeof moveState.onPickPath === 'function') moveState.onPickPath(picked);
+        return;
+    }
+
     showLoading();
     try {
         const apiToCall = moveState.isFolder ? 'admin/rename' : 'admin/bulk-move';
-        const payload = moveState.isFolder ? 
+        const payload = moveState.isFolder ?
             { oldKey: moveState.oldKeys[0], newKey: `${moveState.destinationPath}/${moveState.oldKeys[0].split('/').pop()}`, isFolder: true, action: 'move' } :
             { oldKeys: moveState.oldKeys, destinationPath: moveState.destinationPath };
         await apiCall(apiToCall, 'POST', payload);
-        showNotification("Item(ns) movido(s) com sucesso!", "success");
+        showNotification('Item(ns) movido(s) com sucesso!', 'success');
         closeMoveModal();
 
         if (moveState.isFolder) {
@@ -474,7 +511,7 @@ async function confirmMoveFile() {
         rebuildDerivedFileState();
         if (ensureCurrentPathExistsAfterMutation()) renderCurrentFilesView();
     } catch (error) {
-        showNotification(`Erro ao mover: ${error.message}`, "error");
+        showNotification(`Erro ao mover: ${error.message}`, 'error');
     } finally {
         hideLoading();
     }
@@ -866,7 +903,7 @@ function renderNav() {
 
 function renderLoginPage() {
     document.body.classList.add('login-active');
-    mainContent.innerHTML = `<div class="login-screen"><form id="login-form" class="auth-form login-card"><div class="brand"><span class="brand-icon"><i class="fas fa-cloud"></i></span><h2>Shiroyama Archive</h2><p>Seu armazenamento em nuvem seguro e organizado.</p></div><div class="form-group"><label for="username">Email ou Nome de Usuário</label><input type="text" id="username" name="username" required autocomplete="username"></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required autocomplete="current-password"></div><button type="submit" class="primary-btn">Entrar</button><a href="#" class="forgot-link">Esqueci minha senha</a></form></div>`;
+    mainContent.innerHTML = `<div class="login-screen"><form id="login-form" class="auth-form login-card"><div class="brand"><span class="brand-icon"><i class="fas fa-cloud"></i></span><h2>Shiroyama Archive</h2><p>Caso precise de um usuário para acessar o sistema contacte @mrorlob via Telegram.</p></div><div class="form-group"><label for="username">Email ou Nome de Usuário</label><input type="text" id="username" name="username" required autocomplete="username"></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required autocomplete="current-password"></div><button type="submit" class="primary-btn">Entrar</button><a href="#" class="forgot-link">Esqueci minha senha</a></form></div>`;
 
     document.querySelector('.forgot-link').onclick = (e) => {
         e.preventDefault();
@@ -1076,7 +1113,7 @@ async function renderAdminPage(subpage) {
                     <h3>Bots</h3>
                     <table class="admin-table">
                         <thead><tr><th>ID</th><th>Nome local</th><th>Token (ref)</th><th>Ativo</th><th>Mapeamentos</th><th>Ações</th></tr></thead>
-                        <tbody>${bots.map(b => `<tr><td>${b.id}</td><td>${b.bot_name}</td><td>${b.bot_username || '-'}</td><td>${b.is_active ? 'Sim' : 'Não'}</td><td>${b.mapping_count}</td><td><button class="toggle-bot-btn btn-icon" data-id="${b.id}" data-name="${b.bot_name}" data-active="${b.is_active ? '1' : '0'}" title="Ativar/Desativar"><i class="fas fa-power-off"></i></button> <button class="delete-bot-btn btn-danger" data-id="${b.id}" title="Excluir"><i class="fas fa-trash-can"></i></button></td></tr>`).join('')}</tbody>
+                        <tbody>${bots.map(b => `<tr><td>${b.id}</td><td>${b.bot_name}</td><td>${b.bot_token_ref || '-'}</td><td>${b.is_active ? 'Sim' : 'Não'}</td><td>${b.mapping_count}</td><td><button class="toggle-bot-btn btn-icon" data-id="${b.id}" data-name="${b.bot_name}" data-active="${b.is_active ? '1' : '0'}" title="Ativar/Desativar bot e webhook"><i class="fas fa-power-off"></i></button> <button class="delete-bot-btn btn-danger" data-id="${b.id}" title="Excluir"><i class="fas fa-trash-can"></i></button></td></tr>`).join('')}</tbody>
                     </table>
                 </div>
                 <div class="table-container" style="margin-bottom:16px;">
@@ -1088,13 +1125,11 @@ async function renderAdminPage(subpage) {
                         </select>
                         <input id="mapping-chat-id" type="text" placeholder="Chat ID (ex: -100123...)" style="min-width:220px;">
                         <input id="mapping-source-name" type="text" placeholder="Nome do canal/grupo" style="min-width:220px;">
-                        <select id="mapping-folder-path" style="min-width:220px;">
-                            <option value="">Selecione a pasta destino</option>
-                            <option value="">Home (raiz)</option>
-                            ${folderOptions.map(f => `<option value="${f}">${f}</option>`).join('')}
-                        </select>
+                        <input id="mapping-folder-path" type="text" readonly value="" placeholder="Home (raiz)" style="min-width:260px;">
+                        <button id="mapping-select-folder-btn" type="button"><i class="fas fa-folder-open"></i> Selecionar pasta</button>
                         <button id="create-mapping-btn"><i class="fas fa-link"></i> Salvar vínculo</button>
                     </div>
+                    <small style="display:block;margin-top:8px;opacity:.85;">Pastas disponíveis: ${folderOptions.length + 1}</small>
                 </div>
                 <div class="table-container">
                     <h3>Vínculos bot / canal / pasta</h3>
@@ -1522,8 +1557,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const action = li.dataset.action;
         if (action === 'up') moveState.currentPath.pop();
         else if (action === 'down') moveState.currentPath.push(li.dataset.folder);
-        const folderNameToExclude = moveState.isFolder ? moveState.oldKeys[0].split('/').pop() : null;
-        renderFolderNavigator(folderNameToExclude);
+        else return;
+        renderFolderNavigator();
     });
     document.getElementById('create-folder-in-move-modal-btn').onclick = () => { closeMoveModal(); openCreateFolderModal(true); };
 
@@ -1631,6 +1666,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        if (target.id === 'mapping-select-folder-btn') {
+            const current = document.getElementById('mapping-folder-path')?.value || '';
+            openFolderPickerModal(current, (pickedPath) => {
+                const input = document.getElementById('mapping-folder-path');
+                if (!input) return;
+                input.value = pickedPath;
+                input.placeholder = pickedPath || 'Home (raiz)';
+            });
+            return;
+        }
+
         if (target.id === 'create-bot-btn') {
             const botName = document.getElementById('bot-name-input')?.value?.trim();
             const botToken = document.getElementById('bot-token-input')?.value?.trim();
@@ -1638,7 +1684,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!botToken) { showNotification('Informe o token do bot.', 'error'); return; }
             try {
                 const created = await apiCall('admin/bots', 'POST', { action: 'create', bot_name: botName, bot_token: botToken, is_active: true });
-                showNotification(`Bot criado. Secret: ${created.webhook_secret}`, 'success');
+                showNotification(created.webhook?.configured ? `Bot cadastrado e webhook configurado com sucesso.` : `Bot cadastrado, mas webhook não foi confirmado: ${created.webhook?.reason || 'verifique BOT_WEBHOOK_BASE_URL/HTTPS público'}`, created.webhook?.configured ? 'success' : 'warning');
                 await router('admin/bots');
             } catch (err) { showNotification(err.message, 'error'); }
         }
@@ -1653,8 +1699,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 is_active: !isActive
             };
             try {
-                await apiCall('admin/bots', 'POST', payload);
-                showNotification('Status do bot atualizado.', 'success');
+                const updated = await apiCall('admin/bots', 'POST', payload);
+                if (payload.is_active) {
+                    const msg = updated.webhook?.configured
+                        ? 'Bot ativado e webhook confirmado no Telegram.'
+                        : `Bot ativado, mas webhook não confirmado: ${updated.webhook?.reason || 'verifique URL pública/HTTPS'}`;
+                    showNotification(msg, updated.webhook?.configured ? 'success' : 'warning');
+                } else {
+                    showNotification('Bot desativado. Webhook removido quando disponível.', 'success');
+                }
                 await router('admin/bots');
             } catch (err) { showNotification(err.message, 'error'); }
         }

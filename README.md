@@ -47,7 +47,8 @@ Ou seja, transferências grandes de arquivo passam pelo perfil Telegram autentic
 - `KV_PATH` (legado)
 - `TELEGRAM_USE_MOCK` (`true|false`, default `false`)
 - `TELEGRAM_MOCK_DIR` (somente quando `TELEGRAM_USE_MOCK=true`)
-- `BOT_WEBHOOK_BASE_URL` (opcional: tenta configurar webhook automaticamente ao cadastrar bot)
+- `BOT_WEBHOOK_BASE_URL` (URL pública HTTPS do seu servidor para registrar webhook real)
+- `BOT_TOKEN_ENC_KEY` (recomendado para criptografar token do bot no SQLite; 32 bytes em base64 ou 64 hex)
 
 ## Gerando e reutilizando sessão Telegram
 
@@ -116,11 +117,17 @@ npm run dev
    - nome local (organizacional)
    - token do bot
 3. Criar vínculo bot -> chat_id -> pasta (com seletor de pasta na UI).
-4. Bot envia eventos para `/api/bot/events` autenticado.
+4. Se o bot estiver ativo, o sistema chama `setWebhook` automaticamente (quando `BOT_WEBHOOK_BASE_URL` estiver configurado).
+5. Bot envia updates para `/api/bot/events` autenticado.
 
-### Webhook automático (opcional)
-Se `BOT_WEBHOOK_BASE_URL` estiver definido, ao cadastrar o bot o sistema tenta registrar webhook automaticamente no Telegram para:
+### Webhook automático (recomendado)
+Se `BOT_WEBHOOK_BASE_URL` estiver definido, ao cadastrar/ativar o bot o sistema registra webhook no Telegram para:
 `<BASE_URL>/api/bot/events?bot_name=<...>&bot_secret=<...>`.
+
+Para validar integração real:
+1. Rode `getWebhookInfo` do bot no Telegram API e confirme que `url` não está vazio.
+2. Envie arquivo no grupo/canal mapeado e acompanhe logs do Node (`[bots]` e `[bot-events]`).
+3. Verifique listagem em `/api/files` na pasta vinculada.
 
 ## Fluxos legados de bot removidos do fluxo principal
 As rotas antigas retornam `410 Gone`:
