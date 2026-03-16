@@ -42,17 +42,29 @@ function fileSizeToMiB(fileSize) {
   return bytes / MIB;
 }
 
-async function fetchBotApiFilePath({ baseUrl, token, fileId }) {
-  const url = new URL(`/bot${token}/getFile`, baseUrl);
-  url.searchParams.set('file_id', fileId);
+async function openBotApiFileStream({ baseUrl, token, fileId }) {
+  const getFileUrl = new URL(`/bot${token}/getFile`, baseUrl);
+  getFileUrl.searchParams.set('file_id', fileId);
 
-  const response = await fetch(url.toString(), { method: 'GET' });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.ok || !payload?.result?.file_path) {
-    throw new Error(payload?.description || 'Falha ao consultar arquivo no Bot API local.');
+  const metaResponse = await fetch(getFileUrl.toString(), { method: 'GET' });
+  const metaPayload = await metaResponse.json().catch(() => null);
+  if (!metaResponse.ok || !metaPayload?.ok || !metaPayload?.result?.file_path) {
+    throw new Error(metaPayload?.description || 'Falha ao consultar arquivo no Bot API local.');
   }
 
-  return payload.result.file_path;
+  const filePath = metaPayload.result.file_path;
+  const fileUrl = new URL(`/file/bot${token}/${filePath}`, baseUrl);
+  const fileResponse = await fetch(fileUrl.toString(), { method: 'GET' });
+  if (!fileResponse.ok || !fileResponse.body) {
+    throw new Error(`Falha ao abrir stream do Bot API local (HTTP ${fileResponse.status}).`);
+  }
+
+  return {
+    stream: Readable.fromWeb(fileResponse.body),
+    contentType: fileResponse.headers.get('content-type') || null,
+    contentLength: Number(fileResponse.headers.get('content-length') || 0) || null,
+    cleanup: async () => {}
+  };
 }
 
 export async function onRequestGet(context) {
@@ -126,40 +138,48 @@ export async function onRequestGet(context) {
 
     if (sizeMiB <= MAX_REDIRECT_MIB) {
       if (file.telegram_file_id) {
-        logDownload({ fileId: file.id, mode: 'bot_api_redirect' });
-
         const botToken = String(env.DOWNLOAD_BOT_TOKEN || '').trim();
         const botApiBase = String(env.BOT_API_BASE || 'http://127.0.0.1:8081').trim();
         if (!botToken) {
-          throw new Error('DOWNLOAD_BOT_TOKEN não configurado para modo bot_api_redirect.');
+          throw new Error('DOWNLOAD_BOT_TOKEN não configurado para modo bot_api_stream.');
         }
 
-        const filePath = await fetchBotApiFilePath({ baseUrl: botApiBase, token: botToken, fileId: file.telegram_file_id });
-        const redirectUrl = new URL(`/file/bot${botToken}/${filePath}`, botApiBase).toString();
-
-        return new Response(null, {
-          status: 302,
-          headers: { Location: redirectUrl }
+        logDownload({ fileId: file.id, mode: 'bot_api_stream', sizeMiB: Number(sizeMiB.toFixed(2)), folderPath: file.folder_path || '' });
+        media = await openBotApiFileStream({ baseUrl: botApiBase, token: botToken, fileId: file.telegram_file_id });
+      } else {
+        logDownload({ fileId: file.id, mode: 'mtproto_stream', fallback: 'mtproto_missing_file_id' });
+        media = await downloadTelegramMedia({
+          apiId: env.TELEGRAM_API_ID,
+          apiHash: env.TELEGRAM_API_HASH,
+          session: env.TELEGRAM_SESSION,
+          chatId: file.telegram_chat_id,
+          messageId: file.telegram_message_id,
+          mockDir: env.TELEGRAM_MOCK_DIR,
+          useMock: env.TELEGRAM_USE_MOCK,
+          chunkSize: 1024 * 1024
         });
       }
-
-      logDownload({ fileId: file.id, mode: 'mtproto_stream', fallback: 'mtproto_missing_file_id' });
     } else {
       logDownload({ fileId: file.id, mode: 'mtproto_stream' });
+      media = await downloadTelegramMedia({
+        apiId: env.TELEGRAM_API_ID,
+        apiHash: env.TELEGRAM_API_HASH,
+        session: env.TELEGRAM_SESSION,
+        chatId: file.telegram_chat_id,
+        messageId: file.telegram_message_id,
+        mockDir: env.TELEGRAM_MOCK_DIR,
+        useMock: env.TELEGRAM_USE_MOCK,
+        chunkSize: 1024 * 1024
+      });
     }
-    media = await downloadTelegramMedia({
-      apiId: env.TELEGRAM_API_ID,
-      apiHash: env.TELEGRAM_API_HASH,
-      session: env.TELEGRAM_SESSION,
-      chatId: file.telegram_chat_id,
-      messageId: file.telegram_message_id,
-      mockDir: env.TELEGRAM_MOCK_DIR,
-      useMock: env.TELEGRAM_USE_MOCK,
-      chunkSize: 1024 * 1024
-    });
+
+    if (media?.stream) {
+      media.stream.once('end', () => logDownload({ fileId: file.id, mode: sizeMiB <= MAX_REDIRECT_MIB && file.telegram_file_id ? 'bot_api_stream' : 'mtproto_stream', status: 'completed' }));
+      media.stream.once('error', (streamErr) => logDownload({ fileId: file.id, mode: sizeMiB <= MAX_REDIRECT_MIB && file.telegram_file_id ? 'bot_api_stream' : 'mtproto_stream', status: 'stream_error', error: streamErr?.message || String(streamErr) }));
+    }
 
     const headers = new Headers();
-    headers.set('Content-Type', file.mime_type || 'application/octet-stream');
+    headers.set('Content-Type', media.contentType || file.mime_type || 'application/octet-stream');
     headers.set('Content-Disposition', `attachment; filename="${sanitizeFilename(file.file_name)}"`);
     if (media.contentLength) headers.set('Content-Length', String(media.contentLength));
     else if (file.file_size) headers.set('Content-Length', String(file.file_size));
