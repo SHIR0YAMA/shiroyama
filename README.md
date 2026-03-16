@@ -131,3 +131,14 @@ As rotas antigas retornam `410 Gone`:
 - `/api/user/prepare-link-code`
 - `/api/user/unlink-telegram`
 - `/api/admin/unlink-user-telegram`
+
+
+## Logs de ingestão (debug)
+
+O servidor registra no stdout:
+- webhook recebido em `/api/bot/events`
+- source_joined/source_left processado
+- arquivo detectado
+- pasta mapeada aplicada (`mappingApplied`)
+
+Esses logs ajudam a validar rapidamente o pipeline bot -> evento -> arquivo em ambiente local.

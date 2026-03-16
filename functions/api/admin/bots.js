@@ -22,10 +22,15 @@ async function configureWebhook(botToken, botName, botSecret, env) {
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url: webhookUrl })
+    body: JSON.stringify({
+      url: webhookUrl,
+      allowed_updates: ['message', 'channel_post', 'edited_message', 'edited_channel_post', 'my_chat_member', 'chat_member'],
+      drop_pending_updates: false
+    })
   });
 
   const payload = await response.json();
+  console.log('[bots] setWebhook response', { botName, ok: payload.ok, description: payload.description || null });
   if (!payload.ok) {
     return { configured: false, reason: payload.description || 'Falha ao configurar webhook' };
   }

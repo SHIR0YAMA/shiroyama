@@ -1058,9 +1058,10 @@ async function renderAdminPage(subpage) {
 
 
         } else if (subpage === 'bots' && canManageBots) {
-            const [botsResp, mappingsResp] = await Promise.all([apiCall('admin/bots'), apiCall('admin/bot-mappings')]);
+            const [botsResp, mappingsResp, foldersResp] = await Promise.all([apiCall('admin/bots'), apiCall('admin/bot-mappings'), apiCall('admin/folders')]);
             const bots = botsResp.bots || [];
             const mappings = mappingsResp.mappings || [];
+            const folderOptions = (foldersResp.folders || []);
 
             adminContent.innerHTML = `
                 <div class="table-container" style="margin-bottom:16px;">
@@ -1090,7 +1091,7 @@ async function renderAdminPage(subpage) {
                         <select id="mapping-folder-path" style="min-width:220px;">
                             <option value="">Selecione a pasta destino</option>
                             <option value="">Home (raiz)</option>
-                            ${(state.allFolders || []).map(f => `<option value="${f}">${f}</option>`).join('')}
+                            ${folderOptions.map(f => `<option value="${f}">${f}</option>`).join('')}
                         </select>
                         <button id="create-mapping-btn"><i class="fas fa-link"></i> Salvar vínculo</button>
                     </div>

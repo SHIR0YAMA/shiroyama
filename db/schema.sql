@@ -122,6 +122,17 @@ CREATE TABLE IF NOT EXISTS bot_events (
   FOREIGN KEY(source_id) REFERENCES telegram_sources(id) ON DELETE SET NULL
 );
 
+
+CREATE TABLE IF NOT EXISTS admin_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  admin_user_id INTEGER,
+  admin_username TEXT,
+  action TEXT NOT NULL,
+  target_info TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(admin_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS upload_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
@@ -135,6 +146,8 @@ CREATE TABLE IF NOT EXISTS upload_jobs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_folders_path ON folders(folder_path);
+CREATE INDEX IF NOT EXISTS idx_admin_logs_created_at ON admin_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_admin_logs_admin_user ON admin_logs(admin_user_id);
 CREATE INDEX IF NOT EXISTS idx_files_folder_path ON files(folder_path);
 CREATE INDEX IF NOT EXISTS idx_files_telegram_message ON files(telegram_chat_id, telegram_message_id);
 CREATE INDEX IF NOT EXISTS idx_files_origin ON files(origin);
