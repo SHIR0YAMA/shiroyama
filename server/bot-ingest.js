@@ -110,12 +110,23 @@ export async function ingestBotPayload({ env, bot, rawPayload, source = 'webhook
     const folderPath = payload.folder_path || mapping?.folder_path || 'Inbox';
     console.log('[bot-events] mapeamento aplicado', { source, bot: bot.bot_name, chatId: telegram_chat_id, sourceId: dbSource?.id || null, mappingId: mapping?.id || null, folderPath });
 
-    const insert = await env.DB.prepare(`
-      INSERT INTO files (
-        folder_path, file_name, mime_type, file_size, telegram_chat_id, telegram_message_id,
-        telegram_file_id, telegram_file_ref, metadata_json, origin, status, bot_id, source_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'bot_sync', 'active', ?, ?)
-    `).bind(
+    const insertColumns = [
+      'folder_path',
+      'file_name',
+      'mime_type',
+      'file_size',
+      'telegram_chat_id',
+      'telegram_message_id',
+      'telegram_file_id',
+      'telegram_file_ref',
+      'metadata_json',
+      'origin',
+      'status',
+      'bot_id',
+      'source_id'
+    ];
+
+    const insertValues = [
       folderPath,
       payload.file_name || `arquivo_${payload.telegram_message_id}`,
       payload.mime_type || 'application/octet-stream',
@@ -127,7 +138,25 @@ export async function ingestBotPayload({ env, bot, rawPayload, source = 'webhook
       JSON.stringify(payload.metadata || {}),
       bot.id,
       dbSource?.id || null
-    ).run();
+    ];
+
+    console.log('[bot-events] pre-insert files', {
+      source,
+      fileName: insertValues[1],
+      telegram_file_id: insertValues[6],
+      folderPath,
+      columns: insertColumns,
+      columnsCount: insertColumns.length,
+      bindValuesCount: insertValues.length,
+      sqlValuesCount: insertColumns.length
+    });
+
+    const insert = await env.DB.prepare(`
+      INSERT INTO files (
+        folder_path, file_name, mime_type, file_size, telegram_chat_id, telegram_message_id,
+        telegram_file_id, telegram_file_ref, metadata_json, origin, status, bot_id, source_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'bot_sync', 'active', ?, ?)
+    `).bind(...insertValues).run();
 
     await env.DB.prepare(
       'INSERT INTO bot_events (bot_id, source_id, event_type, payload_json, status) VALUES (?, ?, ?, ?, ?)'
