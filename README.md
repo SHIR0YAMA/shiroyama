@@ -11,27 +11,27 @@ Esta versão roda localmente em Debian mantendo a estrutura do projeto:
 
 ## Arquitetura final
 
-### 1) Bots Telegram (somente sync/eventos)
+### Bots Telegram (somente sync/eventos administrativos)
 Bots são usados apenas para:
 - ingestão/sincronização de grupos/canais
 - eventos de entrada/saída
 - notificação de metadados de mensagens/arquivos
 - organização da listagem por grupo/canal/pasta
 
-Bots **não** fazem upload/download real de arquivos grandes.
+**Bots não fazem upload/download real de arquivos grandes.**
 
 No painel admin (aba **Bots & Canais**) você consegue:
-- cadastrar bot
+- cadastrar bot existente (criado no BotFather)
 - ativar/desativar bot
 - remover bot
 - criar/remover vínculo bot -> canal/grupo -> pasta
 
-### 2) Conta/perfil Telegram autenticada (MTProto)
+### Conta/perfil Telegram autenticada (MTProto)
 Conta/perfil autenticado é usado para:
 - upload real via site
 - download real via site
 
-Ou seja, transferências grandes de arquivo sempre passam pelo perfil Telegram autenticado.
+Ou seja, transferências grandes de arquivo passam pelo perfil Telegram autenticado.
 
 ## Variáveis de ambiente
 
@@ -47,6 +47,7 @@ Ou seja, transferências grandes de arquivo sempre passam pelo perfil Telegram a
 - `KV_PATH` (legado)
 - `TELEGRAM_USE_MOCK` (`true|false`, default `false`)
 - `TELEGRAM_MOCK_DIR` (somente quando `TELEGRAM_USE_MOCK=true`)
+- `BOT_WEBHOOK_BASE_URL` (opcional: tenta configurar webhook automaticamente ao cadastrar bot)
 
 ## Gerando e reutilizando sessão Telegram
 
@@ -96,10 +97,10 @@ npm run dev
 
 ### Bots (eventos autenticados)
 `POST /api/bot/events`
-- Headers:
-  - `x-bot-name`
-  - `x-bot-secret`
-- Body (`event_type`):
+- autenticação por bot:
+  - headers `x-bot-name` + `x-bot-secret`
+  - ou query params `bot_name` + `bot_secret` (útil para webhook)
+- eventos aceitos (`event_type`):
   - `source_joined`
   - `source_left`
   - `file_detected`
@@ -107,6 +108,19 @@ npm run dev
 ### Admin (bots e mapeamentos)
 - `GET/POST /api/admin/bots`
 - `GET/POST /api/admin/bot-mappings`
+
+## Fluxo recomendado de bots
+
+1. Criar bot no BotFather.
+2. Cadastrar no site informando:
+   - nome local (organizacional)
+   - token do bot
+3. Criar vínculo bot -> chat_id -> pasta (com seletor de pasta na UI).
+4. Bot envia eventos para `/api/bot/events` autenticado.
+
+### Webhook automático (opcional)
+Se `BOT_WEBHOOK_BASE_URL` estiver definido, ao cadastrar o bot o sistema tenta registrar webhook automaticamente no Telegram para:
+`<BASE_URL>/api/bot/events?bot_name=<...>&bot_secret=<...>`.
 
 ## Fluxos legados de bot removidos do fluxo principal
 As rotas antigas retornam `410 Gone`:
@@ -117,27 +131,3 @@ As rotas antigas retornam `410 Gone`:
 - `/api/user/prepare-link-code`
 - `/api/user/unlink-telegram`
 - `/api/admin/unlink-user-telegram`
-
-## Teste rápido (local)
-
-1. Criar bot:
-```bash
-curl -X POST http://localhost:3000/api/admin/bots -H "Authorization: Bearer <JWT>" -H "content-type: application/json" -d '{"action":"create","bot_name":"animes_bot"}'
-```
-2. Vincular bot/canal/pasta:
-```bash
-curl -X POST http://localhost:3000/api/admin/bot-mappings -H "Authorization: Bearer <JWT>" -H "content-type: application/json" -d '{"action":"upsert","bot_id":1,"telegram_chat_id":"-100123","source_name":"Animes","folder_path":"Animes"}'
-```
-3. Ingestão por bot:
-```bash
-curl -X POST http://localhost:3000/api/bot/events -H "x-bot-name: animes_bot" -H "x-bot-secret: <SECRET>" -H "content-type: application/json" -d '{"event_type":"file_detected","telegram_chat_id":"-100123","telegram_message_id":101,"file_name":"ep1.mkv","file_size":123}'
-```
-4. Upload via perfil:
-```bash
-curl -X POST http://localhost:3000/api/files/upload -H "Authorization: Bearer <JWT>" -F "file=@./video.mp4" -F "telegram_chat_id=-100123" -F "folder_path=Animes"
-```
-5. Listar e baixar:
-```bash
-curl -H "Authorization: Bearer <JWT>" http://localhost:3000/api/files
-curl -H "Authorization: Bearer <JWT>" -OJ http://localhost:3000/api/files/1/download
-```

@@ -12,8 +12,9 @@ async function authenticateBot(env, botName, botSecret) {
 export async function onRequestPost(context) {
   const { env, request } = context;
 
-  const botName = request.headers.get('x-bot-name');
-  const botSecret = request.headers.get('x-bot-secret');
+  const url = new URL(request.url);
+  const botName = request.headers.get('x-bot-name') || url.searchParams.get('bot_name');
+  const botSecret = request.headers.get('x-bot-secret') || url.searchParams.get('bot_secret');
   const bot = await authenticateBot(env, botName, botSecret);
   if (!bot || bot.is_active !== 1) return json({ message: 'Bot não autorizado.' }, 401);
 

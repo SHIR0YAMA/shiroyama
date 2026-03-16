@@ -1067,15 +1067,15 @@ async function renderAdminPage(subpage) {
                     <h3>Cadastrar bot</h3>
                     <div class="actions-wrap" style="gap:8px;flex-wrap:wrap;">
                         <input id="bot-name-input" type="text" placeholder="Nome do bot (ex: animes_bot)" style="min-width:220px;">
-                        <input id="bot-username-input" type="text" placeholder="Username do bot (opcional)" style="min-width:220px;">
-                        <button id="create-bot-btn"><i class="fas fa-plus"></i> Criar bot</button>
+                        <input id="bot-token-input" type="password" placeholder="Token do bot (BotFather)" style="min-width:280px;">
+                        <button id="create-bot-btn"><i class="fas fa-plus"></i> Cadastrar bot existente</button>
                     </div>
                 </div>
                 <div class="table-container" style="margin-bottom:16px;">
                     <h3>Bots</h3>
                     <table class="admin-table">
-                        <thead><tr><th>ID</th><th>Nome</th><th>Username</th><th>Ativo</th><th>Mapeamentos</th><th>Ações</th></tr></thead>
-                        <tbody>${bots.map(b => `<tr><td>${b.id}</td><td>${b.bot_name}</td><td>${b.bot_username || '-'}</td><td>${b.is_active ? 'Sim' : 'Não'}</td><td>${b.mapping_count}</td><td><button class="toggle-bot-btn btn-icon" data-id="${b.id}" data-name="${b.bot_name}" data-username="${b.bot_username || ''}" data-active="${b.is_active ? '1' : '0'}" title="Ativar/Desativar"><i class="fas fa-power-off"></i></button> <button class="delete-bot-btn btn-danger" data-id="${b.id}" title="Excluir"><i class="fas fa-trash-can"></i></button></td></tr>`).join('')}</tbody>
+                        <thead><tr><th>ID</th><th>Nome local</th><th>Token (ref)</th><th>Ativo</th><th>Mapeamentos</th><th>Ações</th></tr></thead>
+                        <tbody>${bots.map(b => `<tr><td>${b.id}</td><td>${b.bot_name}</td><td>${b.bot_username || '-'}</td><td>${b.is_active ? 'Sim' : 'Não'}</td><td>${b.mapping_count}</td><td><button class="toggle-bot-btn btn-icon" data-id="${b.id}" data-name="${b.bot_name}" data-active="${b.is_active ? '1' : '0'}" title="Ativar/Desativar"><i class="fas fa-power-off"></i></button> <button class="delete-bot-btn btn-danger" data-id="${b.id}" title="Excluir"><i class="fas fa-trash-can"></i></button></td></tr>`).join('')}</tbody>
                     </table>
                 </div>
                 <div class="table-container" style="margin-bottom:16px;">
@@ -1087,7 +1087,11 @@ async function renderAdminPage(subpage) {
                         </select>
                         <input id="mapping-chat-id" type="text" placeholder="Chat ID (ex: -100123...)" style="min-width:220px;">
                         <input id="mapping-source-name" type="text" placeholder="Nome do canal/grupo" style="min-width:220px;">
-                        <input id="mapping-folder-path" type="text" placeholder="Pasta destino (ex: Animes)" style="min-width:220px;">
+                        <select id="mapping-folder-path" style="min-width:220px;">
+                            <option value="">Selecione a pasta destino</option>
+                            <option value="">Home (raiz)</option>
+                            ${(state.allFolders || []).map(f => `<option value="${f}">${f}</option>`).join('')}
+                        </select>
                         <button id="create-mapping-btn"><i class="fas fa-link"></i> Salvar vínculo</button>
                     </div>
                 </div>
@@ -1628,10 +1632,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (target.id === 'create-bot-btn') {
             const botName = document.getElementById('bot-name-input')?.value?.trim();
-            const botUsername = document.getElementById('bot-username-input')?.value?.trim();
-            if (!botName) { showNotification('Informe o nome do bot.', 'error'); return; }
+            const botToken = document.getElementById('bot-token-input')?.value?.trim();
+            if (!botName) { showNotification('Informe o nome local do bot.', 'error'); return; }
+            if (!botToken) { showNotification('Informe o token do bot.', 'error'); return; }
             try {
-                const created = await apiCall('admin/bots', 'POST', { action: 'create', bot_name: botName, bot_username: botUsername || null, is_active: true });
+                const created = await apiCall('admin/bots', 'POST', { action: 'create', bot_name: botName, bot_token: botToken, is_active: true });
                 showNotification(`Bot criado. Secret: ${created.webhook_secret}`, 'success');
                 await router('admin/bots');
             } catch (err) { showNotification(err.message, 'error'); }
@@ -1644,7 +1649,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 action: 'update',
                 id,
                 bot_name: target.dataset.name,
-                bot_username: target.dataset.username || null,
                 is_active: !isActive
             };
             try {
@@ -1669,13 +1673,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const chatId = document.getElementById('mapping-chat-id')?.value?.trim();
             const sourceName = document.getElementById('mapping-source-name')?.value?.trim();
             const folderPath = document.getElementById('mapping-folder-path')?.value?.trim();
-            if (!botId || !chatId || !folderPath) { showNotification('Preencha bot, chat_id e pasta.', 'error'); return; }
+            if (!botId || !chatId) { showNotification('Preencha bot e chat_id.', 'error'); return; }
             try {
                 await apiCall('admin/bot-mappings', 'POST', {
                     action: 'upsert',
                     bot_id: botId,
                     telegram_chat_id: chatId,
-                    source_name: sourceName || folderPath,
+                    source_name: sourceName || (folderPath || 'Home'),
                     folder_path: folderPath,
                     is_active: true
                 });

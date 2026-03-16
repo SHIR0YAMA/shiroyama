@@ -80,6 +80,16 @@ CREATE TABLE IF NOT EXISTS bot_source_mappings (
   FOREIGN KEY(source_id) REFERENCES telegram_sources(id) ON DELETE CASCADE
 );
 
+
+CREATE TABLE IF NOT EXISTS folders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  folder_path TEXT NOT NULL UNIQUE,
+  created_by_user_id INTEGER,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS files (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   folder_path TEXT DEFAULT '',
@@ -124,6 +134,7 @@ CREATE TABLE IF NOT EXISTS upload_jobs (
   FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE SET NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_folders_path ON folders(folder_path);
 CREATE INDEX IF NOT EXISTS idx_files_folder_path ON files(folder_path);
 CREATE INDEX IF NOT EXISTS idx_files_telegram_message ON files(telegram_chat_id, telegram_message_id);
 CREATE INDEX IF NOT EXISTS idx_files_origin ON files(origin);
