@@ -676,6 +676,22 @@
             .directory-link, .directory-current { font-size: 16px; }
             .file-list.grid-mode { grid-template-columns: 1fr; }
         }
+    
+        /* Bot folder picker modal */
+        #bot-folder-picker-modal .modal-content { max-width: 640px; }
+        .folder-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+        .folder-picker-badge { display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(177, 149, 244, 0.45); border-radius: 999px; padding: 6px 12px; background: rgba(123, 91, 201, 0.2); color: #e9ddff; font-size: 12px; font-weight: 600; }
+        .modal-path { border: 1px solid rgba(156, 126, 233, 0.5); background: rgba(30, 26, 47, 0.95); border-radius: 10px; padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #f4e8ff; margin-bottom: 10px; word-break: break-all; }
+        .folder-navigation-list { min-height: 230px; max-height: 46vh; overflow: auto; border: 1px solid rgba(156, 126, 233, 0.45); border-radius: 12px; padding: 12px; background: linear-gradient(180deg, rgba(29, 25, 43, 0.95), rgba(22, 19, 34, 0.95)); }
+        .folder-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+        .folder-picker-card { border: 1px solid rgba(186, 161, 245, 0.45); border-radius: 12px; background: rgba(62, 49, 95, 0.45); color: #f4ecff; display: flex; align-items: center; gap: 10px; text-align: left; padding: 12px; cursor: pointer; transition: all .18s ease; }
+        .folder-picker-card:hover { transform: translateY(-1px); border-color: rgba(222, 191, 255, 0.7); background: rgba(96, 76, 147, 0.55); box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+        .folder-picker-card .icon { font-size: 18px; width: 20px; text-align: center; }
+        .folder-picker-card .label { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+        .folder-picker-up { background: rgba(47, 84, 131, 0.35); border-color: rgba(123, 178, 255, 0.5); }
+        .folder-picker-root { background: rgba(36, 103, 73, 0.32); border-color: rgba(111, 224, 175, 0.45); }
+        .folder-picker-selected { margin-top: 12px; margin-bottom: 0; font-size: 14px; color: #f5eeff; }
+
     </style>
 </head>
 <body>
@@ -823,11 +839,14 @@
     <div id="bot-folder-picker-modal" class="modal-overlay">
         <div class="modal-content">
             <span id="bot-folder-picker-close-btn" class="modal-close-btn">×</span>
-            <h2>Selecionar pasta do vínculo</h2>
+            <div class="folder-picker-head">
+                <h2>Selecionar pasta do vínculo</h2>
+                <span class="folder-picker-badge"><i class="fas fa-folder-tree"></i> Navegador de pastas</span>
+            </div>
             <p>Navegue pelas pastas e confirme o destino para o mapeamento bot/canal.</p>
             <div id="bot-folder-picker-path" class="modal-path">/</div>
             <div id="bot-folder-picker-navigation" class="folder-navigation-list"></div>
-            <p id="bot-folder-picker-selected" style="margin-top: 10px; opacity: .95;">Pasta selecionada: Home (raiz)</p>
+            <p id="bot-folder-picker-selected" class="folder-picker-selected">Pasta selecionada: Home (raiz)</p>
             <div class="modal-footer">
                 <button id="bot-folder-picker-cancel-btn">Cancelar</button>
                 <button id="bot-folder-picker-confirm-btn">Confirmar pasta</button>

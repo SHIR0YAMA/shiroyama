@@ -82,6 +82,11 @@ npm run dev
 
 ## Endpoints principais
 
+### Horário exibido no front
+- O banco mantém timestamps em UTC (`CURRENT_TIMESTAMP`).
+- O front converte e exibe em `America/Sao_Paulo` (UTC-3/Brasília) para consistência visual local.
+
+
 ### Upload real via perfil Telegram (MTProto)
 `POST /api/files/upload`
 - Auth JWT

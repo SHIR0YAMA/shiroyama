@@ -14,11 +14,26 @@ function getRawModifiedDate(item) {
     return item.updated_at || item.modified_at || item.created_at || item.last_modified || item.date || null;
 }
 
+function parseAppDate(rawDate) {
+    if (!rawDate) return null;
+    if (rawDate instanceof Date) return rawDate;
+    const value = String(rawDate).trim();
+    if (!value) return null;
+
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
+        return new Date(value.replace(' ', 'T') + 'Z');
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+}
+
 function formatDateTime(rawDate) {
-    if (!rawDate) return '—';
-    const date = new Date(rawDate);
-    if (Number.isNaN(date.getTime())) return '—';
+    const date = parseAppDate(rawDate);
+    if (!date) return '—';
     return date.toLocaleString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -298,7 +313,8 @@ function buildFolderStats(files) {
 
         const fileSize = Number(file.file_size) || 0;
         const modifiedRaw = getRawModifiedDate(file);
-        const modifiedTime = modifiedRaw ? new Date(modifiedRaw).getTime() : NaN;
+        const modifiedDate = parseAppDate(modifiedRaw);
+        const modifiedTime = modifiedDate ? modifiedDate.getTime() : NaN;
 
         for (let i = 1; i < parts.length; i++) {
             const folderPath = parts.slice(0, i).join('/');
@@ -398,7 +414,41 @@ function ensureCurrentPathExistsAfterMutation() {
 
 async function handleFileDownload(fileId) {
     if (!fileId) return;
-    window.location.href = `/api/files/${fileId}/download`;
+    showLoading();
+    try {
+        const headers = {};
+        if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+
+        const response = await fetch(`/api/files/${fileId}/download`, { method: 'GET', headers });
+        if (!response.ok) {
+            let message = `Falha no download (HTTP ${response.status}).`;
+            try {
+                const payload = await response.json();
+                if (payload?.message) message = payload.message;
+            } catch {
+                // ignore parse errors
+            }
+            throw new Error(message);
+        }
+
+        const blob = await response.blob();
+        const contentDisposition = response.headers.get('Content-Disposition') || '';
+        const nameMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+        const fileName = nameMatch?.[1] || `arquivo-${fileId}`;
+
+        const downloadUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = downloadUrl;
+        anchor.download = fileName;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+        showNotification(`Erro ao baixar arquivo: ${error.message}`, 'error');
+    } finally {
+        hideLoading();
+    }
 }
 
 // --- 7. OPERAÇÕES DE ARQUIVO E CARGOS (Modais) ---
@@ -821,12 +871,17 @@ function renderBotFolderPicker() {
         }
     }
 
-    let html = '<ul>';
-    if (botFolderPickerState.currentPath.length > 0) html += '<li data-action="up">⬅️ .. (Voltar)</li>';
-    for (const folder of children.sort((a,b)=>a.localeCompare(b,'pt-BR'))) {
-        html += `<li data-action="down" data-folder="${folder}">📁 ${folder}</li>`;
+    const sortedChildren = children.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+    let html = '<div class="folder-picker-grid">';
+    if (botFolderPickerState.currentPath.length > 0) {
+        html += '<button type="button" class="folder-picker-card folder-picker-up" data-action="up"><span class="icon">⬅️</span><span class="label">Voltar</span></button>';
     }
-    html += '</ul>';
+    html += '<button type="button" class="folder-picker-card folder-picker-root" data-action="select-root"><span class="icon">🏠</span><span class="label">Home (raiz)</span></button>';
+    for (const folder of sortedChildren) {
+        html += `<button type="button" class="folder-picker-card" data-action="down" data-folder="${folder}"><span class="icon">📁</span><span class="label">${folder}</span></button>`;
+    }
+    html += '</div>';
     nav.innerHTML = html;
 }
 
@@ -1622,11 +1677,12 @@ document.addEventListener('DOMContentLoaded', () => {
         renderFolderNavigator();
     });
     document.getElementById('bot-folder-picker-navigation').addEventListener('click', (e) => {
-        const li = e.target.closest('li');
-        if (!li) return;
-        const action = li.dataset.action;
+        const targetElement = e.target.closest('button, li');
+        if (!targetElement) return;
+        const action = targetElement.dataset.action;
         if (action === 'up') botFolderPickerState.currentPath.pop();
-        else if (action === 'down') botFolderPickerState.currentPath.push(li.dataset.folder);
+        else if (action === 'down') botFolderPickerState.currentPath.push(targetElement.dataset.folder);
+        else if (action === 'select-root') botFolderPickerState.currentPath = [];
         else return;
         renderBotFolderPicker();
     });

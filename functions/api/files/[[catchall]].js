@@ -23,6 +23,10 @@ function sanitizeFilename(name) {
     return String(name || 'download.bin').replace(/[\\/:*?"<>|]/g, '_');
 }
 
+function logDownloadDecision(reason, details) {
+    console.log('[download-auth]', { reason, ...details });
+}
+
 export async function onRequestGet(context) {
     const { params, env, data } = context;
     const loggedInUser = data.user;
@@ -33,6 +37,7 @@ export async function onRequestGet(context) {
     }
 
     if (!loggedInUser || !loggedInUser.permissions.includes('can_view_files')) {
+        logDownloadDecision('missing_permission_can_view_files', { fileId: Number(parts[0] || 0), userId: loggedInUser?.userId || null, username: loggedInUser?.username || null, role: loggedInUser?.role || null, level: loggedInUser?.level ?? null });
         return new Response(JSON.stringify({ message: 'Acesso negado.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
     }
 
@@ -54,6 +59,7 @@ export async function onRequestGet(context) {
         ]);
 
         if (!file) {
+            logDownloadDecision('file_not_found', { fileId, userId: loggedInUser.userId, username: loggedInUser.username || null, role: loggedInUser.role || null, level: loggedInUser.level ?? null });
             return new Response(JSON.stringify({ message: 'Arquivo não encontrado.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
         }
 
@@ -65,11 +71,22 @@ export async function onRequestGet(context) {
             permissionMap.get(p.folder_path).add(p.role_id);
         });
 
-        const loggedInUserRoleIds = new Set(userRolesResult.results.map((r) => r.role_id));
+        const loggedInUserRoleIds = new Set((userRolesResult.results || []).map((r) => r.role_id));
         const isOwner = loggedInUser.level === 0;
         if (!canAccessPath(file.folder_path || '', isOwner, permissionMap, loggedInUserRoleIds)) {
+            logDownloadDecision('folder_permission_denied', {
+                fileId: file.id,
+                folderPath: file.folder_path || '',
+                userId: loggedInUser.userId,
+                username: loggedInUser.username || null,
+                role: loggedInUser.role || null,
+                level: loggedInUser.level ?? null,
+                roleIds: Array.from(loggedInUserRoleIds)
+            });
             return new Response(JSON.stringify({ message: 'Sem acesso a este arquivo.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
+
+        logDownloadDecision('download_granted', { fileId: file.id, folderPath: file.folder_path || '', userId: loggedInUser.userId, username: loggedInUser.username || null, role: loggedInUser.role || null, level: loggedInUser.level ?? null });
 
         media = await downloadTelegramMedia({
             apiId: env.TELEGRAM_API_ID,
