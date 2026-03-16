@@ -49,6 +49,8 @@ Ou seja, transferências grandes de arquivo passam pelo perfil Telegram autentic
 - `TELEGRAM_MOCK_DIR` (somente quando `TELEGRAM_USE_MOCK=true`)
 - `BOT_WEBHOOK_BASE_URL` (URL pública HTTPS do seu servidor para registrar webhook real; se ausente, bots ativos entram em polling `getUpdates`)
 - `BOT_TOKEN_ENC_KEY` (recomendado para criptografar token do bot no SQLite; 32 bytes em base64 ou 64 hex)
+- `DOWNLOAD_BOT_TOKEN` (token do bot usado para redirect de download <= 2000 MiB via Bot API local)
+- `BOT_API_BASE` (default: `http://127.0.0.1:8081`, endpoint do Bot API server local)
 
 ## Gerando e reutilizando sessão Telegram
 
@@ -96,10 +98,15 @@ npm run dev
   - `folder_path` (opcional)
   - `caption` (opcional)
 
-### Download real via perfil Telegram (MTProto)
-`GET /api/files/:id/download`
-- Auth JWT
-- stream com `Content-Disposition: attachment`
+### Download híbrido (`GET /api/files/:id/download`)
+- Auth JWT + validação de permissão por pasta
+- decisão por tamanho (`file_size`):
+  - `<= 2000 MiB`: `bot_api_redirect` (HTTP 302 para Bot API local, sem proxy no Node)
+  - `> 2000 MiB` e `<= 4000 MiB`: `mtproto_stream` (stream Telegram -> servidor -> navegador)
+  - `> 4000 MiB`: bloqueado com HTTP 413 (`Arquivo excede limite máximo de download (4000 MiB)`)
+- logs de decisão:
+  - `[download] fileId=... sizeMiB=... mode=...`
+  - `[download-auth]` para negativas de autorização
 
 ### Bots (eventos autenticados)
 `POST /api/bot/events`

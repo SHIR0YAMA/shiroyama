@@ -1,7 +1,6 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { Readable } from 'node:stream';
 
 let telegramLib;
 
@@ -10,13 +9,32 @@ function toBool(value) {
 }
 
 async function loadTelegramLib() {
-  if (!telegramLib) {
-    telegramLib = await import('telegram');
-  }
+  if (!telegramLib) telegramLib = await import('telegram');
   return telegramLib;
 }
 
-export async function downloadTelegramMedia({ apiId, apiHash, session, chatId, messageId, mockDir, useMock }) {
+function resolveMessageFileMeta(message) {
+  const media = message?.media;
+  const document = media?.document || null;
+  if (document) {
+    return {
+      mediaRef: media,
+      contentLength: Number(document.size || 0) || null
+    };
+  }
+
+  const photo = media?.photo || null;
+  if (photo) {
+    return {
+      mediaRef: media,
+      contentLength: null
+    };
+  }
+
+  return null;
+}
+
+export async function downloadTelegramMedia({ apiId, apiHash, session, chatId, messageId, mockDir, useMock, chunkSize = 1024 * 1024 }) {
   const shouldUseMock = toBool(useMock);
 
   if (shouldUseMock) {
@@ -37,7 +55,7 @@ export async function downloadTelegramMedia({ apiId, apiHash, session, chatId, m
 
   const { TelegramClient } = await loadTelegramLib();
   const { StringSession } = await import('telegram/sessions/index.js');
-  const tempPath = path.join(os.tmpdir(), `shiroyama-${randomUUID()}.bin`);
+
   const client = new TelegramClient(new StringSession(session), Number(apiId), apiHash, { connectionRetries: 3 });
   await client.connect();
 
@@ -46,20 +64,37 @@ export async function downloadTelegramMedia({ apiId, apiHash, session, chatId, m
     const message = Array.isArray(messages) ? messages[0] : messages;
     if (!message) throw new Error('Mensagem não encontrada no Telegram.');
 
-    await client.downloadMedia(message, { outputFile: tempPath, workers: 1 });
-    const stat = fs.statSync(tempPath);
+    const fileMeta = resolveMessageFileMeta(message);
+    if (!fileMeta?.mediaRef) throw new Error('Mensagem não contém mídia suportada para download.');
+
+    const iterator = client.iterDownload({
+      file: fileMeta.mediaRef,
+      requestSize: Number(chunkSize) || 1024 * 1024
+    });
+
+    const stream = Readable.from((async function* generate() {
+      for await (const chunk of iterator) {
+        yield chunk;
+      }
+    })());
 
     return {
-      stream: fs.createReadStream(tempPath),
-      contentLength: stat.size,
+      stream,
+      contentLength: fileMeta.contentLength,
       cleanup: async () => {
-        try { fs.unlinkSync(tempPath); } catch {}
-        await client.disconnect();
+        try {
+          await client.disconnect();
+        } catch {
+          // ignore disconnect errors
+        }
       }
     };
   } catch (error) {
-    try { await client.disconnect(); } catch {}
-    try { fs.unlinkSync(tempPath); } catch {}
+    try {
+      await client.disconnect();
+    } catch {
+      // ignore disconnect errors
+    }
     throw error;
   }
 }
