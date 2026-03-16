@@ -106,7 +106,7 @@ npm run dev
   - `> 2000 MiB` e `<= 4000 MiB`: `mtproto_stream` (stream Telegram -> servidor -> navegador)
   - `> 4000 MiB`: bloqueado com HTTP 413 (`Arquivo excede limite máximo de download (4000 MiB)`)
 - logs de decisão:
-  - `[download] fileId=... sizeMiB=... mode=...` (inclui fallback quando necessário)
+  - `[download] fileId=... sizeMiB=... mode=...` (inclui `bot_api_local_file_stream`, `bot_api_http_stream` e fallbacks)
   - `[download-auth]` para negativas de autorização
 
 ### Bots (eventos autenticados)
