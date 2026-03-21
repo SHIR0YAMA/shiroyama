@@ -166,14 +166,15 @@ async function handleDelete(context) {
         if (loggedInUser.level >= targetRole.level) {
             return new Response(JSON.stringify({ message: 'Não é possível excluir um cargo com nível hierárquico igual ou superior ao seu.' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
-        const usersWithRole = await db.prepare('SELECT COUNT(*) as count FROM users WHERE role_id = ?').bind(roleIdToDelete).first('count');
+        const usersWithRole = await db.prepare('SELECT COUNT(*) as count FROM user_roles WHERE role_id = ?').bind(roleIdToDelete).first('count');
         if (usersWithRole > 0) {
             return new Response(JSON.stringify({ message: 'Não é possível excluir este cargo, pois existem usuários associados a ele.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
         
         await db.batch([
-            db.prepare('DELETE FROM roles WHERE id = ?').bind(roleIdToDelete),
-            db.prepare('DELETE FROM role_permissions WHERE role_id = ?').bind(roleIdToDelete)
+            db.prepare('DELETE FROM role_permissions WHERE role_id = ?').bind(roleIdToDelete),
+            db.prepare('DELETE FROM user_roles WHERE role_id = ?').bind(roleIdToDelete),
+            db.prepare('DELETE FROM roles WHERE id = ?').bind(roleIdToDelete)
         ]);
         
         return new Response(null, { status: 204 });

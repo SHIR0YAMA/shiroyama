@@ -1,5 +1,12 @@
 // /functions/api/admin/bulk-delete.js
 
+function splitFilePath(fullPath) {
+    const normalized = String(fullPath || '').replace(/^\/+|\/+$/g, '');
+    const parts = normalized.split('/').filter(Boolean);
+    const fileName = parts.pop() || '';
+    return { folderPath: parts.join('/'), fileName };
+}
+
 export async function onRequestPost(context) {
     const { request, env, data } = context;
     try {
@@ -11,34 +18,42 @@ export async function onRequestPost(context) {
         }
 
         if (prefix) {
-            // Lógica para Pastas
-            const list = await env.ARQUIVOS_TELEGRAM.list({ prefix: prefix });
-            let keysToDelete = list.keys.map(k => k.name);
-            
-            // Adiciona o placeholder da pasta para garantir que ela suma
-            keysToDelete.push(`${prefix.replace(/\/$/, "")}/.placeholder`);
-            const uniqueKeys = [...new Set(keysToDelete)];
+            const folderPrefix = String(prefix).replace(/^\/+|\/+$/g, '');
+            if (!folderPrefix) return new Response(JSON.stringify({ message: 'Prefixo inválido.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
 
-            if (uniqueKeys.length > 0) {
-                // Para KV, precisamos deletar um por um.
-                const deletePromises = uniqueKeys.map(key => env.ARQUIVOS_TELEGRAM.delete(key));
-                await Promise.all(deletePromises);
+            const deleteResult = await env.DB.batch([
+                env.DB.prepare('DELETE FROM files WHERE folder_path = ? OR folder_path LIKE ?').bind(folderPrefix, `${folderPrefix}/%`),
+                env.DB.prepare('DELETE FROM folder_permissions WHERE folder_path = ? OR folder_path LIKE ?').bind(folderPrefix, `${folderPrefix}/%`),
+                env.DB.prepare('DELETE FROM folders WHERE folder_path = ? OR folder_path LIKE ?').bind(folderPrefix, `${folderPrefix}/%`)
+            ]);
+
+            const affected = (deleteResult || []).reduce((sum, r) => sum + (r.meta?.changes || 0), 0);
+            if (affected === 0) {
+                return new Response(JSON.stringify({ message: 'Pasta não encontrada para exclusão.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
             }
 
-            return new Response(JSON.stringify({ success: true, message: `Pasta e conteúdo excluídos.` }));
-
-        } else if (keys && keys.length > 0) {
-            // Lógica para Arquivos
-            const deletePromises = keys.map(key => env.ARQUIVOS_TELEGRAM.delete(key));
-            await Promise.all(deletePromises);
-            return new Response(JSON.stringify({ success: true, message: `${keys.length} arquivo(s) excluído(s).` }));
-
-        } else {
-            return new Response(JSON.stringify({ message: 'Nenhuma chave ou prefixo fornecido.' }), { status: 400 });
+            return new Response(JSON.stringify({ success: true, message: 'Pasta e conteúdo excluídos.' }), { headers: { 'Content-Type': 'application/json' } });
         }
 
+        if (keys && keys.length > 0) {
+            let deleted = 0;
+            for (const key of keys) {
+                const parsed = splitFilePath(key);
+                if (!parsed.fileName) continue;
+                const res = await env.DB.prepare('DELETE FROM files WHERE folder_path = ? AND file_name = ?').bind(parsed.folderPath, parsed.fileName).run();
+                deleted += res.meta?.changes || 0;
+            }
+
+            if (deleted === 0) {
+                return new Response(JSON.stringify({ message: 'Nenhum arquivo encontrado para exclusão.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+            }
+
+            return new Response(JSON.stringify({ success: true, message: `${deleted} arquivo(s) excluído(s).` }), { headers: { 'Content-Type': 'application/json' } });
+        }
+
+        return new Response(JSON.stringify({ message: 'Nenhuma chave ou prefixo fornecido.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     } catch (error) {
-        console.error("Erro em bulk-delete:", error);
-        return new Response(JSON.stringify({ message: "Erro interno no servidor." }), { status: 500 });
+        console.error('Erro em bulk-delete:', error);
+        return new Response(JSON.stringify({ message: `Erro interno no servidor: ${error.message}` }), { status: 500, headers: { 'Content-Type': 'application/json' } });
     }
 }

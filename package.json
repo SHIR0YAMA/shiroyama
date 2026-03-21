@@ -1,12 +1,17 @@
 {
   "name": "shiroyama-files",
   "version": "1.0.1",
-  "description": "Frontend and serverless functions for Shiroyama Files.",
+  "description": "Aplicação Shiroyama Files rodando localmente em Node.js.",
   "private": true,
   "scripts": {
-    "deploy": "wrangler pages deploy public"
+    "dev": "node --watch server/local-server.js",
+    "start": "node server/local-server.js",
+    "db:init": "node scripts/db-init.js",
+    "db:migrate": "node scripts/db-migrate.js",
+    "telegram:session": "node scripts/telegram-session.js"
   },
-  "devDependencies": {
-    "wrangler": "^3.0.0"
+  "type": "module",
+  "dependencies": {
+    "telegram": "^2.26.22"
   }
 }

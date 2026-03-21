@@ -14,11 +14,26 @@ function getRawModifiedDate(item) {
     return item.updated_at || item.modified_at || item.created_at || item.last_modified || item.date || null;
 }
 
+function parseAppDate(rawDate) {
+    if (!rawDate) return null;
+    if (rawDate instanceof Date) return rawDate;
+    const value = String(rawDate).trim();
+    if (!value) return null;
+
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
+        return new Date(value.replace(' ', 'T') + 'Z');
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+}
+
 function formatDateTime(rawDate) {
-    if (!rawDate) return '—';
-    const date = new Date(rawDate);
-    if (Number.isNaN(date.getTime())) return '—';
+    const date = parseAppDate(rawDate);
+    if (!date) return '—';
     return date.toLocaleString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -175,7 +190,6 @@ function focusPendingFileHighlight() {
 const mainContent = document.getElementById('main-content');
 const mainNav = document.getElementById('main-nav');
 const authModal = document.getElementById('authModal');
-const whyLinkModal = document.getElementById('whyLinkModal');
 const moveFileModal = document.getElementById('move-file-modal');
 const createFolderModal = document.getElementById('create-folder-modal');
 const renameModal = document.getElementById('rename-modal');
@@ -184,6 +198,7 @@ const passwordResetModal = document.getElementById('password-reset-modal');
 const folderPermsModal = document.getElementById('folder-perms-modal');
 const userRolesModal = document.getElementById('user-roles-modal');
 const groupFilesModal = document.getElementById('group-files-modal');
+const botFolderPickerModal = document.getElementById('bot-folder-picker-modal');
 
 // --- 4. FUNÇÃO CENTRAL DE API ---
 async function apiCall(endpoint, method = 'GET', body = null) {
@@ -298,7 +313,8 @@ function buildFolderStats(files) {
 
         const fileSize = Number(file.file_size) || 0;
         const modifiedRaw = getRawModifiedDate(file);
-        const modifiedTime = modifiedRaw ? new Date(modifiedRaw).getTime() : NaN;
+        const modifiedDate = parseAppDate(modifiedRaw);
+        const modifiedTime = modifiedDate ? modifiedDate.getTime() : NaN;
 
         for (let i = 1; i < parts.length; i++) {
             const folderPath = parts.slice(0, i).join('/');
@@ -396,43 +412,63 @@ function ensureCurrentPathExistsAfterMutation() {
     return true;
 }
 
-async function handleSingleForward(messageId) {
-    if (!hasPermission('can_receive_files')) {
-        showNotification("Você não tem permissão para esta ação.", "error");
-        return;
-    }
-    if (!state.token) {
-        authModal.classList.add('show');
-        return;
-    }
-    showNotification('Enviando para o seu Telegram...', 'info');
+async function handleFileDownload(fileId) {
+    if (!fileId) return;
+    showLoading();
     try {
-        await apiCall('single-forward', 'POST', { message_id: parseInt(messageId) });
-        showNotification('✅ Arquivo enviado com sucesso!', 'success');
-    } catch (error) {
-        if (error.message.includes('vinculada')) {
-            showNotification('❌ Primeiro, vincule sua conta do Telegram no Perfil.', 'error');
-            setTimeout(() => window.location.hash = '/profile', 2000);
-        } else {
-            showNotification(`❌ Erro: ${error.message}`, 'error');
+        const headers = {};
+        if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+
+        const response = await fetch(`/api/files/${fileId}/download`, { method: 'GET', headers });
+        if (!response.ok) {
+            let message = `Falha no download (HTTP ${response.status}).`;
+            try {
+                const payload = await response.json();
+                if (payload?.message) message = payload.message;
+            } catch {
+                // ignore parse errors
+            }
+            throw new Error(message);
         }
+
+        const blob = await response.blob();
+        const contentDisposition = response.headers.get('Content-Disposition') || '';
+        const nameMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+        const fileName = nameMatch?.[1] || `arquivo-${fileId}`;
+
+        const downloadUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = downloadUrl;
+        anchor.download = fileName;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+        showNotification(`Erro ao baixar arquivo: ${error.message}`, 'error');
+    } finally {
+        hideLoading();
     }
 }
 
 // --- 7. OPERAÇÕES DE ARQUIVO E CARGOS (Modais) ---
-let moveState = { oldKeys: [], destinationPath: null, currentPath: [], isFolder: false };
+let moveState = { oldKeys: [], destinationPath: null, currentPath: [], isFolder: false, mode: "move", excludePath: null, onPickPath: null };
 let renameState = { oldKey: null, newKey: null, isFolder: false };
 let roleState = { id: null, allPermissions: [] };
 let folderPermsState = { folderPath: null };
 let userRolesState = { userId: null };
+let botFolderPickerState = { currentPath: [], selectedPath: '' };
 
 function openMoveModal(keysToMove, isFolder = false) {
     moveState.oldKeys = Array.isArray(keysToMove) ? keysToMove : [keysToMove];
     moveState.isFolder = isFolder;
+    moveState.mode = 'move';
+    moveState.onPickPath = null;
+    moveState.excludePath = isFolder ? String(moveState.oldKeys[0] || '').replace(/^\/+|\/+$/g, '') : null;
     const firstFileName = moveState.oldKeys[0].split('/').pop();
     const displayName = moveState.oldKeys.length > 1 ? `${moveState.oldKeys.length} itens` : firstFileName;
     document.getElementById('move-file-name').textContent = displayName;
-    
+
     const createFolderBtn = document.getElementById('create-folder-in-move-modal-btn');
     if (hasPermission('can_create_folders') && (hasPermission('can_move_items') || hasPermission('can_move_folders'))) {
         createFolderBtn.style.display = 'block';
@@ -440,41 +476,72 @@ function openMoveModal(keysToMove, isFolder = false) {
         createFolderBtn.style.display = 'none';
     }
     moveState.currentPath = [];
-    renderFolderNavigator(isFolder ? firstFileName : null);
+    renderFolderNavigator();
     moveFileModal.classList.add('show');
 }
 
-function closeMoveModal() { moveFileModal.classList.remove('show'); }
+function openFolderPickerModal(initialPath = '', onPickPath) {
+    moveState.oldKeys = [];
+    moveState.isFolder = false;
+    moveState.mode = 'pick-folder';
+    moveState.onPickPath = onPickPath;
+    moveState.excludePath = null;
+    moveState.currentPath = String(initialPath || '').split('/').filter(Boolean);
+    document.getElementById('move-file-name').textContent = 'Selecione a pasta de destino';
+    document.getElementById('create-folder-in-move-modal-btn').style.display = 'none';
+    renderFolderNavigator();
+    moveFileModal.classList.add('show');
+}
 
-function renderFolderNavigator(folderToExclude = null) {
+function closeMoveModal() { moveFileModal.classList.remove('show'); moveState.mode = 'move'; moveState.onPickPath = null; moveState.excludePath = null; }
+
+function renderFolderNavigator() {
     const navContainer = document.getElementById('folder-navigation');
     const pathDisplay = document.getElementById('move-file-path');
     const confirmBtn = document.getElementById('move-file-confirm-btn');
     const currentFolderContent = getContentForPath(moveState.currentPath);
+    const currentPathString = moveState.currentPath.join('/');
+
     const subFolders = Object.entries(currentFolderContent)
-        .filter(([_, item]) => !item._isFile && item.name !== folderToExclude)
-        .map(([name]) => name);
+        .filter(([_, item]) => !item._isFile)
+        .map(([name]) => {
+            const fullPath = currentPathString ? `${currentPathString}/${name}` : name;
+            const blocked = !!moveState.excludePath && (fullPath === moveState.excludePath || fullPath.startsWith(`${moveState.excludePath}/`));
+            return { name, fullPath, blocked };
+        })
+        .filter(folder => !folder.blocked);
 
     let html = '<ul>';
     if (moveState.currentPath.length > 0) html += `<li data-action="up">⬅️ .. (Voltar)</li>`;
-    subFolders.forEach(folder => { html += `<li data-action="down" data-folder="${folder}">📁 ${folder}</li>`; });
+    subFolders.forEach(folder => {
+        html += `<li data-action="down" data-folder="${folder.name}">📁 ${folder.name}</li>`;
+    });
     html += '</ul>';
     navContainer.innerHTML = html;
-    const currentDisplayPath = `/${moveState.currentPath.join('/')}`;
-    pathDisplay.textContent = currentDisplayPath;
-    confirmBtn.disabled = false;
+    pathDisplay.textContent = `/${currentPathString}`;
+
+    const blockedCurrent = !!moveState.excludePath && (currentPathString === moveState.excludePath || currentPathString.startsWith(`${moveState.excludePath}/`));
+    confirmBtn.disabled = blockedCurrent;
 }
 
 async function confirmMoveFile() {
     moveState.destinationPath = moveState.currentPath.join('/');
+
+    if (moveState.mode === 'pick-folder') {
+        const picked = moveState.destinationPath;
+        closeMoveModal();
+        if (typeof moveState.onPickPath === 'function') moveState.onPickPath(picked);
+        return;
+    }
+
     showLoading();
     try {
         const apiToCall = moveState.isFolder ? 'admin/rename' : 'admin/bulk-move';
-        const payload = moveState.isFolder ? 
+        const payload = moveState.isFolder ?
             { oldKey: moveState.oldKeys[0], newKey: `${moveState.destinationPath}/${moveState.oldKeys[0].split('/').pop()}`, isFolder: true, action: 'move' } :
             { oldKeys: moveState.oldKeys, destinationPath: moveState.destinationPath };
         await apiCall(apiToCall, 'POST', payload);
-        showNotification("Item(ns) movido(s) com sucesso!", "success");
+        showNotification('Item(ns) movido(s) com sucesso!', 'success');
         closeMoveModal();
 
         if (moveState.isFolder) {
@@ -493,7 +560,7 @@ async function confirmMoveFile() {
         rebuildDerivedFileState();
         if (ensureCurrentPathExistsAfterMutation()) renderCurrentFilesView();
     } catch (error) {
-        showNotification(`Erro ao mover: ${error.message}`, "error");
+        showNotification(`Erro ao mover: ${error.message}`, 'error');
     } finally {
         hideLoading();
     }
@@ -770,6 +837,71 @@ async function confirmSaveFolderPerms() {
     }
 }
 
+
+function closeBotFolderPickerModal() { botFolderPickerModal.classList.remove('show'); }
+
+function getValidDestinationFoldersForMove(excludePath = '') {
+    const cleanExclude = String(excludePath || '').replace(/^\/+|\/+$/g, '');
+    return (state.allFolders || [])
+        .map(path => String(path || '').replace(/^\/+|\/+$/g, ''))
+        .filter(path => path && path !== cleanExclude && !path.startsWith(`${cleanExclude}/`))
+        .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+function renderBotFolderPicker() {
+    const nav = document.getElementById('bot-folder-picker-navigation');
+    const pathLabel = document.getElementById('bot-folder-picker-path');
+    const selectedText = document.getElementById('bot-folder-picker-selected');
+    const current = botFolderPickerState.currentPath.join('/');
+    pathLabel.textContent = `/${current}`;
+    selectedText.textContent = botFolderPickerState.selectedPath ? `Pasta selecionada: ${botFolderPickerState.selectedPath}` : 'Pasta selecionada: Home (raiz)';
+
+    const validFolders = getValidDestinationFoldersForMove('');
+    const currentPrefix = current ? `${current}/` : '';
+    const children = [];
+    const seen = new Set();
+    for (const folder of validFolders) {
+        if (!folder.startsWith(currentPrefix)) continue;
+        const rest = folder.slice(currentPrefix.length);
+        if (!rest) continue;
+        const first = rest.split('/')[0];
+        if (!seen.has(first)) {
+            seen.add(first);
+            children.push(first);
+        }
+    }
+
+    const sortedChildren = children.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+    let html = '<div class="folder-picker-grid">';
+    if (botFolderPickerState.currentPath.length > 0) {
+        html += '<button type="button" class="folder-picker-card folder-picker-up" data-action="up"><span class="icon">⬅️</span><span class="label">Voltar</span></button>';
+    }
+    html += '<button type="button" class="folder-picker-card folder-picker-root" data-action="select-root"><span class="icon">🏠</span><span class="label">Home (raiz)</span></button>';
+    for (const folder of sortedChildren) {
+        html += `<button type="button" class="folder-picker-card" data-action="down" data-folder="${folder}"><span class="icon">📁</span><span class="label">${folder}</span></button>`;
+    }
+    html += '</div>';
+    nav.innerHTML = html;
+}
+
+function openBotFolderPickerModal() {
+    botFolderPickerState.currentPath = String(botFolderPickerState.selectedPath || '').split('/').filter(Boolean);
+    renderBotFolderPicker();
+    botFolderPickerModal.classList.add('show');
+}
+
+function confirmBotFolderSelection() {
+    botFolderPickerState.selectedPath = botFolderPickerState.currentPath.join('/');
+    const selectedLabel = document.getElementById('mapping-folder-selected-text');
+    if (selectedLabel) {
+        selectedLabel.textContent = botFolderPickerState.selectedPath
+            ? `Pasta selecionada: ${botFolderPickerState.selectedPath}`
+            : 'Pasta selecionada: Home (raiz)';
+    }
+    closeBotFolderPickerModal();
+}
+
 function closeUserRolesModal() { userRolesModal.classList.remove('show'); }
 async function openUserRolesModal(userId, username, userRoles) {
     userRolesState.userId = userId;
@@ -862,7 +994,7 @@ function renderNav() {
     }
     greetingHTML += `</span>`;
     let navLinksHTML = '';
-    const canAccessAdmin = state.permissions.some(p => p.startsWith('users:') || p.startsWith('roles:'));
+    const canAccessAdmin = state.permissions.some(p => p.startsWith('users:') || p.startsWith('roles:') || p.startsWith('bots:'));
     if (state.token) {
         if (canAccessAdmin) {
             navLinksHTML += `<button id="admin-btn" class="nav-button"><i class="fas fa-cogs"></i>Admin</button>`;
@@ -885,7 +1017,7 @@ function renderNav() {
 
 function renderLoginPage() {
     document.body.classList.add('login-active');
-    mainContent.innerHTML = `<div class="login-screen"><form id="login-form" class="auth-form login-card"><div class="brand"><span class="brand-icon"><i class="fas fa-cloud"></i></span><h2>Shiroyama Archive</h2><p>Seu armazenamento em nuvem seguro e organizado.</p></div><div class="form-group"><label for="username">Email ou Nome de Usuário</label><input type="text" id="username" name="username" required autocomplete="username"></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required autocomplete="current-password"></div><button type="submit" class="primary-btn">Entrar</button><a href="#" class="forgot-link">Esqueci minha senha</a></form></div>`;
+    mainContent.innerHTML = `<div class="login-screen"><form id="login-form" class="auth-form login-card"><div class="brand"><span class="brand-icon"><i class="fas fa-cloud"></i></span><h2>Shiroyama Archive</h2><p>Caso precise de um usuário para acessar o sistema contacte @mrorlob via Telegram.</p></div><div class="form-group"><label for="username">Email ou Nome de Usuário</label><input type="text" id="username" name="username" required autocomplete="username"></div><div class="form-group"><label for="password">Senha</label><input type="password" id="password" name="password" required autocomplete="current-password"></div><button type="submit" class="primary-btn">Entrar</button><a href="#" class="forgot-link">Esqueci minha senha</a></form></div>`;
 
     document.querySelector('.forgot-link').onclick = (e) => {
         e.preventDefault();
@@ -929,33 +1061,6 @@ async function renderProfilePage() {
     try {
         const userData = await apiCall('user/status', 'GET');
 
-        let telegramSectionHTML = '';
-        if (hasPermission('can_receive_files')) {
-            if (userData.telegram_chat_id) {
-                telegramSectionHTML = `
-                    <section class="profile-section">
-                        <h3><i class="fas fa-paper-plane"></i> Telegram</h3>
-                        <div class="profile-info-list">
-                            <div class="profile-info-item"><span class="label">Usuário</span><span class="value">@${userData.telegram_username || 'N/A'}</span></div>
-                            <div class="profile-info-item"><span class="label">Chat ID</span><span class="value">${userData.telegram_chat_id}</span></div>
-                        </div>
-                        <div class="profile-action-row">
-                            <button id="unlink-btn" class="profile-btn danger"><i class="fas fa-unlink"></i> Desvincular Conta</button>
-                        </div>
-                    </section>`;
-            } else {
-                telegramSectionHTML = `
-                    <section class="profile-section">
-                        <h3><i class="fas fa-paper-plane"></i> Telegram</h3>
-                        <p style="margin:0 0 12px; color:#cfc3e4; line-height:1.45;">Conecte sua conta para receber arquivos diretamente pelo bot do Telegram.</p>
-                        <div class="profile-action-row">
-                            <button id="link-telegram-btn" class="profile-btn primary"><i class="fas fa-link"></i> Vincular com o Telegram</button>
-                        </div>
-                        <a href="#" id="why-link-q" class="profile-helper-link"><i class="fas fa-circle-question"></i> Por que preciso fazer isso?</a>
-                    </section>`;
-            }
-        }
-
         mainContent.innerHTML = `
             <div class="profile-shell">
                 <article class="profile-card">
@@ -966,7 +1071,10 @@ async function renderProfilePage() {
                             <div style="margin-top:8px;"><span class="profile-role-badge"><i class="fas fa-shield-halved"></i> ${state.role || 'N/A'}</span></div>
                         </div>
                     </header>
-                    ${telegramSectionHTML || '<section class="profile-section"><h3><i class="fas fa-paper-plane"></i> Telegram</h3><p style="margin:0;color:#cfc3e4;">Sua conta não possui permissão para recebimento via Telegram.</p></section>'}
+                    <section class="profile-section">
+                        <h3><i class="fas fa-download"></i> Downloads</h3>
+                        <p style="margin:0;color:#cfc3e4;line-height:1.45;">Nesta versão local, os arquivos são baixados diretamente pelo site usando a integração local com a conta Telegram configurada no servidor.</p>
+                    </section>
                 </article>
 
                 <article class="profile-card">
@@ -981,41 +1089,6 @@ async function renderProfilePage() {
                     </section>
                 </article>
             </div>`;
-
-        if (hasPermission('can_receive_files')) {
-            if (userData.telegram_chat_id) {
-                document.getElementById('unlink-btn').onclick = async () => {
-                    if (confirm('Tem certeza?')) {
-                        await apiCall('user/unlink-telegram', 'POST');
-                        showNotification('Conta desvinculada com sucesso.', 'success');
-                        await router();
-                    }
-                };
-            } else {
-                document.getElementById('link-telegram-btn').onclick = (e) => {
-                    const linkButton = e.currentTarget;
-                    linkButton.disabled = true;
-                    linkButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando...';
-                    const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-                    const linkCodeWithPrefix = `link_${randomCode}`;
-                    apiCall('user/prepare-link-code', 'POST', { linkCode: linkCodeWithPrefix })
-                        .then(async () => {
-                            window.open(`https://t.me/ShiroyamaBot?start=${linkCodeWithPrefix}`, '_blank');
-                            linkButton.innerHTML = '<i class="fas fa-paper-plane"></i> Verifique o Telegram!';
-                            showNotification('Conclua o vínculo no Telegram.', 'info');
-                            startFaviconBlink();
-                            setTimeout(async () => await router(), 15000);
-                        })
-                        .catch(err => {
-                            showNotification(`Erro: ${err.message}`, 'error');
-                            linkButton.disabled = false;
-                            linkButton.innerHTML = '<i class="fas fa-link"></i> Vincular com o Telegram';
-                        });
-                };
-                const whyLink = document.getElementById('why-link-q');
-                if (whyLink) whyLink.onclick = (e) => { e.preventDefault(); whyLinkModal.classList.add('show'); };
-            }
-        }
 
         document.getElementById('password-form').onsubmit = async (e) => {
             e.preventDefault();
@@ -1034,37 +1107,40 @@ async function renderProfilePage() {
             }
         };
     } catch (error) {
-        mainContent.innerHTML = `<p style="color: #ff5555;">Erro ao carregar perfil: ${error.message}</p>`;
+        mainContent.innerHTML = `<h2>Erro ao carregar perfil: ${error.message}</h2>`;
     } finally {
         hideLoading();
     }
 }
-
 async function renderAdminPage(subpage) {
     document.body.classList.remove('login-active');
     const canViewUsers = hasPermission('users:view_list');
     const canViewRoles = hasPermission('roles:view_list');
+    const canManageBots = hasPermission('bots:manage') || isOwnerUser();
 
     if (!subpage) {
         if (canViewUsers) subpage = 'users';
         else if (canViewRoles) subpage = 'roles';
+        else if (canManageBots) subpage = 'bots';
     }
     
-    if (!canViewUsers && !canViewRoles) {
+    if (!canViewUsers && !canViewRoles && !canManageBots) {
         mainContent.innerHTML = "<p>Você não tem permissões suficientes para visualizar o painel de administração.</p>";
         hideLoading();
         return;
     }
 
-    mainContent.innerHTML = `<h2><i class="fas fa-sliders"></i> Painel de Administrador</h2><div class="admin-tabs">${canViewUsers ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}"><i class="fas fa-users"></i> Gerenciar Usuários</button>` : ''}${canViewRoles ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}"><i class="fas fa-user-shield"></i> Gerenciar Cargos</button>` : ''}</div><div id="admin-content"></div>`;
+    mainContent.innerHTML = `<h2><i class="fas fa-sliders"></i> Painel de Administrador</h2><div class="admin-tabs">${canViewUsers ? `<button id="admin-tab-users" class="${subpage === 'users' ? 'active' : ''}"><i class="fas fa-users"></i> Gerenciar Usuários</button>` : ''}${canViewRoles ? `<button id="admin-tab-roles" class="${subpage === 'roles' ? 'active' : ''}"><i class="fas fa-user-shield"></i> Gerenciar Cargos</button>` : ''}${canManageBots ? `<button id="admin-tab-bots" class="${subpage === 'bots' ? 'active' : ''}"><i class="fas fa-robot"></i> Fontes Telegram</button>` : ''}</div><div id="admin-content"></div>`;
     const adminContent = document.getElementById('admin-content');
     adminContent.innerHTML = '';
     showLoading();
 
     const usersTab = document.getElementById('admin-tab-users');
     const rolesTab = document.getElementById('admin-tab-roles');
+    const botsTab = document.getElementById('admin-tab-bots');
     if (usersTab) usersTab.onclick = () => router('admin/users');
     if (rolesTab) rolesTab.onclick = () => router('admin/roles');
+    if (botsTab) botsTab.onclick = () => router('admin/bots');
 
     try {
         if (subpage === 'users' && canViewUsers) {
@@ -1099,7 +1175,7 @@ async function renderAdminPage(subpage) {
                         <td data-label="ID do Chat" class="chat-id-cell">
                             <div class="chat-id-cell-content">
                                 <span>${user.telegram_chat_id || 'N/A'}</span>
-                                <button class="unlink-telegram-btn btn-icon" data-user-id="${user.id}" data-username="${user.username}" title="Desvincular Telegram" ${disabledAttribute}><i class="fas fa-unlink"></i></button>
+                                
                             </div>
                         </td>
                         <td data-label="Criado em">${new Date(user.created_at).toLocaleDateString()}</td>
@@ -1120,11 +1196,6 @@ async function renderAdminPage(subpage) {
                 }
                 if (!hasPermission('users:view_chat_id')) {
                     row.querySelector('.col-chat-id').innerHTML = '<span>-</span>';
-                } else {
-                    const unlinkBtn = row.querySelector('.unlink-telegram-btn');
-                    if (unlinkBtn && (!user.telegram_chat_id || !hasPermission('users:unlink_telegram'))) {
-                        unlinkBtn.style.display = 'none';
-                    }
                 }
                 if (!hasPermission('users:reset_password')) {
                     const resetBtn = row.querySelector('.reset-password-btn');
@@ -1135,6 +1206,38 @@ async function renderAdminPage(subpage) {
                     if (deleteBtn) deleteBtn.style.display = 'none';
                 }
             });
+
+
+        } else if (subpage === 'bots' && canManageBots) {
+            const [mappingsResp, foldersResp] = await Promise.all([apiCall('admin/bot-mappings'), apiCall('admin/folders')]);
+            const mappings = mappingsResp.mappings || [];
+            const folderOptions = (foldersResp.folders || []);
+
+            adminContent.innerHTML = `
+                <div class="table-container" style="margin-bottom:16px;">
+                    <h3>Adicionar/atualizar fonte monitorada</h3>
+                    <div class="actions-wrap" style="gap:8px;flex-wrap:wrap;">
+                        <input id="mapping-chat-id" type="text" placeholder="Chat ID (ex: -100123...)" style="min-width:220px;">
+                        <input id="mapping-source-name" type="text" placeholder="Nome do canal/grupo" style="min-width:220px;">
+                        <input id="mapping-source-type" type="text" placeholder="Tipo (channel/group)" value="channel" style="min-width:180px;">
+                        <button id="mapping-select-folder-btn" type="button"><i class="fas fa-folder-open"></i> Selecionar pasta</button>
+                        <button id="create-mapping-btn"><i class="fas fa-link"></i> Salvar vínculo</button>
+                    </div>
+                    <small id="mapping-folder-selected-text" style="display:block;margin-top:8px;opacity:.95;">Pasta selecionada: ${botFolderPickerState.selectedPath || 'Inbox'}</small>
+                    <small style="display:block;margin-top:4px;opacity:.75;">Bot único no backend (.env). O painel gerencia apenas chat_id -> pasta.</small>
+                </div>
+                <div class="table-container">
+                    <h3>Fontes monitoradas</h3>
+                    <table class="admin-table">
+                        <thead><tr><th>Nome</th><th>Chat ID</th><th>Tipo</th><th>Pasta</th><th>Ativo</th><th>Ações</th></tr></thead>
+                        <tbody>${mappings.map(m => `<tr><td>${m.source_name || '-'}</td><td>${m.telegram_chat_id}</td><td>${m.source_type || '-'}</td><td>${m.folder_path || 'Inbox'}</td><td>${m.is_active ? 'Sim' : 'Não'}</td><td><button class="edit-source-btn btn-icon" data-id="${m.id}" data-name="${m.source_name || ''}" data-chat-id="${m.telegram_chat_id}" data-source-type="${m.source_type || 'channel'}" data-folder-path="${m.folder_path || 'Inbox'}"><i class="fas fa-pen"></i></button> <button class="toggle-source-btn btn-icon" data-id="${m.id}" data-name="${m.source_name || ''}" data-chat-id="${m.telegram_chat_id}" data-source-type="${m.source_type || 'channel'}" data-folder-path="${m.folder_path || 'Inbox'}" data-active="${m.is_active ? '1' : '0'}"><i class="fas fa-power-off"></i></button> <button class="delete-mapping-btn btn-danger" data-id="${m.id}" title="Excluir vínculo"><i class="fas fa-trash-can"></i></button></td></tr>`).join('')}</tbody>
+                    </table>
+                </div>`;
+
+            renderBotFolderPickerModal(folderOptions, botFolderPickerState.selectedPath || 'Inbox');
+            const text = document.getElementById('mapping-folder-selected-text');
+            if (text) text.textContent = `Pasta selecionada: ${botFolderPickerState.selectedPath || 'Inbox'}`;
+
 
         } else if (subpage === 'roles' && canViewRoles) {
             const [rolesData, permissionsData] = await Promise.all([apiCall('admin/roles'), apiCall('admin/permissions')]);
@@ -1409,12 +1512,11 @@ function renderFilesPage(path) {
         if (item._isFile && !item.isGroup) {
             if (hasPermission('can_rename_items')) actionButtons += `<button class="btn-icon btn-rename" data-key="${item.name}" data-isfolder="false" title="Renomear Arquivo"><i class="fas fa-pen"></i></button>`;
             if (hasPermission('can_move_items')) actionButtons += `<button class="btn-icon btn-move-file" data-key="${item.name}" title="Mover Arquivo"><i class="fas fa-up-down-left-right"></i></button>`;
-            if (hasPermission('can_receive_files')) actionButtons += `<button class="btn-icon btn-single-forward" data-message-id="${item.message_id}" title="Receber"><i class="fas fa-paper-plane"></i></button>`;
+            actionButtons += `<button class="btn-icon btn-download" data-file-id="${item.id || ''}" title="Baixar"><i class="fas fa-download"></i></button>`;
             if (hasPermission('can_delete_items')) actionButtons += `<button class="btn-icon danger btn-delete" data-key="${item.name}" data-isfolder="false" title="Excluir"><i class="fas fa-trash-can"></i></button>`;
         } else if (item.isGroup) {
             if (hasPermission('can_group_items')) actionButtons += `<button class="btn-icon btn-ungroup" data-group-id="${item.groupId}" title="Desagrupar"><i class="fas fa-unlink"></i></button>`;
-            if (hasPermission('can_receive_files')) actionButtons += `<button class="btn-icon btn-bulk-forward" data-message-ids="${item.message_ids.join(',')}" title="Receber Todas as Partes"><i class="fas fa-paper-plane"></i></button>`;
-            if (hasPermission('can_delete_items')) actionButtons += `<button class="btn-icon danger btn-delete-group" data-group-id="${item.groupId}" data-group-items='${JSON.stringify(item.groupItems)}' title="Excluir Grupo"><i class="fas fa-trash-can"></i></button>`;
+                        if (hasPermission('can_delete_items')) actionButtons += `<button class="btn-icon danger btn-delete-group" data-group-id="${item.groupId}" data-group-items='${JSON.stringify(item.groupItems)}' title="Excluir Grupo"><i class="fas fa-trash-can"></i></button>`;
         } else {
             if (hasPermission('can_manage_folder_permissions')) actionButtons += `<button class="btn-icon btn-folder-perms" data-path="${itemPath}" title="Permissões da Pasta"><i class="fas fa-user-shield"></i></button>`;
             if (hasPermission('can_rename_folders')) actionButtons += `<button class="btn-icon btn-rename" data-key="${itemPath}" data-isfolder="true" title="Renomear Pasta"><i class="fas fa-pen"></i></button>`;
@@ -1484,7 +1586,7 @@ async function router(routeOverride) {
                 if (!state.token) window.location.hash = '/login'; else await renderProfilePage();
                 break;
             case 'admin':
-                const canAccessAdmin = state.permissions.some(p => p.startsWith('users:') || p.startsWith('roles:'));
+                const canAccessAdmin = state.permissions.some(p => p.startsWith('users:') || p.startsWith('roles:') || p.startsWith('bots:'));
                 if (!canAccessAdmin) {
                     showNotification("Acesso negado.", "error"); window.location.hash = '/';
                 } else await renderAdminPage(path[1]);
@@ -1516,7 +1618,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('focus', stopFaviconBlink);
     
     document.getElementById('modal-close-btn').onclick = () => authModal.classList.remove('show');
-    document.getElementById('why-modal-close-btn').onclick = () => whyLinkModal.classList.remove('show');
     document.getElementById('move-modal-close-btn').onclick = closeMoveModal;
     document.getElementById('create-folder-close-btn').onclick = closeCreateFolderModal;
     document.getElementById('rename-close-btn').onclick = closeRenameModal;
@@ -1541,8 +1642,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('user-roles-save-btn').onclick = confirmSaveUserRoles;
     document.getElementById('group-files-cancel-btn').onclick = closeGroupFilesModal;
     document.getElementById('group-files-confirm-btn').onclick = confirmGroupFiles;
+    document.getElementById('bot-folder-picker-close-btn').onclick = closeBotFolderPickerModal;
+    document.getElementById('bot-folder-picker-cancel-btn').onclick = closeBotFolderPickerModal;
+    document.getElementById('bot-folder-picker-confirm-btn').onclick = confirmBotFolderSelection;
 
-    [authModal, whyLinkModal, moveFileModal, createFolderModal, renameModal, roleModal, passwordResetModal, folderPermsModal, userRolesModal, groupFilesModal].forEach(modal => {
+    [authModal, moveFileModal, createFolderModal, renameModal, roleModal, passwordResetModal, folderPermsModal, userRolesModal, groupFilesModal, botFolderPickerModal].forEach(modal => {
         if (modal) modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('show'); };
     });
 
@@ -1556,9 +1660,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const action = li.dataset.action;
         if (action === 'up') moveState.currentPath.pop();
         else if (action === 'down') moveState.currentPath.push(li.dataset.folder);
-        const folderNameToExclude = moveState.isFolder ? moveState.oldKeys[0].split('/').pop() : null;
-        renderFolderNavigator(folderNameToExclude);
+        else return;
+        renderFolderNavigator();
     });
+    document.getElementById('bot-folder-picker-navigation').addEventListener('click', (e) => {
+        const targetElement = e.target.closest('button, li');
+        if (!targetElement) return;
+        const action = targetElement.dataset.action;
+        if (action === 'up') botFolderPickerState.currentPath.pop();
+        else if (action === 'down') botFolderPickerState.currentPath.push(targetElement.dataset.folder);
+        else if (action === 'select-root') botFolderPickerState.currentPath = [];
+        else return;
+        renderBotFolderPicker();
+    });
+
     document.getElementById('create-folder-in-move-modal-btn').onclick = () => { closeMoveModal(); openCreateFolderModal(true); };
 
     mainContent.addEventListener('click', async (e) => {
@@ -1585,12 +1700,7 @@ document.addEventListener('DOMContentLoaded', () => {
             card.classList.toggle('show');
             return;
         }
-        if (target.classList.contains('btn-single-forward')) await handleSingleForward(target.dataset.messageId);
-        if (target.classList.contains('btn-bulk-forward')) {
-            const messageIds = target.dataset.messageIds.split(',').map(id => parseInt(id));
-            await apiCall('bulk-forward', 'POST', { message_ids: messageIds });
-            showNotification('O bot começou a enviar os arquivos! Verifique seu Telegram.', 'success');
-        }
+        if (target.classList.contains('btn-download')) await handleFileDownload(target.dataset.fileId);
         if (target.classList.contains('btn-ungroup')) {
             if (confirm("Tem certeza que deseja desagrupar estes arquivos? Eles voltarão a ser exibidos individualmente.")) {
                 await apiCall('admin/ungroup', 'POST', { groupId: parseInt(target.dataset.groupId) });
@@ -1656,19 +1766,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 finally { hideLoading(); }
             }
         }
-        if (target.classList.contains('unlink-telegram-btn')) {
-            const userId = target.dataset.userId;
-            const username = target.dataset.username;
-            if (confirm(`Tem certeza que deseja desvincular a conta do Telegram do usuário "${username}"?`)) {
-                showLoading();
-                try {
-                    await apiCall('admin/unlink-user-telegram', 'POST', { userId: parseInt(userId) });
-                    showNotification("Conta do Telegram desvinculada.", "success");
-                    await router('admin/users');
-                } catch(err) { showNotification(`Erro: ${err.message}`, "error"); } 
-                finally { hideLoading(); }
-            }
-        }
         if (target.id === 'create-new-role-btn') openRoleModal();
         if (target.classList.contains('edit-role-btn')) {
             const roleData = JSON.parse(target.dataset.role);
@@ -1681,6 +1778,73 @@ document.addEventListener('DOMContentLoaded', () => {
                     .then(async () => { showNotification("Cargo excluído.", "success"); await router('admin/roles'); })
                     .catch(err => showNotification(`Erro: ${err.message}`, "error"));
             }
+        }
+
+        if (target.id === 'mapping-select-folder-btn') {
+            openBotFolderPickerModal();
+            return;
+        }
+
+        if (target.classList.contains('toggle-source-btn')) {
+            const id = parseInt(target.dataset.id);
+            const isActive = target.dataset.active === '1';
+            try {
+                await apiCall('admin/bot-mappings', 'POST', {
+                    action: 'upsert',
+                    id,
+                    telegram_chat_id: target.dataset.chatId,
+                    source_name: target.dataset.name || '',
+                    source_type: target.dataset.sourceType || 'channel',
+                    folder_path: target.dataset.folderPath || 'Inbox',
+                    is_active: !isActive
+                });
+                showNotification('Status da fonte atualizado.', 'success');
+                await router('admin/bots');
+            } catch (err) { showNotification(err.message, 'error'); }
+        }
+
+        if (target.classList.contains('edit-source-btn')) {
+            document.getElementById('mapping-chat-id').value = target.dataset.chatId || '';
+            document.getElementById('mapping-source-name').value = target.dataset.name || '';
+            document.getElementById('mapping-source-type').value = target.dataset.sourceType || 'channel';
+            botFolderPickerState.selectedPath = target.dataset.folderPath || 'Inbox';
+            botFolderPickerState.editId = parseInt(target.dataset.id);
+            const text = document.getElementById('mapping-folder-selected-text');
+            if (text) text.textContent = `Pasta selecionada: ${botFolderPickerState.selectedPath}`;
+            showNotification('Modo edição habilitado para a fonte selecionada.', 'success');
+        }
+
+        if (target.id === 'create-mapping-btn') {
+            const editId = Number(botFolderPickerState.editId || 0);
+            const chatId = document.getElementById('mapping-chat-id')?.value?.trim();
+            const sourceName = document.getElementById('mapping-source-name')?.value?.trim();
+            const sourceType = document.getElementById('mapping-source-type')?.value?.trim() || 'channel';
+            const folderPath = String(botFolderPickerState.selectedPath || '').trim() || 'Inbox';
+            if (!chatId) { showNotification('Preencha chat_id.', 'error'); return; }
+            try {
+                await apiCall('admin/bot-mappings', 'POST', {
+                    action: 'upsert',
+                    id: editId || undefined,
+                    telegram_chat_id: chatId,
+                    source_name: sourceName || (folderPath || 'Inbox'),
+                    source_type: sourceType,
+                    folder_path: folderPath,
+                    is_active: true
+                });
+                showNotification(editId ? 'Fonte atualizada.' : 'Vínculo salvo.', 'success');
+                botFolderPickerState.editId = null;
+                await router('admin/bots');
+            } catch (err) { showNotification(err.message, 'error'); }
+        }
+
+        if (target.classList.contains('delete-mapping-btn')) {
+            const id = parseInt(target.dataset.id);
+            if (!confirm('Excluir este vínculo?')) return;
+            try {
+                await apiCall('admin/bot-mappings', 'POST', { action: 'delete', id });
+                showNotification('Vínculo removido.', 'success');
+                await router('admin/bots');
+            } catch (err) { showNotification(err.message, 'error'); }
         }
     });
 
@@ -1699,10 +1863,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         bulkActionsContainer.style.display = 'flex';
         const keys = selected.map(cb => cb.dataset.key);
-        const messageIds = selected.map(cb => cb.dataset.messageId);
-        
         let buttonsHTML = `<span class="bulk-count"><i class="fas fa-check-double"></i> ${selected.length} item(ns) selecionado(s)</span>`;
-        if (hasPermission('can_receive_files')) buttonsHTML += `<button id="bulk-receive-btn" class="bulk-btn" title="Receber"><i class="fas fa-paper-plane"></i><span>Receber</span></button>`;
         if (hasPermission('can_move_items')) buttonsHTML += `<button id="bulk-move-btn" class="bulk-btn" title="Mover"><i class="fas fa-up-down-left-right"></i><span>Mover</span></button>`;
         if (hasPermission('can_group_items')) buttonsHTML += `<button id="bulk-group-btn" class="bulk-btn" title="Agrupar"><i class="fas fa-cubes"></i><span>Agrupar</span></button>`;
         if (hasPermission('can_delete_items')) buttonsHTML += `<button id="bulk-delete-btn" class="btn-danger bulk-btn" title="Excluir"><i class="fas fa-trash-can"></i><span>Excluir</span></button>`;
@@ -1711,23 +1872,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (document.getElementById('bulk-move-btn')) document.getElementById('bulk-move-btn').onclick = () => openMoveModal(keys, false);
         if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').onclick = () => deleteItems(keys);
         if (document.getElementById('bulk-group-btn')) document.getElementById('bulk-group-btn').onclick = openGroupFilesModal;
-        if (document.getElementById('bulk-receive-btn')) {
-            document.getElementById('bulk-receive-btn').onclick = async () => {
-                if (!state.token) { showNotification("Você precisa estar logado.", 'error'); return; }
-                const btn = document.getElementById('bulk-receive-btn');
-                try {
-                    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>Enviando</span>`;
-                    btn.disabled = true;
-                    await apiCall('bulk-forward', 'POST', { message_ids: messageIds.filter(Boolean).map(id => parseInt(id)) });
-                    showNotification("O bot começou a enviar os arquivos! Verifique seu Telegram.", 'success');
-                } catch (error) {
-                    showNotification(`Ocorreu um erro: ${error.message}`, 'error');
-                } finally {
-                    btn.innerHTML = `<i class="fas fa-paper-plane"></i><span>Receber</span>`;
-                    btn.disabled = false;
-                }
-            };
-        }
     });
 
     window.addEventListener('hashchange', router);
